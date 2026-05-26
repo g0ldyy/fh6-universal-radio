@@ -326,7 +326,13 @@ void YouTubeMusicSource::resolve_queue_locked() {
     }
 
     queue_built_for_ = target_url_;
-    log::info("[yt] resolved {} track(s) from {}", queue_.size(), target_url_);
+    if (queue_.empty() && is_playlist_url(target_url_)) {
+        log::warn("[yt] resolved 0 tracks from {} -- check {} for yt-dlp errors "
+                  "(private/deleted/geo-blocked playlist?)",
+                  target_url_, stderr_log_path().string());
+    } else {
+        log::info("[yt] resolved {} track(s) from {}", queue_.size(), target_url_);
+    }
 }
 
 void YouTubeMusicSource::start_pipe_locked() {

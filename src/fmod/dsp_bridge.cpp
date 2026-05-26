@@ -154,17 +154,20 @@ bool DSPBridge::validate_handle(uint32_t handle) const noexcept {
     uint64_t lock_state = 0;
     uint32_t rc         = ~0u;
     if (!seh_call([&] { rc = fns_.handle_resolver(handle, &inst, &lock_state); })) {
-        log::warn("[dsp] handle_resolver raised SEH exception");
+        if (last_bad_handle_ != handle) {
+            last_bad_handle_ = handle;
+            log::warn("[dsp] handle_resolver raised SEH exception");
+        }
         return false;
     }
-    // Handle::open must always be paired with Handle::unlock, even on rc!=0.
-    // Skipping it leaks an FMOD handle slot and eventually freezes the game
-    // thread.
     if (fns_.handle_unlock && lock_state) {
         seh_call([&] { fns_.handle_unlock(lock_state); });
     }
     if (rc != 0) {
-        log::warn("[dsp] handle_resolver rc={}", rc);
+        if (last_bad_handle_ != handle) {
+            last_bad_handle_ = handle;
+            log::warn("[dsp] handle_resolver rc={} (handle 0x{:X})", rc, handle);
+        }
         return false;
     }
     return inst != nullptr;
@@ -274,7 +277,13 @@ bool DSPBridge::channel_handle_alive(std::byte* radio_stream) const noexcept {
 void DSPBridge::retarget_if_needed() noexcept {
     if (mode() != DSPMode::pcm || !fmod_system_) return;
     const uint32_t handle = read_live_handle(radio_stream_);
-    if (!handle || handle == current_handle_) return;
+    if (handle == current_handle_) return;
+    // No live handle on the RadioStreamFmod. If we still think we're installed
+    // on a dead one, release it so we stop querying the stale handle.
+    if (!handle) {
+        if (current_handle_) release_current_dsp_locked();
+        return;
+    }
 
     log::info("[dsp] retargeting -> handle 0x{:X}", handle);
     release_current_dsp_locked();

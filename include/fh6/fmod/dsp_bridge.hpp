@@ -122,6 +122,7 @@ private:
     void* fmod_system_       = nullptr;
     void* current_dsp_       = nullptr;
     uint32_t current_handle_ = 0;
+    mutable uint32_t last_bad_handle_ = 0;  // suppress repeated rc=3 / SEH warnings for the same handle
     std::byte* radio_stream_ = nullptr;
 
     std::atomic<DSPMode> mode_{DSPMode::pcm};
