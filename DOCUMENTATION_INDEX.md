@@ -2,7 +2,9 @@
 
 ## Quick Navigation
 
-### Start Here
+### Start Here (Choose Your Path)
+- **[PROTON_QUICK_START.md](PROTON_QUICK_START.md)** - 5-minute quick start for testing local files
+- **[PROTON_LOCAL_FILES_TESTING_GUIDE.md](PROTON_LOCAL_FILES_TESTING_GUIDE.md)** - Comprehensive testing guide (detailed, 30+ min)
 - **[FINAL_STATUS.md](FINAL_STATUS.md)** - Executive summary of the entire investigation
 - **[NEXT_STEPS.md](NEXT_STEPS.md)** - What to try next to potentially fix the issue
 
@@ -16,6 +18,9 @@
 - **[PROTON_COMPATIBILITY_ANALYSIS.md](PROTON_COMPATIBILITY_ANALYSIS.md)** - Detailed assessment of Windows APIs used vs. Wine support
 - **[PROTON_CRITICAL_APIS.md](PROTON_CRITICAL_APIS.md)** - List of potentially problematic Windows APIs
 - **[PROTON_STACK_OVERFLOW_FIX.md](PROTON_STACK_OVERFLOW_FIX.md)** - Initial attempts to fix the stack overflow
+
+### User Guides
+- **[PROTON_LOCAL_FILES_TESTING_GUIDE.md](PROTON_LOCAL_FILES_TESTING_GUIDE.md)** - Comprehensive testing guide for local files feature (Proton/Linux)
 
 ### Debugging & Diagnosis
 - **[STACK_OVERFLOW_DIAGNOSIS.md](STACK_OVERFLOW_DIAGNOSIS.md)** - Root cause analysis of the crash
