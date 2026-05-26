@@ -61,11 +61,6 @@ target_include_directories(version PRIVATE
 
 target_link_libraries(version PRIVATE ws2_32 bcrypt psapi)
 
-# MinGW needs explicit DEF file for DLL exports
-if(MINGW)
-  # Don't use .def file - it causes linker issues. Just export via dllexport attributes.
-endif()
-
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version
     PREFIX ""

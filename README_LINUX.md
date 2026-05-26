@@ -1,5 +1,7 @@
 # FH6 Universal Radio - Linux Guide
 
+![FH6 Radio Working on Linux](WorkingOnLinux.png)
+
 ## Warning
 
 This part of the mod is entirely vibecoded, i have no knowlage of low level dll injection nor wanted to educate my self. I just wanted semi working mod on my linux system and fastest way was to vibecode fix for linux. I do not take resposibility for quality or stability of the code. -DEVU
@@ -179,7 +181,6 @@ shuffle = true
 2. Go to **Settings > Audio**.
 3. Set **Radio DJ** to **Off**.
 4. Set **Streamer Mode** to **On**.
-5. Restart the game to apply changes.
 
 ### Access the Web Dashboard
 
