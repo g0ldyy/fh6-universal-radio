@@ -3,7 +3,6 @@
 #include "fh6/fmod/pe_image.hpp"
 
 #include <cstdint>
-#include <span>
 #include <string_view>
 
 namespace fh6::fmod_bridge {

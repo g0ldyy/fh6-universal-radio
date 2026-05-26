@@ -4,6 +4,7 @@
 #include "fh6/log.hpp"
 #include "fh6/safe_mem.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace fh6::fmod_bridge {
@@ -83,14 +84,22 @@ struct FMOD_DSP_DESCRIPTION {
 };
 static_assert(sizeof(FMOD_DSP_DESCRIPTION) == 216);
 
+// The `System::createDSP` LEA is sometimes not yet resident in the host
+// process when our scanner runs at DllMain. Pulled out so install_dsp_locked
+// can retry against a fresh parse of the same module.
+FMODFns::SystemCreateDSP_t resolve_create_dsp(const PEImage& img) noexcept {
+    return reinterpret_cast<FMODFns::SystemCreateDSP_t>(
+        find_by_anchor(img, kAnchored[0].anchor, kAnchored[0].pattern));
+}
+
 } // namespace
 
 bool resolve_fmod_signatures(const PEImage& img, FMODFns& out) noexcept {
     if (!img.valid()) return false;
 
-    out.system_create_dsp = reinterpret_cast<FMODFns::SystemCreateDSP_t>(
-        find_by_anchor(img, kAnchored[0].anchor, kAnchored[0].pattern));
-    out.dsp_release = reinterpret_cast<FMODFns::DSPRelease_t>(
+    out.host_base         = img.base;
+    out.system_create_dsp = resolve_create_dsp(img);
+    out.dsp_release       = reinterpret_cast<FMODFns::DSPRelease_t>(
         find_by_anchor(img, kAnchored[1].anchor, kAnchored[1].pattern));
     out.channel_control_add_dsp = reinterpret_cast<FMODFns::ChannelControlAddDSP_t>(
         find_by_anchor(img, kAnchored[2].anchor, kAnchored[2].pattern));
@@ -109,6 +118,10 @@ bool resolve_fmod_signatures(const PEImage& img, FMODFns& out) noexcept {
               (void*)out.channel_control_add_dsp, (void*)out.channel_control_rem_dsp,
               (void*)out.channel_control_set_mode, (void*)out.handle_resolver,
               (void*)out.handle_unlock);
+
+    if (!out.system_create_dsp) {
+        log::info("[sigscan] System::createDSP not yet visible -- will retry at first install");
+    }
     if (!out.handle_unlock) {
         log::warn("[sigscan] Handle::unlock not resolved -- the resolver lock will leak; "
                   "expect the game to freeze a few seconds after DSP install");
@@ -168,6 +181,20 @@ void DSPBridge::release_current_dsp_locked() noexcept {
 
 void DSPBridge::install_dsp_locked(uint32_t handle) noexcept {
     if (!fmod_system_ || !handle) return;
+
+    // Lazy-resolve createDSP. The first install runs long after FMOD is up
+    // (control loop discovery has to finish), so the LEA that DllMain-time
+    // sigscan sometimes misses is reliably present here.
+    if (!fns_.system_create_dsp && fns_.host_base) {
+        fns_.system_create_dsp = resolve_create_dsp(parse(fns_.host_base));
+        if (fns_.system_create_dsp) {
+            log::info("[dsp] resolved System::createDSP late at {}",
+                      (void*)fns_.system_create_dsp);
+        } else {
+            log::warn("[dsp] System::createDSP still unresolved -- install aborted");
+            return;
+        }
+    }
 
     // createDSP rejects a wrong plugin SDK stamp; we try all three FMOD
     // shipped across the 1.x line and keep the first that takes.
@@ -254,9 +281,9 @@ void DSPBridge::retarget_if_needed() noexcept {
     install_dsp_locked(handle);
 }
 
-// FMOD DSP read callback (mixer thread). Source is 44.1 kHz S16, FMOD's
-// master is 48 kHz float, so we linear-interpolate with a fractional phase
-// accumulator instead of bolting in an external resampler.
+// FMOD DSP read callback (mixer thread). Sources write 48 kHz S16 stereo
+// (miniaudio / ffmpeg resample upstream), which is FMOD's master rate, so
+// the callback is a straight int16 -> float conversion with gain.
 uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, float* out_buf,
                                             uint32_t length, int32_t in_channels,
                                             int32_t* out_channels) {
@@ -272,7 +299,7 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
     if (out_channels) *out_channels = out_ch;
     const std::size_t total = static_cast<std::size_t>(length) * out_ch;
 
-    auto stats_only = [&] {
+    auto stats = [&] {
         b->calls_.fetch_add(1, std::memory_order_relaxed);
         b->last_len_.store(length, std::memory_order_relaxed);
         b->last_out_ch_.store(out_ch, std::memory_order_relaxed);
@@ -280,106 +307,68 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
 
     if (m == DSPMode::silence || m == DSPMode::off) {
         std::memset(out_buf, 0, total * sizeof(float));
-        stats_only();
+        stats();
         return 0;
     }
     if (m == DSPMode::passthrough) {
-        if (in_buf) {
-            std::memcpy(out_buf, in_buf, total * sizeof(float));
-        } else {
-            std::memset(out_buf, 0, total * sizeof(float));
-        }
-        stats_only();
+        if (in_buf) std::memcpy(out_buf, in_buf, total * sizeof(float));
+        else        std::memset(out_buf, 0, total * sizeof(float));
+        stats();
         return 0;
     }
 
-    // PCM mode.
-    const float gain = b->gain();
-    if (gain <= 0.0f) {
-        std::memset(out_buf, 0, total * sizeof(float));
-        b->resample_phase_ = 0.0;
-        b->have_prev_ = b->have_cur_ = false;
-        stats_only();
-        return 0;
-    }
-
-    // Pre-zero so a mid-frame underrun leaves silence in the tail, not the
-    // stale floats FMOD might have handed us.
+    // PCM mode. Pre-zero so a mid-callback underrun leaves silence in the
+    // tail, not the stale floats FMOD handed us.
     std::memset(out_buf, 0, total * sizeof(float));
 
-    auto& ring                 = b->mgr_.ring();
-    constexpr double kStep     = 44100.0 / 48000.0; // 0.91875
-    constexpr float kAmplitude = 1.0f / 32768.0f;
-    const float scale          = gain * 1.6f;
-
-    auto pull = [&](int16_t& l, int16_t& r) {
-        int16_t buf[2];
-        if (ring.read(buf, 4) == 4) {
-            l = buf[0];
-            r = buf[1];
-            return true;
-        }
-        return false;
-    };
-
-    bool underrun = false;
-    uint32_t f    = 0;
-    for (; f < length; ++f) {
-        if (!b->have_prev_) {
-            if (!pull(b->prev_l_, b->prev_r_)) {
-                underrun = true;
-                break;
-            }
-            b->have_prev_ = true;
-        }
-        if (!b->have_cur_) {
-            if (!pull(b->cur_l_, b->cur_r_)) {
-                underrun = true;
-                break;
-            }
-            b->have_cur_ = true;
-        }
-
-        const double t = b->resample_phase_;
-        const auto fl  = static_cast<float>(
-            ((static_cast<double>(b->cur_l_) - b->prev_l_) * t + b->prev_l_) * kAmplitude * scale);
-        const auto fr = static_cast<float>(
-            ((static_cast<double>(b->cur_r_) - b->prev_r_) * t + b->prev_r_) * kAmplitude * scale);
-        const float L = fl > 1.0f ? 1.0f : (fl < -1.0f ? -1.0f : fl);
-        const float R = fr > 1.0f ? 1.0f : (fr < -1.0f ? -1.0f : fr);
-
-        float* o = out_buf + static_cast<std::size_t>(f) * out_ch;
-        if (out_ch == 1) {
-            o[0] = (L + R) * 0.5f;
-        } else {
-            o[0]           = L;
-            o[1]           = R;
-            const float dn = (L + R) * 0.5f;
-            for (int32_t c = 2; c < out_ch; ++c) o[c] = dn;
-        }
-
-        b->resample_phase_ += kStep;
-        while (b->resample_phase_ >= 1.0) {
-            b->prev_l_ = b->cur_l_;
-            b->prev_r_ = b->cur_r_;
-            if (!pull(b->cur_l_, b->cur_r_)) {
-                b->have_cur_ = false;
-                underrun     = true;
-                break;
-            }
-            b->resample_phase_ -= 1.0;
-        }
-        if (underrun) break;
+    const float gain = b->gain();
+    if (gain <= 0.0f) {
+        stats();
+        return 0;
     }
 
-    if (underrun) {
-        std::memset(out_buf + static_cast<std::size_t>(f) * out_ch, 0,
-                    static_cast<std::size_t>(length - f) * out_ch * sizeof(float));
-        b->underruns_.fetch_add(1, std::memory_order_relaxed);
-        b->resample_phase_ = 0.0;
-        b->have_prev_ = b->have_cur_ = false;
+    // gain<=1.0 + S16 input keeps the float strictly within [-1, 1], but a
+    // misconfigured config.toml could push gain above 1 -- clamp defensively.
+    constexpr float kAmp = 1.0f / 32768.0f;
+    const float scale    = gain * kAmp;
+
+    // Pull the ring in chunks: one ring.read() per chunk amortises the
+    // ring's two atomic loads over many frames. 1024 frames = 4 KiB stack,
+    // well under any sane FMOD callback budget.
+    constexpr uint32_t kChunkFrames = 1024;
+    int16_t scratch[kChunkFrames * 2];
+    auto& ring = b->mgr_.ring();
+
+    for (uint32_t produced = 0; produced < length;) {
+        const uint32_t want_frames = std::min(length - produced, kChunkFrames);
+        const std::size_t got      = ring.read(scratch, want_frames * 4);
+        const uint32_t got_frames  = static_cast<uint32_t>(got / 4);
+
+        for (uint32_t f = 0; f < got_frames; ++f) {
+            const float fl = scratch[f * 2 + 0] * scale;
+            const float fr = scratch[f * 2 + 1] * scale;
+            const float L  = fl > 1.0f ? 1.0f : (fl < -1.0f ? -1.0f : fl);
+            const float R  = fr > 1.0f ? 1.0f : (fr < -1.0f ? -1.0f : fr);
+
+            float* o = out_buf + static_cast<std::size_t>(produced + f) * out_ch;
+            if (out_ch == 1) {
+                o[0] = (L + R) * 0.5f;
+            } else {
+                o[0]           = L;
+                o[1]           = R;
+                const float dn = (L + R) * 0.5f;
+                for (int32_t c = 2; c < out_ch; ++c) o[c] = dn;
+            }
+        }
+
+        produced += got_frames;
+        if (got_frames < want_frames) {
+            b->underruns_.fetch_add(1, std::memory_order_relaxed);
+            break;
+        }
     }
-    stats_only();
+
+    stats();
     return 0;
 }
 

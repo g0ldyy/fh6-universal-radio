@@ -1,7 +1,7 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/log.hpp"
 
-// miniaudio used only as a format-agnostic decoder into S16LE/44.1k/stereo.
+// miniaudio used only as a format-agnostic decoder into S16LE/48k/stereo.
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_DEVICE_IO
 #define MA_NO_GENERATION
@@ -98,7 +98,7 @@ bool LocalFileSource::open_track(std::size_t index) {
         dec_->open = false;
     }
 
-    ma_decoder_config cfg = ma_decoder_config_init(ma_format_s16, 2, 44100);
+    ma_decoder_config cfg = ma_decoder_config_init(ma_format_s16, 2, 48000);
     if (ma_decoder_init_file(path.string().c_str(), &cfg, &dec_->ma) != MA_SUCCESS) {
         log::warn("[local] failed to open {}", path.string());
         return false;
@@ -110,7 +110,7 @@ bool LocalFileSource::open_track(std::size_t index) {
     dec_->info.album = path.parent_path().filename().string();
     ma_uint64 frames = 0;
     if (ma_decoder_get_length_in_pcm_frames(&dec_->ma, &frames) == MA_SUCCESS)
-        dec_->info.duration_ms = (frames * 1000ull) / 44100ull;
+        dec_->info.duration_ms = (frames * 1000ull) / 48000ull;
     position_ms_.store(0, std::memory_order_release);
     log::info("[local] now playing: {}", path.string());
     return true;
@@ -172,7 +172,7 @@ void LocalFileSource::pump(RingBuffer& ring) {
     if (ma_decoder_get_cursor_in_pcm_frames(&dec_->ma, &cursor) == MA_SUCCESS) {
         const uint64_t queued = ring.readable() / kFrameBytes;
         const uint64_t played = cursor > queued ? cursor - queued : 0;
-        position_ms_.store((played * 1000ull) / 44100ull, std::memory_order_release);
+        position_ms_.store((played * 1000ull) / 48000ull, std::memory_order_release);
     }
 }
 

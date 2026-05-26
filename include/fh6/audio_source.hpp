@@ -25,13 +25,6 @@ struct SourceCapabilities {
     bool queue    = false;
 };
 
-// Format sources must write to the ring: PCM S16LE / 44.1 kHz / stereo. The
-// DSP callback linear-interpolates up to FMOD's 48 kHz master.
-struct AudioFormat {
-    uint32_t sample_rate = 44100;
-    uint16_t channels    = 2;
-};
-
 // One instance per provider; the AudioSourceManager owns them all and at
 // most one is active. Only the active source's PCM reaches the game.
 class IAudioSource {
@@ -54,7 +47,6 @@ public:
     // Pull PCM into the ring. Sources that push from their own thread no-op.
     virtual void pump(RingBuffer&) {}
 
-    virtual AudioFormat format() const noexcept           = 0;
     virtual TrackInfo current_track() const               = 0;
     virtual PlaybackState playback_state() const noexcept = 0;
     virtual AuthState auth_state() const noexcept         = 0;

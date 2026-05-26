@@ -14,7 +14,7 @@
 
 namespace fh6::sources {
 
-// Streams audio via `yt-dlp | ffmpeg -f s16le -ar 44100 -ac 2`. The PCM pipe
+// Streams audio via `yt-dlp | ffmpeg -f s16le -ar 48000 -ac 2`. The PCM pipe
 // is drained into the ring buffer by pump(). For playlist URLs we resolve the
 // item list up front (via --flat-playlist) so next() / previous() can walk it.
 class YouTubeMusicSource final : public IAudioSource {
@@ -38,7 +38,6 @@ public:
     // URL / playlist to play next.
     void set_target(std::string url);
 
-    AudioFormat format() const noexcept override { return {}; }
     TrackInfo current_track() const override;
     PlaybackState playback_state() const noexcept override {
         return state_.load(std::memory_order_acquire);

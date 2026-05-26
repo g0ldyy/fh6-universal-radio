@@ -13,8 +13,8 @@ namespace fh6::sources {
 
 namespace {
 
-// PCM contract written by ffmpeg: 44100 Hz * 2 ch * 2 bytes.
-constexpr std::uint64_t kPcmBytesPerSec = 44100ull * 2ull * 2ull;
+// PCM contract written by ffmpeg: 48000 Hz * 2 ch * 2 bytes.
+constexpr std::uint64_t kPcmBytesPerSec = 48000ull * 2ull * 2ull;
 
 // CreateProcess hands one string to the child via GetCommandLineW, so any
 // argument with whitespace must be double-quoted.
@@ -64,6 +64,69 @@ std::filesystem::path stderr_log_path() {
     return std::filesystem::temp_directory_path() / "fh6-yt-stderr.log";
 }
 
+std::string narrow(std::wstring_view ws) {
+    if (ws.empty()) return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, ws.data(), (int)ws.size(), nullptr, 0,
+                                nullptr, nullptr);
+    std::string out(n, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, ws.data(), (int)ws.size(), out.data(), n, nullptr, nullptr);
+    return out;
+}
+
+std::string describe_launch_failure(const std::wstring& bin, DWORD ec, bool from_config) {
+    // Resolve where (if anywhere) the binary actually lives. ".exe" default
+    // matches what CreateProcess does when no extension is given.
+    wchar_t resolved[MAX_PATH] = {};
+    DWORD got = SearchPathW(nullptr, bin.c_str(), L".exe", MAX_PATH, resolved, nullptr);
+    std::string where = got ? narrow({resolved, got})
+                            : (from_config ? "(configured path not found on disk)"
+                                           : "(not found on PATH)");
+
+    // FormatMessage gives the localised Win32 string; trim trailing CRLF.
+    std::string sys_msg;
+    LPWSTR raw = nullptr;
+    DWORD len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+                                   FORMAT_MESSAGE_IGNORE_INSERTS,
+                               nullptr, ec, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                               (LPWSTR)&raw, 0, nullptr);
+    if (raw && len) {
+        while (len && (raw[len - 1] == L'\r' || raw[len - 1] == L'\n' || raw[len - 1] == L' '))
+            --len;
+        sys_msg = narrow({raw, len});
+    }
+    if (raw) LocalFree(raw);
+
+    const char* hint = "";
+    switch (ec) {
+        case ERROR_FILE_NOT_FOUND:  // 2
+        case ERROR_PATH_NOT_FOUND:  // 3
+            hint = from_config
+                       ? " -- the path in [youtube_music].yt_dlp_path/ffmpeg_path does not "
+                         "exist. Fix the path or clear it to fall back to PATH lookup."
+                       : " -- yt-dlp/ffmpeg is not on your PATH. Install it (winget install "
+                         "yt-dlp.yt-dlp / Gyan.FFmpeg) or set [youtube_music].yt_dlp_path and "
+                         "ffmpeg_path in config.toml to the full .exe paths.";
+            break;
+        case ERROR_ACCESS_DENIED:  // 5
+            hint = " -- likely blocked or quarantined by antivirus. Whitelist the binary and "
+                   "the game folder.";
+            break;
+        case ERROR_BAD_EXE_FORMAT:  // 193
+            hint = " -- the file isn't a valid Win64 executable. Download yt-dlp.exe (Windows "
+                   "build), not yt-dlp_linux or the bare Python script.";
+            break;
+        case ERROR_SHARING_VIOLATION:  // 32
+            hint = " -- another process has the file open (often AV scanning). Retry in a few "
+                   "seconds.";
+            break;
+        default:
+            break;
+    }
+
+    return std::format("ec={} ({}) tried={} resolved={}{}", ec,
+                       sys_msg.empty() ? "unknown" : sys_msg, narrow(bin), where, hint);
+}
+
 // Job Object with KILL_ON_JOB_CLOSE so closing the last handle reaps every
 // assigned process AND its descendants. yt-dlp spawns deno (the JS runtime
 // it needs to solve YouTube's n-challenge); without a job, terminating
@@ -100,9 +163,13 @@ HANDLE spawn_in_job(HANDLE job, const std::wstring& cmd, HANDLE stdin_h, HANDLE 
                         CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi))
         return nullptr;
     if (job && !AssignProcessToJobObject(job, pi.hProcess)) {
+        // Preserve the AssignProcessToJobObject error across the cleanup calls so
+        // the caller's GetLastError() reflects the real cause, not CloseHandle's.
+        const DWORD assign_ec = GetLastError();
         TerminateProcess(pi.hProcess, 1);
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
+        SetLastError(assign_ec);
         return nullptr;
     }
     ResumeThread(pi.hThread);
@@ -230,14 +297,16 @@ void YouTubeMusicSource::resolve_queue_locked() {
     cmd += L"-- " + quote(widen(target_url_));
 
     HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
+    // Capture the error before any other Win32 call clobbers it (CloseHandle resets it).
+    const DWORD ec_yt = proc ? 0u : GetLastError();
     CloseHandle(wr);
     if (nul_in)  CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
     if (!proc) {
         CloseHandle(rd);
         CloseHandle(job);
-        log::warn("[yt] resolve_queue: failed to launch yt-dlp -- check {}",
-                  stderr_log_path().string());
+        log::warn("[yt] resolve_queue: failed to launch yt-dlp -- {}",
+                  describe_launch_failure(std::wstring{yt}, ec_yt, !cfg_.yt_dlp_path.empty()));
         return;
     }
 
@@ -306,15 +375,16 @@ void YouTubeMusicSource::start_pipe_locked() {
     // `--no-playlist` keeps yt-dlp on the single video even if the resolved
     // queue item carries a leftover list= param.
     std::wstring yt_cmd = quote(yt) + L" --no-warnings --no-progress "
-                                      L"--format bestaudio --no-playlist -o - ";
+                                      L"--format bestaudio/best --no-playlist -o - ";
     if (!cfg_.cookies_path.empty())
         yt_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
     yt_cmd += L"-- " + quote(widen(play_url));
 
     std::wstring ff_cmd = quote(ff) + L" -loglevel error -i pipe:0 -f s16le "
-                                      L"-acodec pcm_s16le -ar 44100 -ac 2 pipe:1";
+                                      L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
 
     std::wstring tl_cmd = quote(yt) + L" --skip-download --no-warnings --no-playlist "
+                                      L"--encoding UTF-8 "
                                       L"--print \"%(title)s\" "
                                       L"--print \"%(uploader)s\" "
                                       L"--print \"%(duration)s\" ";
@@ -323,11 +393,12 @@ void YouTubeMusicSource::start_pipe_locked() {
     tl_cmd += L"-- " + quote(widen(play_url));
 
     pipe->proc_yt = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
+    const DWORD ec_yt = pipe->proc_yt ? 0u : GetLastError();
     CloseHandle(yt_out_w);
     yt_out_w = nullptr;
     if (!pipe->proc_yt) {
-        log::warn("[yt] failed to launch yt-dlp ({}) -- check {}", GetLastError(),
-                  stderr_log_path().string());
+        log::warn("[yt] failed to launch yt-dlp -- {}",
+                  describe_launch_failure(std::wstring{yt}, ec_yt, !cfg_.yt_dlp_path.empty()));
         bail();
         if (nul_in)  CloseHandle(nul_in);
         if (err_log) CloseHandle(err_log);
@@ -335,11 +406,12 @@ void YouTubeMusicSource::start_pipe_locked() {
     }
 
     pipe->proc_ff = spawn_in_job(pipe->job, ff_cmd, yt_out_r, ff_out_w, err_log);
+    const DWORD ec_ff = pipe->proc_ff ? 0u : GetLastError();
     CloseHandle(yt_out_r); yt_out_r = nullptr;
     CloseHandle(ff_out_w); ff_out_w = nullptr;
     if (!pipe->proc_ff) {
-        log::warn("[yt] failed to launch ffmpeg ({}) -- check {}", GetLastError(),
-                  stderr_log_path().string());
+        log::warn("[yt] failed to launch ffmpeg -- {}",
+                  describe_launch_failure(std::wstring{ff}, ec_ff, !cfg_.ffmpeg_path.empty()));
         if (ff_out_r) CloseHandle(ff_out_r);
         if (tl_out_r) CloseHandle(tl_out_r);
         if (tl_out_w) CloseHandle(tl_out_w);
