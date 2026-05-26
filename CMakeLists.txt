@@ -8,16 +8,29 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 if(MSVC)
-    add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /MP /EHsc /wd4324)
-    add_compile_options("$<$<CONFIG:Release>:/O2;/GL;/Gy;/Gw>")
-    add_link_options("$<$<CONFIG:Release>:/LTCG;/OPT:REF;/OPT:ICF>")
-    add_compile_definitions(_WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX
-                            _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
+  add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /MP /EHsc /wd4324)
+  add_compile_options("$<$<CONFIG:Release>:/O2;/GL;/Gy;/Gw>")
+  add_link_options("$<$<CONFIG:Release>:/LTCG;/OPT:REF;/OPT:ICF>")
+elseif(MINGW)
+  # MinGW-w64 cross-compilation flags
+  add_compile_options(-Wall -Wextra -Wpedantic)
+  # Disable stack protection to avoid Wine/Proton issues with stack canaries
+  add_compile_options(-fno-stack-protector)
+  # NOTE: Disabled LTO on MinGW due to stack issues with Proton/Wine
+  # add_compile_options("$<$<CONFIG:Release>:-O3;-flto>")
+  add_compile_options("$<$<CONFIG:Release>:-O3>")
+  # add_link_options("$<$<CONFIG:Release>:-flto>")
+  # MinGW uses -fexceptions instead of /EHsc for exception handling
+  add_compile_options(-fexceptions)
 endif()
+
+# Common Windows definitions for both MSVC and MinGW
+add_compile_definitions(_WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX
+                        _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
 
 add_library(version SHARED
     src/proxy/dll_main.cpp
@@ -47,6 +60,11 @@ target_include_directories(version PRIVATE
 )
 
 target_link_libraries(version PRIVATE ws2_32 bcrypt psapi)
+
+# MinGW needs explicit DEF file for DLL exports
+if(MINGW)
+  # Don't use .def file - it causes linker issues. Just export via dllexport attributes.
+endif()
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version

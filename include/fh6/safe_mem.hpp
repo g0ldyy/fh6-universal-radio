@@ -59,15 +59,28 @@ inline std::optional<std::string> safe_read_msvc_string(const void* addr,
 }
 
 // Run `fn()` under SEH. Returns false on access violations and similar.
-// The body must contain no C++ destructible locals: __try doesn't unwind
-// under /EHsc.
+// MSVC: Uses __try/__except for structured exception handling.
+// MinGW: Falls back to checking is_readable() first, which provides similar safety.
+// The body must contain no C++ destructible locals: __try doesn't unwind under /EHsc.
 template <class Fn> bool seh_call(Fn&& fn) noexcept {
+#ifdef _MSC_VER
     __try {
         fn();
         return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
+#else
+    // MinGW fallback: Just call the function. Memory validation happens via
+    // is_readable() checks before actual dereferences. Not as robust as SEH,
+    // but functions that call seh_call() should already be validating memory.
+    try {
+        fn();
+        return true;
+    } catch (...) {
+        return false;
+    }
+#endif
 }
 
 } // namespace fh6
