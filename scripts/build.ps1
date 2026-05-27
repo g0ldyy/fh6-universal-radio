@@ -13,36 +13,12 @@ $root  = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root "build"
 $dist  = Join-Path $root "dist"
 
-# Locate cmake.exe. Prefer the one on PATH; otherwise look inside any VS
-# install (which always ships CMake when the C++ workload is selected),
-# then fall back to the standalone CMake installer's default location.
-function Find-CMake {
-    $cmd = Get-Command cmake -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
+. (Join-Path $PSScriptRoot "build-tools.ps1")
 
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (Test-Path $vswhere) {
-        $vsRoots = & $vswhere -all -products * -property installationPath
-        foreach ($vs in $vsRoots) {
-            $p = Join-Path $vs "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
-            if (Test-Path $p) { return $p }
-        }
-    }
-    foreach ($p in @(
-        "${env:ProgramFiles}\CMake\bin\cmake.exe",
-        "${env:ProgramFiles(x86)}\CMake\bin\cmake.exe"
-    )) { if (Test-Path $p) { return $p } }
-
-    throw @"
-cmake.exe not found. Either:
-  - install Visual Studio 2022/2026 with the "Desktop development with C++"
-    workload (CMake is bundled), or
-  - install CMake from https://cmake.org/download/ (tick "Add CMake to PATH").
-"@
-}
-
-$cmake = Find-CMake
+$cmakeInfo = Find-CMakeForBuild
+$cmake = $cmakeInfo.CMakePath
 Write-Host "Using cmake: $cmake" -ForegroundColor DarkGray
+Write-Host "Using generator: $($cmakeInfo.Generator)" -ForegroundColor DarkGray
 
 if (-not (Test-Path (Join-Path $root "third_party\cpp-httplib\httplib.h"))) {
     Write-Host "third_party/ is empty -- running get-deps.ps1 first." -ForegroundColor Yellow
@@ -50,7 +26,11 @@ if (-not (Test-Path (Join-Path $root "third_party\cpp-httplib\httplib.h"))) {
 }
 
 Write-Host "-> cmake configure" -ForegroundColor Cyan
-& $cmake -S $root -B $build -A x64 | Out-Host
+$configureArgs = New-CMakeConfigureArguments `
+    -SourceDir $root `
+    -BuildDir $build `
+    -Generator $cmakeInfo.Generator
+& $cmake @configureArgs | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
 
 Write-Host "-> cmake build (Release)" -ForegroundColor Cyan
