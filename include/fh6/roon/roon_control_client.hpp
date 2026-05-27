@@ -27,6 +27,15 @@ struct RoonHealth {
     std::string error;
 };
 
+struct RoonNowPlaying {
+    std::string title;
+    std::string artist;
+    std::string album;
+    std::string artwork_url;
+    uint64_t duration_ms = 0;
+    uint64_t position_ms = 0;
+};
+
 struct RoonStatus {
     bool ok = false;
     std::string pairing_state;
@@ -35,6 +44,7 @@ struct RoonStatus {
     std::string selected_zone_id;
     std::string selected_zone_name;
     std::string error;
+    std::optional<RoonNowPlaying> now_playing;
 };
 
 struct RoonZoneInfo {

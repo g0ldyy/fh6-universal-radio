@@ -67,12 +67,23 @@ json capture_devices_to_json() {
 }
 
 json roon_status_to_json(const roon::RoonStatus& s) {
-    return json{{"ok", s.ok},
-                {"pairing_state", s.pairing_state},
-                {"core", json{{"id", s.core_id}, {"name", s.core_name}}},
-                {"selected_zone_id", s.selected_zone_id},
-                {"selected_zone_name", s.selected_zone_name},
-                {"error", s.error}};
+    json out{{"ok", s.ok},
+             {"pairing_state", s.pairing_state},
+             {"core", json{{"id", s.core_id}, {"name", s.core_name}}},
+             {"selected_zone_id", s.selected_zone_id},
+             {"selected_zone_name", s.selected_zone_name},
+             {"error", s.error}};
+    if (s.now_playing) {
+        out["now_playing"] = json{{"title", s.now_playing->title},
+                                  {"artist", s.now_playing->artist},
+                                  {"album", s.now_playing->album},
+                                  {"artwork_url", s.now_playing->artwork_url},
+                                  {"duration_ms", s.now_playing->duration_ms},
+                                  {"position_ms", s.now_playing->position_ms}};
+    } else {
+        out["now_playing"] = nullptr;
+    }
+    return out;
 }
 
 json roon_zones_to_json(const std::vector<roon::RoonZoneInfo>& zones) {

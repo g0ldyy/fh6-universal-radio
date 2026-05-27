@@ -45,6 +45,42 @@
     <div class="sources" id="sources"></div>
   </section>
 
+  <section class="card roon-panel" id="roon-setup-card" hidden>
+    <div class="card-head">
+      <div>
+        <h2>Roon</h2>
+        <p class="muted" id="roon-summary">Waiting for status...</p>
+      </div>
+      <button class="ghost" id="roon-reconnect" type="button">Reconnect</button>
+    </div>
+    <div class="stat-grid roon-stats">
+      <div class="stat">
+        <div class="label">Pairing</div>
+        <div class="value" id="roon-pairing">unknown</div>
+      </div>
+      <div class="stat">
+        <div class="label">Core</div>
+        <div class="value" id="roon-core">unknown</div>
+      </div>
+      <div class="stat">
+        <div class="label">Level</div>
+        <div class="value" id="roon-level">untested</div>
+      </div>
+    </div>
+    <div class="roon-controls">
+      <label class="field">
+        <span>Zone</span>
+        <select id="roon-zone"></select>
+      </label>
+      <label class="field">
+        <span>Capture device</span>
+        <select id="roon-capture"></select>
+      </label>
+      <button class="primary" id="roon-test-capture" type="button">Test capture</button>
+    </div>
+    <p class="muted" id="roon-error"></p>
+  </section>
+
   <section class="card" id="yt-cast-card" hidden>
     <h2>Cast to YouTube Music</h2>
     <p class="muted">Paste any YouTube or YouTube Music URL (single video or playlist). The radio will switch sources and start streaming immediately.</p>

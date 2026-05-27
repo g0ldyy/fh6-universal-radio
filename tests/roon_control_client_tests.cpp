@@ -30,6 +30,14 @@ public:
                                  {"pairing_state", "authorized"},
                                  {"selected_zone_id", "zone-1"},
                                  {"selected_zone_name", "Main Room"},
+                                 {"now_playing",
+                                  {{"three_line",
+                                    {{"line1", "Road Song"},
+                                     {"line2", "The Drivers"},
+                                     {"line3", "Horizon Radio"}}},
+                                   {"seek_position", 67.0},
+                                   {"length", 245.0},
+                                   {"image_key", "image-1"}}},
                                  {"error", ""}}
                                 .dump(),
                             "application/json");
@@ -117,6 +125,14 @@ int main() {
     require(status.ok, "status should parse ok response");
     require(status.core_id == "core-1", "status should parse core id");
     require(status.selected_zone_id == "zone-1", "status should parse selected zone");
+    require(status.now_playing.has_value(), "status should parse now playing");
+    require(status.now_playing->title == "Road Song", "status should parse now playing title");
+    require(status.now_playing->artist == "The Drivers", "status should parse now playing artist");
+    require(status.now_playing->album == "Horizon Radio", "status should parse now playing album");
+    require(status.now_playing->position_ms == 67000, "status should convert seek seconds to ms");
+    require(status.now_playing->duration_ms == 245000, "status should convert length seconds to ms");
+    require(status.now_playing->artwork_url == "/api/source/roon/artwork/current",
+            "status should expose dashboard artwork URL when image is available");
 
     const auto cached = client.last_status();
     require(cached.has_value(), "status should cache the last successful status");

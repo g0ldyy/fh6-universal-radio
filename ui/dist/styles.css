@@ -35,7 +35,7 @@ body {
 
 button { font: inherit; color: inherit; }
 
-input, output { font: inherit; color: inherit; }
+input, output, select { font: inherit; color: inherit; }
 
 h1, h2 { margin: 0; font-weight: 600; letter-spacing: .2px; }
 
@@ -108,6 +108,13 @@ main {
   background: radial-gradient(circle, #2a2d38 35%, #15171f 36%, #15171f 60%, #2a2d38 61%);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.04);
 }
+
+.art.has-artwork {
+  background-position: center;
+  background-size: cover;
+}
+
+.art.has-artwork::after { display: none; }
 
 .meta { min-width: 0; }
 
@@ -194,13 +201,15 @@ main {
   display: flex; gap: 8px; align-items: center;
 }
 
-input[type="text"], input[type="number"] {
+input[type="text"], input[type="number"], select {
   flex: 1; min-width: 0;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; color: var(--text);
 }
 
-input[type="text"]:focus, input[type="number"]:focus {
+select { width: 100%; }
+
+input[type="text"]:focus, input[type="number"]:focus, select:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(182,255,60,0.15);
 }
 
@@ -257,6 +266,32 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
 .stat .value { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
 
 .stat .value.warn { color: var(--warn); }
+
+/* Roon setup */
+.card-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-bottom: 14px;
+}
+
+.card-head h2 { margin-bottom: 4px; }
+
+.roon-panel .muted { margin-bottom: 0; }
+
+.roon-stats { margin-top: 0; }
+
+.roon-controls {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px; align-items: end; margin-top: 16px;
+}
+
+.roon-controls .field span { font-size: 12px; color: var(--text-dim); }
+
+.roon-controls button { white-space: nowrap; }
+
+#roon-error {
+  color: var(--warn);
+  margin-top: 12px;
+}
 
 /* Settings drawer */
 .drawer {
@@ -367,6 +402,10 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
   .art { margin: 0 auto; }
 
   .transport { justify-content: center; }
+
+  .roon-controls { grid-template-columns: 1fr; }
+
+  .card-head { align-items: stretch; flex-direction: column; }
 
   .credits { padding: 24px 20px 32px; }
 }

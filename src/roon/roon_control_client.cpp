@@ -5,7 +5,9 @@
 #include <httplib.h>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <mutex>
 
 namespace fh6::roon {
@@ -17,6 +19,35 @@ using json = nlohmann::json;
 std::string get_string(const json& j, const char* key) {
     if (auto it = j.find(key); it != j.end() && it->is_string()) return it->get<std::string>();
     return {};
+}
+
+uint64_t seconds_to_ms(const json& j, const char* key) {
+    if (auto it = j.find(key); it != j.end() && it->is_number()) {
+        const auto seconds = std::max(0.0, it->get<double>());
+        return static_cast<uint64_t>(std::lround(seconds * 1000.0));
+    }
+    return 0;
+}
+
+std::optional<RoonNowPlaying> parse_now_playing(const json& body) {
+    auto it = body.find("now_playing");
+    if (it == body.end() || !it->is_object()) return std::nullopt;
+
+    RoonNowPlaying out;
+    if (auto lines = it->find("three_line"); lines != it->end() && lines->is_object()) {
+        out.title  = get_string(*lines, "line1");
+        out.artist = get_string(*lines, "line2");
+        out.album  = get_string(*lines, "line3");
+    }
+    if (out.title.empty()) out.title = get_string(*it, "title");
+    if (out.artist.empty()) out.artist = get_string(*it, "artist");
+    if (out.album.empty()) out.album = get_string(*it, "album");
+    out.position_ms = seconds_to_ms(*it, "seek_position");
+    out.duration_ms = seconds_to_ms(*it, "length");
+    if (!get_string(*it, "image_key").empty()) {
+        out.artwork_url = "/api/source/roon/artwork/current";
+    }
+    return out;
 }
 
 json parse_body(const httplib::Result& res) {
@@ -75,7 +106,9 @@ RoonStatus RoonControlClient::status() {
         auto error = error_from_json(body, "sidecar status request failed");
         log::warn("[roon] sidecar status failed: {}", error);
         last_error_ = error;
-        return RoonStatus{false, {}, {}, {}, {}, {}, std::move(error)};
+        RoonStatus out;
+        out.error = std::move(error);
+        return out;
     }
 
     RoonStatus out;
@@ -88,6 +121,7 @@ RoonStatus RoonControlClient::status() {
     out.selected_zone_id   = get_string(body, "selected_zone_id");
     out.selected_zone_name = get_string(body, "selected_zone_name");
     out.error              = get_string(body, "error");
+    out.now_playing        = parse_now_playing(body);
     last_status_           = out;
     last_error_            = out.error;
     return out;

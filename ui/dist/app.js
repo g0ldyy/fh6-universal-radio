@@ -20,6 +20,16 @@ const api = {
 
 let state = null;
 let cfg   = null;
+const roon  = {
+  status: null,
+  zones: [],
+  outputs: [],
+  devices: [],
+  error: "",
+  captureTest: null,
+  loading: false,
+  fetchedAt: 0,
+};
 
 const fmt = ms => {
   if (!ms || ms < 0) return "0:00";
@@ -38,6 +48,28 @@ const toast = (msg, isErr = false) => {
 // Only write when the displayed value changes, to avoid cursor jumps in inputs.
 const setText = (el, v) => { if (el && el.textContent !== String(v)) el.textContent = v; };
 
+const roonAvailable = () => state?.sources?.available?.some(s => s.name === "roon");
+
+function cfgRoon() {
+  cfg ??= {};
+  cfg.roon ??= {};
+  return cfg.roon;
+}
+
+function roonNowPlaying() {
+  if (state?.sources?.active !== "roon") return null;
+  const np = roon.status?.now_playing;
+  if (!np) return null;
+  return {
+    title:       np.title || np.three_line?.line1 || "",
+    artist:      np.artist || np.three_line?.line2 || "",
+    album:       np.album || np.three_line?.line3 || "",
+    artwork_url: np.artwork_url || (np.image_key ? "/api/source/roon/artwork/current" : ""),
+    duration_ms: np.duration_ms || (np.length ? Math.round(np.length * 1000) : 0),
+    position_ms: np.position_ms || (np.seek_position ? Math.round(np.seek_position * 1000) : 0),
+  };
+}
+
 function renderStatus() {
   const ok = state?.game?.attached;
   const sub = $("#status");
@@ -46,7 +78,7 @@ function renderStatus() {
 }
 
 function renderNowPlaying() {
-  const t = state?.track || {};
+  const t = roonNowPlaying() || state?.track || {};
   const a = state?.sources?.active;
   setText($("#np-title"),  t.title  || "Nothing playing");
   setText($("#np-artist"), t.artist ? `${t.artist}${t.album ? " · " + t.album : ""}` : "");
@@ -60,12 +92,36 @@ function renderNowPlaying() {
   const src = state?.sources?.available?.find(s => s.name === a);
   const playing = src?.playback_state === "playing";
   $("#t-play").textContent = playing ? "⏸" : "▶";
+
+  const art = $("#np-art");
+  if (t.artwork_url) {
+    art.classList.add("has-artwork");
+    art.style.backgroundImage = `url("${t.artwork_url}")`;
+  } else {
+    art.classList.remove("has-artwork");
+    art.style.backgroundImage = "";
+  }
 }
 
 function sourceDetailLine(s) {
   if (s.name === "local_files" && s.details?.track_count != null) {
     const n = s.details.track_count;
     return `${n} track${n === 1 ? "" : "s"} indexed`;
+  }
+  if (s.name === "roon") {
+    const parts = [];
+    const status = roon.status || {};
+    const capture = cfg?.roon?.capture_device_name || roon.devices.find(
+      d => d.id === cfg?.roon?.capture_device_id
+    )?.name;
+    if (status.pairing_state) parts.push(status.pairing_state);
+    if (status.core?.name) parts.push(status.core.name);
+    if (status.selected_zone_name) parts.push(`Zone: ${status.selected_zone_name}`);
+    if (capture) parts.push(`Capture: ${capture}`);
+    if (roon.captureTest?.peak != null) {
+      parts.push(`Level: ${Math.round(roon.captureTest.peak * 100)}%`);
+    }
+    return parts.join(" - ") || null;
   }
   return null;
 }
@@ -74,9 +130,17 @@ function renderSources() {
   const wrap = $("#sources");
   const available = state?.sources?.available || [];
   const active = state?.sources?.active;
+  const roonSig = [
+    roon.status?.pairing_state,
+    roon.status?.core?.name,
+    roon.status?.selected_zone_name,
+    cfg?.roon?.capture_device_id,
+    cfg?.roon?.capture_device_name,
+    roon.captureTest?.peak,
+  ].join(":");
   const sig = available.map(s =>
     `${s.name}:${s.playback_state}:${s.auth_state}:${s.details?.track_count ?? ""}:${s.name===active}`
-  ).join("|");
+  ).join("|") + "|" + roonSig;
   if (wrap.dataset.sig === sig) return;
   wrap.dataset.sig = sig;
 
@@ -103,6 +167,98 @@ function renderSources() {
 
   // Cast box only makes sense while YT is registered.
   $("#yt-cast-card").hidden = !available.some(s => s.name === "youtube_music");
+}
+
+async function roonGet(path) {
+  const body = await api.get(path);
+  if (body?.error) {
+    throw new Error(body.error);
+  }
+  return body;
+}
+
+async function refreshRoon(force = false) {
+  if (!roonAvailable() || roon.loading) return;
+  const interval = Math.max(500, cfg?.roon?.metadata_poll_ms || 750);
+  if (!force && roon.fetchedAt && Date.now() - roon.fetchedAt < interval) return;
+  roon.loading = true;
+  try {
+    if (!cfg) cfg = await api.get("/api/config");
+    const results = await Promise.allSettled([
+      roonGet("/api/source/roon/status"),
+      roonGet("/api/source/roon/zones"),
+      roonGet("/api/source/roon/outputs"),
+      roonGet("/api/source/roon/capture-devices"),
+    ]);
+    const [status, zones, outputs, devices] = results;
+    if (status.status === "fulfilled") roon.status = status.value;
+    if (zones.status === "fulfilled") roon.zones = zones.value.zones || [];
+    if (outputs.status === "fulfilled") roon.outputs = outputs.value.outputs || [];
+    if (devices.status === "fulfilled") roon.devices = devices.value.devices || [];
+    roon.error = results
+      .filter(r => r.status === "rejected")
+      .map(r => r.reason.message)
+      .join("; ");
+    roon.fetchedAt = Date.now();
+  } catch (e) {
+    roon.error = e.message;
+  } finally {
+    roon.loading = false;
+    render();
+  }
+}
+
+function syncOptions(select, items, value, emptyLabel) {
+  const sig = items.map(i => `${i.value}\u0000${i.label}`).join("\u0001");
+  if (select.dataset.sig !== sig) {
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = emptyLabel;
+    select.replaceChildren(empty, ...items.map(item => {
+      const opt = document.createElement("option");
+      opt.value = item.value;
+      opt.textContent = item.label;
+      return opt;
+    }));
+    select.dataset.sig = sig;
+  }
+  if (select.value !== value) select.value = value || "";
+}
+
+function renderRoonPanel() {
+  const card = $("#roon-setup-card");
+  if (!card) return;
+  const available = roonAvailable();
+  card.hidden = !available;
+  if (!available) return;
+
+  const r = cfg?.roon || {};
+  const status = roon.status || {};
+  const core = status.core?.name || "Core not found";
+  const selectedDevice = roon.devices.find(d => d.id === r.capture_device_id);
+  const captureName = r.capture_device_name || selectedDevice?.name || "";
+  const pairing = status.pairing_state || "unknown";
+  const level = roon.captureTest?.peak == null
+    ? "untested"
+    : `${Math.round(roon.captureTest.peak * 100)}%`;
+
+  setText($("#roon-summary"), status.selected_zone_name
+    ? `${status.selected_zone_name}${captureName ? " - " + captureName : ""}`
+    : "No zone selected");
+  setText($("#roon-pairing"), pairing);
+  $("#roon-pairing").className = "value " + (pairing === "authorized" ? "" : "warn");
+  setText($("#roon-core"), core);
+  setText($("#roon-level"), level);
+  setText($("#roon-error"), roon.error || status.error || "");
+
+  syncOptions($("#roon-zone"), roon.zones.map(z => ({
+    value: z.id || z.zone_id,
+    label: `${z.display_name}${z.state ? " (" + z.state + ")" : ""}`,
+  })), r.selected_zone_id || status.selected_zone_id, "Select zone");
+  syncOptions($("#roon-capture"), roon.devices.map(d => ({
+    value: d.id,
+    label: `${d.name}${d.is_default ? " (default)" : ""}`,
+  })), r.capture_device_id, "Select capture device");
 }
 
 let volDirty = false;
@@ -134,6 +290,20 @@ const SCHEMA = [
     ["yt_dlp_path",      "yt-dlp path (optional)", "text"],
     ["ffmpeg_path",      "ffmpeg path (optional)", "text"],
     ["default_playlist", "Default playlist URL",   "text"],
+  ]],
+  ["roon", "Roon", [
+    ["enabled",             "Enabled",                "checkbox"],
+    ["node_path",           "Node path (optional)",   "text"],
+    ["bridge_path",         "Bridge script path",     "text"],
+    ["selected_zone_id",    "Selected zone ID",       "text"],
+    ["selected_output_id",  "Selected output ID",     "text"],
+    ["capture_device_id",   "Capture device ID",      "text"],
+    ["capture_device_name", "Capture device name",    "text"],
+    ["control_volume",      "Control Roon volume",    "checkbox"],
+    ["auto_start_bridge",   "Auto-start sidecar",     "checkbox"],
+    ["auto_reconnect",      "Auto-reconnect",         "checkbox"],
+    ["latency_ms",          "Capture latency (ms)",   "number", 50, 2000],
+    ["metadata_poll_ms",    "Metadata poll (ms)",     "number", 250, 5000],
   ]],
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],
@@ -227,6 +397,51 @@ function wire() {
     } catch (err) { toast(err.message, true); }
   });
 
+  $("#roon-zone").addEventListener("change", async e => {
+    const zone_id = e.target.value;
+    if (!zone_id) return;
+    try {
+      await api.send("/api/source/roon/select-zone", { zone_id });
+      cfgRoon().selected_zone_id = zone_id;
+      await refreshRoon(true);
+      toast("Roon zone selected");
+    } catch (err) { toast(err.message, true); }
+  });
+
+  $("#roon-capture").addEventListener("change", async e => {
+    const device_id = e.target.value;
+    if (!device_id) return;
+    const device = roon.devices.find(d => d.id === device_id);
+    try {
+      await api.send("/api/source/roon/select-capture-device", {
+        device_id,
+        name: device?.name || "",
+      });
+      cfgRoon().capture_device_id = device_id;
+      cfgRoon().capture_device_name = device?.name || "";
+      render();
+      toast("Capture device selected");
+    } catch (err) { toast(err.message, true); }
+  });
+
+  $("#roon-reconnect").onclick = async () => {
+    try {
+      await api.send("/api/source/roon/reconnect", {});
+      await refreshRoon(true);
+      toast("Roon reconnecting");
+    } catch (err) { toast(err.message, true); }
+  };
+
+  $("#roon-test-capture").onclick = async () => {
+    const device_id = $("#roon-capture").value || cfg?.roon?.capture_device_id;
+    if (!device_id) return toast("Select a capture device first", true);
+    try {
+      roon.captureTest = await api.send("/api/source/roon/test-capture", { device_id });
+      render();
+      toast(`Capture level ${Math.round((roon.captureTest.peak || 0) * 100)}%`);
+    } catch (err) { toast(err.message, true); }
+  };
+
   $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); };
   $("#close-settings").onclick = closeDrawer;
   $("#scrim").onclick          = closeDrawer;
@@ -235,6 +450,7 @@ function wire() {
       cfg = await api.send("/api/config", collectSettings(), "PUT");
       toast("Saved");
       closeDrawer();
+      await refreshRoon(true);
     } catch (e) { toast(e.message, true); }
   };
   $("#reload-config").onclick  = async () => {
@@ -263,7 +479,9 @@ function render() {
   renderStatus();
   renderNowPlaying();
   renderSources();
+  renderRoonPanel();
   renderOutput();
+  void refreshRoon();
 }
 
 wire();
