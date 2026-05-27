@@ -36,6 +36,7 @@ add_library(version SHARED
     src/fmod/metadata_injector.cpp
     src/http/config_json.cpp
     src/http/http_server.cpp
+    src/roon/roon_control_client.cpp
     src/sources/local_file_source.cpp
     src/sources/roon_source.cpp
     src/sources/youtube_music_support.cpp
@@ -104,3 +105,17 @@ add_executable(youtube_music_runtime_tests
 target_include_directories(youtube_music_runtime_tests PRIVATE
     include
 )
+
+add_executable(roon_control_client_tests
+    tests/roon_control_client_tests.cpp
+    src/log.cpp
+    src/roon/roon_control_client.cpp
+)
+
+target_include_directories(roon_control_client_tests PRIVATE
+    include
+    third_party/cpp-httplib
+    third_party/nlohmann
+)
+
+target_link_libraries(roon_control_client_tests PRIVATE ws2_32)
