@@ -6,6 +6,8 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 
+#include <winsock2.h>
+
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #include <httplib.h>
 #include <nlohmann/json.hpp>
@@ -174,12 +176,18 @@ void fail(httplib::Response& res, int status, std::string_view msg) {
 
 } // namespace
 
+struct RawServer : httplib::Server {
+    using httplib::Server::Server;
+    void set_socket(socket_t sock) { svr_sock_ = sock; }
+    bool start() { return listen_after_bind(); }
+};
+
 struct HttpServer::Impl {
     AudioSourceManager& mgr;
     fmod_bridge::DSPBridge& bridge;
     ConfigStore& store;
     std::filesystem::path ui_dist;
-    httplib::Server svr;
+    RawServer svr;
     std::jthread thr;
     std::atomic<bool> stopping{false};
 
@@ -188,8 +196,35 @@ struct HttpServer::Impl {
         : mgr{m}, bridge{b}, store{s}, ui_dist{std::move(dist)} {
         wire_routes();
         thr = std::jthread([this, port](const std::stop_token&) {
-            log::info("[http] listening on http://localhost:{}", port);
-            svr.listen("0.0.0.0", port);
+            WSADATA wsa;
+            WSAStartup(MAKEWORD(2, 2), &wsa);
+
+            auto sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            if (sock == INVALID_SOCKET) {
+                log::error("[http] socket creation failed: {}", WSAGetLastError());
+                return;
+            }
+
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(static_cast<u_short>(port));
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+            if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+                log::error("[http] bind failed on 127.0.0.1:{} — {}", port, WSAGetLastError());
+                closesocket(sock);
+                return;
+            }
+
+            if (::listen(sock, SOMAXCONN) != 0) {
+                log::error("[http] listen failed: {}", WSAGetLastError());
+                closesocket(sock);
+                return;
+            }
+
+            log::info("[http] listening on http://127.0.0.1:{}", port);
+            svr.set_socket(sock);
+            svr.start();
         });
     }
     ~Impl() {
