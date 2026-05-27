@@ -11,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 namespace fh6::sources {
 
@@ -31,6 +32,7 @@ public:
 
     virtual roon::RoonCommandResult transport(std::string_view control,
                                               std::string_view zone_id) = 0;
+    virtual roon::RoonStatus status()                                   = 0;
 };
 
 using RoonCaptureFactory = std::function<std::unique_ptr<IRoonCapture>()>;
@@ -73,6 +75,10 @@ private:
     bool start_capture();
     void stop_capture() noexcept;
     void clear_capture() noexcept;
+    void start_metadata_polling();
+    void stop_metadata_polling() noexcept;
+    void metadata_loop(const std::stop_token& tok) noexcept;
+    void refresh_metadata() noexcept;
 
     mutable std::mutex cfg_mu_;
     RoonConfig cfg_;
@@ -81,11 +87,14 @@ private:
     RoonCaptureFactory capture_factory_;
     RoonControlFactory control_factory_;
     std::unique_ptr<IRoonCapture> capture_;
+    std::mutex control_mu_;
     std::unique_ptr<IRoonControl> control_;
     mutable std::mutex setup_mu_;
     std::string setup_error_;
     std::atomic<bool> setup_error_present_{false};
+    mutable std::mutex info_mu_;
     TrackInfo info_{};
+    std::jthread metadata_thread_;
     std::atomic<PlaybackState> state_{PlaybackState::stopped};
     std::atomic<bool> initialized_{false};
 };

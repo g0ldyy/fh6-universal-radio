@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <mutex>
+#include <thread>
 #include <utility>
 
 namespace fh6::sources {
@@ -30,6 +32,7 @@ public:
     roon::RoonCommandResult transport(std::string_view control, std::string_view zone_id) override {
         return client_.transport(control, zone_id);
     }
+    roon::RoonStatus status() override { return client_.status(); }
 
 private:
     roon::RoonControlClient client_;
@@ -41,6 +44,20 @@ std::unique_ptr<IRoonCapture> make_default_capture() {
 
 std::unique_ptr<IRoonControl> make_default_control() {
     return std::make_unique<RoonClientControl>();
+}
+
+TrackInfo track_from_status(const roon::RoonStatus& status) {
+    TrackInfo info;
+    if (!status.now_playing) return info;
+
+    const auto& now  = *status.now_playing;
+    info.title       = now.title;
+    info.artist      = now.artist;
+    info.album       = now.album;
+    info.artwork_url = now.artwork_url;
+    info.duration_ms = now.duration_ms;
+    info.position_ms = now.position_ms;
+    return info;
 }
 
 } // namespace
@@ -69,6 +86,7 @@ bool RoonSource::initialize() {
     }
     initialized_.store(true, std::memory_order_release);
     state_.store(PlaybackState::stopped, std::memory_order_release);
+    start_metadata_polling();
     log::info(
         "[roon] source initialized; auto_start_bridge={} zone_selected={} capture_selected={}",
         cfg.auto_start_bridge, !cfg.selected_zone_id.empty(), !cfg.capture_device_id.empty());
@@ -76,6 +94,7 @@ bool RoonSource::initialize() {
 }
 
 void RoonSource::shutdown() noexcept {
+    stop_metadata_polling();
     stop_capture();
     if (sidecar_) sidecar_->stop();
     state_.store(PlaybackState::stopped, std::memory_order_release);
@@ -186,7 +205,10 @@ void RoonSource::pump(RingBuffer& ring) {
     }
 }
 
-TrackInfo RoonSource::current_track() const { return info_; }
+TrackInfo RoonSource::current_track() const {
+    std::scoped_lock lk{info_mu_};
+    return info_;
+}
 
 PlaybackState RoonSource::playback_state() const noexcept {
     return state_.load(std::memory_order_acquire);
@@ -251,6 +273,7 @@ bool RoonSource::send_transport(std::string_view control) {
         log::warn("[roon] transport {} blocked: no zone selected", control);
         return false;
     }
+    std::scoped_lock lk{control_mu_};
     if (!control_) control_ = control_factory_();
     if (!control_) {
         set_setup_error("Roon control client could not be created.");
@@ -308,6 +331,54 @@ void RoonSource::clear_capture() noexcept {
         log::info("[roon] clearing capture queue");
         capture_->clear();
     }
+}
+
+void RoonSource::start_metadata_polling() {
+    if (metadata_thread_.joinable()) return;
+    metadata_thread_ = std::jthread{[this](const std::stop_token& tok) { metadata_loop(tok); }};
+}
+
+void RoonSource::stop_metadata_polling() noexcept {
+    if (!metadata_thread_.joinable()) return;
+    metadata_thread_.request_stop();
+    metadata_thread_.join();
+}
+
+void RoonSource::metadata_loop(const std::stop_token& tok) noexcept {
+    while (!tok.stop_requested()) {
+        refresh_metadata();
+
+        const auto cfg = config_snapshot();
+        auto remaining = std::chrono::milliseconds{std::max<uint32_t>(cfg.metadata_poll_ms, 100U)};
+        while (remaining.count() > 0 && !tok.stop_requested()) {
+            const auto step = std::min(remaining, std::chrono::milliseconds{25});
+            std::this_thread::sleep_for(step);
+            remaining -= step;
+        }
+    }
+}
+
+void RoonSource::refresh_metadata() noexcept {
+    const auto current = config_snapshot();
+    if (!initialized_.load(std::memory_order_acquire) || current.selected_zone_id.empty()) return;
+
+    roon::RoonStatus status;
+    {
+        std::scoped_lock lk{control_mu_};
+        if (!control_) control_ = control_factory_();
+        if (!control_) return;
+        try {
+            status = control_->status();
+        } catch (...) {
+            return;
+        }
+    }
+
+    if (!status.ok) return;
+
+    auto next = track_from_status(status);
+    std::scoped_lock lk{info_mu_};
+    info_ = std::move(next);
 }
 
 } // namespace fh6::sources
