@@ -6,6 +6,7 @@
 # Output:
 #   dist\version.dll            the proxy DLL (drops next to forzahorizon6.exe)
 #   dist\fh6-radio\ui\          dashboard (mounted at http://localhost:<port>)
+#   dist\fh6-radio\tools\       optional source sidecars
 #   dist\fh6-radio\config.toml  seeded from config.example.toml
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,7 @@ $build = Join-Path $root "build"
 $dist  = Join-Path $root "dist"
 
 . (Join-Path $PSScriptRoot "build-tools.ps1")
+. (Join-Path $PSScriptRoot "package-tools.ps1")
 
 $cmakeInfo = Find-CMakeForBuild
 $cmake = $cmakeInfo.CMakePath
@@ -44,6 +46,14 @@ New-Item -ItemType Directory -Force -Path (Join-Path $dist "fh6-radio") | Out-Nu
 Copy-Item (Join-Path $build "Release\version.dll") $dist
 Copy-Item -Recurse (Join-Path $root "ui\dist") (Join-Path $dist "fh6-radio\ui")
 Copy-Item (Join-Path $root "config.example.toml") (Join-Path $dist "fh6-radio\config.toml")
+
+$roonBridgeSrc = Join-Path $root "tools\roon-bridge"
+$roonBridgeDst = Join-Path $dist "fh6-radio\tools\roon-bridge"
+if (Test-Path $roonBridgeSrc) {
+    Write-Host "-> stage Roon sidecar" -ForegroundColor Cyan
+    Copy-RoonBridgePackage -SourceDir $roonBridgeSrc -DestinationDir $roonBridgeDst
+    Install-RoonBridgeRuntimeDependencies -BridgeDir $roonBridgeDst
+}
 
 $readme = @'
 FH6 Universal Radio
@@ -141,6 +151,11 @@ as-is, no warranty, use at your own risk.
 Set-Content -Path (Join-Path $dist "README.txt") -Value $readme -Encoding utf8
 
 Write-Host "`nBuilt + staged in $dist" -ForegroundColor Green
-Get-ChildItem -Recurse -File $dist | ForEach-Object {
-    "  $($_.FullName.Substring($dist.Length + 1))"
+$stagedFiles = @(Get-ChildItem -Recurse -File $dist)
+$runtimeFiles = @($stagedFiles | Where-Object { $_.FullName -match "\\node_modules\\" })
+$stagedFiles |
+    Where-Object { $_.FullName -notmatch "\\node_modules\\" } |
+    ForEach-Object { "  $($_.FullName.Substring($dist.Length + 1))" }
+if ($runtimeFiles.Count -gt 0) {
+    "  fh6-radio\tools\roon-bridge\node_modules\  ($($runtimeFiles.Count) runtime dependency files)"
 }

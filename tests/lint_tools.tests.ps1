@@ -38,11 +38,16 @@ $webFiles = @(
     New-FileInfoLike "ui\dist\styles.css"
     New-FileInfoLike "ui\dist\index.html"
 )
+$sidecarFiles = @(
+    New-FileInfoLike "tools\roon-bridge\index.mjs"
+    New-FileInfoLike "tools\roon-bridge\lib\api-server.mjs"
+)
 
 $changed = @(
     "src\bridge.cpp",
     "include/fh6/config.hpp",
     "ui\dist\app.js",
+    "tools\roon-bridge\lib\api-server.mjs",
     "docs\checklist.md",
     "CMakeLists.txt",
     "tests\lint_tools.tests.ps1"
@@ -54,7 +59,8 @@ $changedTargets = Select-LintTargets `
     -ChangedPaths $changed `
     -CppFiles $cppFiles `
     -HeaderFiles $headerFiles `
-    -WebFiles $webFiles
+    -WebFiles $webFiles `
+    -SidecarFiles $sidecarFiles
 
 Assert-SetEqual $changedTargets.CppFormatPaths @(
     (Join-Path $root "src\bridge.cpp"),
@@ -66,17 +72,22 @@ Assert-SetEqual $changedTargets.CppTidyPaths @(
 Assert-SetEqual $changedTargets.WebPaths @(
     (Join-Path $root "ui\dist\app.js")
 ) "Changed-only web selection should include changed dashboard files only."
+Assert-SetEqual $changedTargets.SidecarPaths @(
+    (Join-Path $root "tools\roon-bridge\lib\api-server.mjs")
+) "Changed-only sidecar selection should include changed sidecar files only."
 
 $allTargets = Select-LintTargets `
     -Root $root `
     -ChangedPaths @() `
     -CppFiles $cppFiles `
     -HeaderFiles $headerFiles `
-    -WebFiles $webFiles
+    -WebFiles $webFiles `
+    -SidecarFiles $sidecarFiles
 
 Assert-Equal $allTargets.CppFormatPaths.Count 5 "Full C++ format selection should include all C++ sources and headers."
 Assert-Equal $allTargets.CppTidyPaths.Count 3 "Full clang-tidy selection should include all C++ sources."
 Assert-Equal $allTargets.WebPaths.Count 3 "Full web selection should include all dashboard files."
+Assert-Equal $allTargets.SidecarPaths.Count 2 "Full sidecar selection should include all sidecar files."
 
 Assert-Equal (Resolve-TidyJobCount -RequestedJobs 3 -FileCount 8 -ProcessorCount 16) 3 `
     "Explicit tidy job count should be honored."

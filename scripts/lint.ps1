@@ -7,6 +7,7 @@
 #   * prettier on ui/dist/**.{js,css,html}
 #   * eslint on ui/dist/**.js
 #   * stylelint on ui/dist/**.css
+#   * node --test for tools/roon-bridge when sidecar files are selected
 
 param(
     [switch]$CheckOnly,
@@ -49,6 +50,9 @@ $cppFormatFiles += Get-ChildItem -Path (Join-Path $root "src")     -Recurse -Inc
 $cppFormatFiles += Get-ChildItem -Path (Join-Path $root "include") -Recurse -Include *.hpp        -File
 $cppTidyFiles = Get-ChildItem -Path (Join-Path $root "src") -Recurse -Include *.cpp -File
 $webFiles = Get-ChildItem -Path (Join-Path $root "ui\dist") -Recurse -Include *.js, *.css, *.html -File
+$sidecarFiles = Get-ChildItem -Path (Join-Path $root "tools\roon-bridge") `
+    -Recurse -Include *.mjs, package.json, package-lock.json -File |
+    Where-Object { $_.FullName -notmatch "\\node_modules\\" }
 
 $targets = Select-LintTargets `
     -Root $root `
@@ -56,7 +60,8 @@ $targets = Select-LintTargets `
     -ChangedPaths $changedPaths `
     -CppFiles $cppTidyFiles `
     -HeaderFiles ($cppFormatFiles | Where-Object { $_.Extension -ieq ".hpp" }) `
-    -WebFiles $webFiles
+    -WebFiles $webFiles `
+    -SidecarFiles $sidecarFiles
 
 if (-not $SkipCpp) {
     $clangFormat = Find-LlvmTool "clang-format"
@@ -222,6 +227,22 @@ if (-not $SkipWeb) {
             }
         }
         finally { Pop-Location }
+    }
+}
+
+$sidecarPaths = @($targets.SidecarPaths)
+if (-not $SkipWeb -and $sidecarPaths.Count -gt 0) {
+    $npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+    if (-not $npm) { $npm = Get-Command npm -ErrorAction SilentlyContinue }
+    if (-not $npm) {
+        Write-Host "npm not found; skipping Roon sidecar check." -ForegroundColor Yellow
+    } else {
+        Write-Host "-> npm run check (Roon sidecar)" -ForegroundColor Cyan
+        Push-Location (Join-Path $root "tools\roon-bridge")
+        try {
+            & $npm.Source run check
+            if ($LASTEXITCODE -ne 0) { $fails += "roon sidecar check" }
+        } finally { Pop-Location }
     }
 }
 

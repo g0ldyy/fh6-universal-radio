@@ -34,7 +34,8 @@ function Select-LintTargets {
         [string[]]$ChangedPaths = @(),
         [object[]]$CppFiles = @(),
         [object[]]$HeaderFiles = @(),
-        [object[]]$WebFiles = @()
+        [object[]]$WebFiles = @(),
+        [object[]]$SidecarFiles = @()
     )
 
     $changed = @{}
@@ -63,11 +64,13 @@ function Select-LintTargets {
     $cppFormat = @(Select-Paths @($CppFiles + $HeaderFiles))
     $cppTidy = @(Select-Paths $CppFiles)
     $web = @(Select-Paths $WebFiles)
+    $sidecar = @(Select-Paths $SidecarFiles)
 
     return [pscustomobject]@{
         CppFormatPaths = $cppFormat
         CppTidyPaths   = $cppTidy
         WebPaths       = $web
+        SidecarPaths   = $sidecar
     }
 }
 
