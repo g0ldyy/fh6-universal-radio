@@ -36,6 +36,7 @@ add_library(version SHARED
     src/http/config_json.cpp
     src/http/http_server.cpp
     src/sources/local_file_source.cpp
+    src/sources/roon_source.cpp
     src/sources/youtube_music_support.cpp
     src/sources/youtube_music_source.cpp
 )
@@ -66,4 +67,14 @@ target_include_directories(config_roundtrip_tests PRIVATE
     include
     third_party/nlohmann
     third_party/toml11
+)
+
+add_executable(roon_source_tests
+    tests/roon_source_tests.cpp
+    src/ring_buffer.cpp
+    src/sources/roon_source.cpp
+)
+
+target_include_directories(roon_source_tests PRIVATE
+    include
 )
