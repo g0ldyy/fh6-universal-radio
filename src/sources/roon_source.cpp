@@ -41,12 +41,13 @@ RoonSource::RoonSource(RoonConfig cfg, std::filesystem::path data_dir,
 RoonSource::~RoonSource() { shutdown(); }
 
 bool RoonSource::initialize() {
-    if (!cfg_.enabled) {
+    const auto cfg = config_snapshot();
+    if (!cfg.enabled) {
         log::info("[roon] initialize skipped: source disabled");
         return false;
     }
-    if (cfg_.auto_start_bridge) {
-        sidecar_ = std::make_unique<roon::RoonSidecarProcess>(cfg_, data_dir_);
+    if (cfg.auto_start_bridge) {
+        sidecar_ = std::make_unique<roon::RoonSidecarProcess>(cfg, data_dir_);
         if (!sidecar_->start()) {
             set_setup_error(sidecar_->error());
         }
@@ -55,7 +56,7 @@ bool RoonSource::initialize() {
     state_.store(PlaybackState::stopped, std::memory_order_release);
     log::info(
         "[roon] source initialized; auto_start_bridge={} zone_selected={} capture_selected={}",
-        cfg_.auto_start_bridge, !cfg_.selected_zone_id.empty(), !cfg_.capture_device_id.empty());
+        cfg.auto_start_bridge, !cfg.selected_zone_id.empty(), !cfg.capture_device_id.empty());
     return true;
 }
 
@@ -65,6 +66,50 @@ void RoonSource::shutdown() noexcept {
     state_.store(PlaybackState::stopped, std::memory_order_release);
     initialized_.store(false, std::memory_order_release);
     log::info("[roon] source shutdown");
+}
+
+void RoonSource::update_config(RoonConfig cfg, std::filesystem::path data_dir) {
+    RoonConfig old;
+    std::filesystem::path old_dir;
+    {
+        std::scoped_lock lk{cfg_mu_};
+        old     = cfg_;
+        old_dir = data_dir_;
+        cfg_    = std::move(cfg);
+        if (!data_dir.empty()) data_dir_ = std::move(data_dir);
+    }
+
+    const auto next = config_snapshot();
+    clear_setup_error();
+    log::info("[roon] config updated; zone_selected={} capture_selected={}",
+              !next.selected_zone_id.empty(), !next.capture_device_id.empty());
+
+    const bool was_playing = state_.load(std::memory_order_acquire) == PlaybackState::playing;
+    stop_capture();
+
+    const bool sidecar_args_changed = old.auto_start_bridge != next.auto_start_bridge ||
+                                      old.node_path != next.node_path ||
+                                      old.bridge_path != next.bridge_path || old_dir != data_dir_;
+    if (sidecar_args_changed && sidecar_) {
+        sidecar_->stop();
+        sidecar_.reset();
+    }
+    if (next.auto_start_bridge && initialized_.load(std::memory_order_acquire) &&
+        (!sidecar_ || !sidecar_->running())) {
+        sidecar_ = std::make_unique<roon::RoonSidecarProcess>(next, data_dir_);
+        if (!sidecar_->start()) set_setup_error(sidecar_->error());
+    } else if (!next.auto_start_bridge && sidecar_) {
+        sidecar_->stop();
+        sidecar_.reset();
+    }
+
+    if (was_playing) {
+        if (start_capture()) {
+            state_.store(PlaybackState::playing, std::memory_order_release);
+        } else {
+            state_.store(PlaybackState::stopped, std::memory_order_release);
+        }
+    }
 }
 
 void RoonSource::play() {
@@ -125,35 +170,47 @@ PlaybackState RoonSource::playback_state() const noexcept {
 AuthState RoonSource::auth_state() const noexcept { return setup_state(); }
 
 std::string RoonSource::auth_instructions() const {
+    const auto cfg = config_snapshot();
     if (auto err = setup_error(); !err.empty()) return err;
-    if (cfg_.bridge_path.empty()) {
+    if (cfg.bridge_path.empty()) {
         return "Set [roon].bridge_path to tools\\roon-bridge\\index.mjs or another Roon sidecar "
                "script path.";
     }
-    if (cfg_.selected_zone_id.empty() && cfg_.capture_device_id.empty()) {
+    if (cfg.selected_zone_id.empty() && cfg.capture_device_id.empty()) {
         return "Authorize FH6 Universal Radio in Roon, then select a Roon zone and Windows "
                "capture device in Web Control.";
     }
-    if (cfg_.selected_zone_id.empty()) {
+    if (cfg.selected_zone_id.empty()) {
         return "Select a Roon zone in Web Control.";
     }
-    if (cfg_.capture_device_id.empty()) {
+    if (cfg.capture_device_id.empty()) {
         return "Select a Windows capture device that receives the selected Roon zone audio.";
     }
     return {};
 }
 
+RoonConfig RoonSource::config_snapshot() const {
+    std::scoped_lock lk{cfg_mu_};
+    return cfg_;
+}
+
 AuthState RoonSource::setup_state() const noexcept {
+    const auto cfg = config_snapshot();
     if (setup_error_present_.load(std::memory_order_acquire)) return AuthState::error;
-    if (cfg_.bridge_path.empty()) return AuthState::error;
-    if (cfg_.selected_zone_id.empty() || cfg_.capture_device_id.empty())
-        return AuthState::needs_auth;
+    if (cfg.bridge_path.empty()) return AuthState::error;
+    if (cfg.selected_zone_id.empty() || cfg.capture_device_id.empty()) return AuthState::needs_auth;
     return AuthState::authenticated;
 }
 
 std::string RoonSource::setup_error() const {
     std::scoped_lock lk{setup_mu_};
     return setup_error_;
+}
+
+void RoonSource::clear_setup_error() {
+    std::scoped_lock lk{setup_mu_};
+    setup_error_.clear();
+    setup_error_present_.store(false, std::memory_order_release);
 }
 
 void RoonSource::set_setup_error(std::string message) {
@@ -164,7 +221,8 @@ void RoonSource::set_setup_error(std::string message) {
 }
 
 bool RoonSource::start_capture() {
-    if (cfg_.capture_device_id.empty()) {
+    const auto current = config_snapshot();
+    if (current.capture_device_id.empty()) {
         log::warn("[roon] capture start blocked: no capture device selected");
         return false;
     }
@@ -175,9 +233,9 @@ bool RoonSource::start_capture() {
     }
 
     audio::WasapiLoopbackCaptureConfig cfg;
-    cfg.device_id  = cfg_.capture_device_id;
-    cfg.latency_ms = cfg_.latency_ms;
-    cfg.queue_ms   = std::clamp<uint32_t>(cfg_.latency_ms * 4U, 250U, 5000U);
+    cfg.device_id  = current.capture_device_id;
+    cfg.latency_ms = current.latency_ms;
+    cfg.queue_ms   = std::clamp<uint32_t>(current.latency_ms * 4U, 250U, 5000U);
     log::info("[roon] starting capture device_id={} latency_ms={} queue_ms={}", cfg.device_id,
               cfg.latency_ms, cfg.queue_ms);
     if (capture_->start(cfg)) {

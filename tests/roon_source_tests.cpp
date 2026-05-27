@@ -160,6 +160,16 @@ int run_tests() {
     require(capture_source.playback_state() == fh6::PlaybackState::stopped,
             "stop should cache stopped state");
 
+    fh6::RoonConfig changed_cfg = ready_cfg;
+    changed_cfg.capture_device_id = "device-2";
+    changed_cfg.latency_ms = 456;
+    capture_source.update_config(changed_cfg);
+    capture_source.play();
+    require(fake->starts >= 4, "play after config update should restart capture");
+    require(fake->last_cfg.device_id == "device-2",
+            "RoonSource should use updated capture device id");
+    require(fake->last_cfg.latency_ms == 456, "RoonSource should use updated latency");
+
     FakeCapture* failing_fake = nullptr;
     fh6::sources::RoonSource failing_capture_source{
         ready_cfg, {}, [&] {

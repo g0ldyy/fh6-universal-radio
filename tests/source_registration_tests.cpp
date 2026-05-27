@@ -59,11 +59,18 @@ int main() {
 
     fh6::sync_roon_source(mgr, roon_cfg);
     require(mgr.find("roon") == roon, "syncing an already registered Roon source should not replace it");
+    require(roon->auth_state() == fh6::AuthState::needs_auth,
+            "incomplete Roon config should need setup");
+
+    roon_cfg.selected_zone_id = "zone-1";
+    roon_cfg.capture_device_id = "device-1";
+    fh6::sync_roon_source(mgr, roon_cfg);
+    require(mgr.find("roon") == roon, "updating Roon config should keep the registered source");
+    require(roon->auth_state() == fh6::AuthState::authenticated,
+            "syncing updated Roon config should update the live source setup state");
 
     require(mgr.switch_to("roon"), "default_source roon should be switchable after registration");
     require(mgr.active() == roon, "switch_to roon should make Roon active");
-    require(roon->playback_state() == fh6::PlaybackState::stopped,
-            "incomplete Roon capture setup should not start playback");
 
     const std::uint32_t marker = 0x12345678u;
     require(mgr.ring().write(&marker, sizeof(marker)) == sizeof(marker), "test should seed ring data");

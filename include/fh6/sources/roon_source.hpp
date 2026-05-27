@@ -37,6 +37,7 @@ public:
 
     bool initialize() override;
     void shutdown() noexcept override;
+    void update_config(RoonConfig cfg, std::filesystem::path data_dir = {});
 
     void play() override;
     void pause() override;
@@ -52,13 +53,16 @@ public:
     SourceCapabilities capabilities() const noexcept override { return {false, true, false}; }
 
 private:
+    RoonConfig config_snapshot() const;
     AuthState setup_state() const noexcept;
     std::string setup_error() const;
+    void clear_setup_error();
     void set_setup_error(std::string message);
     bool start_capture();
     void stop_capture() noexcept;
     void clear_capture() noexcept;
 
+    mutable std::mutex cfg_mu_;
     RoonConfig cfg_;
     std::filesystem::path data_dir_;
     std::unique_ptr<roon::RoonSidecarProcess> sidecar_;
