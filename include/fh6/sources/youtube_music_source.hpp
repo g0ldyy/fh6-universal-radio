@@ -38,6 +38,8 @@ public:
     // URL / playlist to play next.
     void set_target(std::string url);
 
+    void set_shuffle(bool shuffle);
+
     TrackInfo current_track() const override;
     PlaybackState playback_state() const noexcept override {
         return state_.load(std::memory_order_acquire);
@@ -45,6 +47,8 @@ public:
     AuthState auth_state() const noexcept override { return auth_; }
     std::string auth_instructions() const override;
     SourceCapabilities capabilities() const noexcept override { return {false, true, true}; }
+
+    bool shuffle() const noexcept { return cfg_.shuffle; }
 
 private:
     struct Pipe;

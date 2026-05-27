@@ -151,6 +151,12 @@ main {
 
 .icon.primary:hover { background: #c4ff52; }
 
+.icon.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Source picker */
 .sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 
