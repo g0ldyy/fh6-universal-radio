@@ -9,7 +9,9 @@ function Require-Text([string]$Text, [string]$Needle, [string]$Message) {
 $wasapi = Get-Content -LiteralPath (Join-Path $root "src/audio/wasapi_loopback_capture.cpp") -Raw
 $routes = Get-Content -LiteralPath (Join-Path $root "src/http/roon_routes.cpp") -Raw
 $sidecar = Get-Content -LiteralPath (Join-Path $root "src/roon/roon_sidecar_process.cpp") -Raw
-$app = Get-Content -LiteralPath (Join-Path $root "ui/dist/app.js") -Raw
+$js = (Get-ChildItem -LiteralPath (Join-Path $root "ui/dist") -Filter "*.js" |
+    Sort-Object Name |
+    ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
 
 foreach ($needle in @(
     "[wasapi]",
@@ -22,7 +24,7 @@ foreach ($needle in @(
 
 foreach ($needle in @(
     "selected zone",
-    "selected capture device",
+    "selected loopback endpoint",
     "reconnect requested",
     "capture device is silent"
 )) {
@@ -32,6 +34,6 @@ foreach ($needle in @(
 Require-Text $sidecar "command=" "Sidecar diagnostics should log the sanitized start command"
 Require-Text $sidecar "roon-sidecar.out.log" "Sidecar stdout log file should be named"
 Require-Text $sidecar "roon-sidecar.err.log" "Sidecar stderr log file should be named"
-Require-Text $app "setupNote" "Web Control should surface actionable setup guidance"
+Require-Text $js "setupNote" "Web Control should surface actionable setup guidance"
 
 Write-Host "diagnostics logging tests passed"
