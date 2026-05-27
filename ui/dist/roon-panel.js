@@ -242,8 +242,8 @@ export function createRoonPanel(deps) {
   }
 
   async function selectEndpoint(endpoint) {
-    await api.send("/api/source/roon/select-capture-device", {
-      device_id: endpoint.id,
+    await api.send("/api/source/roon/select-loopback-endpoint", {
+      endpoint_id: endpoint.id,
       name: endpoint.name || "",
     });
     setSelectedEndpoint(endpoint);

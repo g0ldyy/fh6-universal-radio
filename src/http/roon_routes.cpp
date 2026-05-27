@@ -178,20 +178,21 @@ bool handle_select_zone(std::string_view body, ConfigStore& store, const JsonRes
     return true;
 }
 
-bool handle_select_capture(std::string_view body, ConfigStore& store, const JsonResponder& ok,
-                           const ErrorResponder& fail) {
-    auto parsed    = parse_body(body);
-    auto device_id = parsed.is_object() ? required_string(parsed, "device_id") : std::string{};
-    if (device_id.empty()) {
-        fail(400, "device_id is required");
+bool handle_select_loopback(std::string_view body, ConfigStore& store, const JsonResponder& ok,
+                            const ErrorResponder& fail, const char* id_key) {
+    auto parsed      = parse_body(body);
+    auto endpoint_id = parsed.is_object() ? required_string(parsed, id_key) : std::string{};
+    if (endpoint_id.empty()) {
+        fail(400, std::string_view{id_key} == "endpoint_id" ? "endpoint_id is required"
+                                                            : "device_id is required");
         return true;
     }
     std::string name;
     if (auto it = parsed.find("name"); it != parsed.end() && it->is_string())
         name = it->get<std::string>();
-    log::info("[roon] selected capture device id={} name={}", device_id, name);
+    log::info("[roon] selected loopback endpoint id={} name={}", endpoint_id, name);
     store.patch([&](Config& c) {
-        c.roon.render_loopback_endpoint_id   = device_id;
+        c.roon.render_loopback_endpoint_id   = endpoint_id;
         c.roon.render_loopback_endpoint_name = name;
     });
     ok(json::object());
@@ -208,9 +209,14 @@ bool handle_test_capture(std::string_view body, ConfigStore& store, const JsonRe
     }
     audio::WasapiLoopbackCapture capture;
     audio::WasapiLoopbackCaptureConfig cfg;
-    cfg.device_id  = device_id;
-    cfg.latency_ms = store.snapshot().roon.latency_ms;
-    cfg.queue_ms   = 250;
+    const auto roon_cfg = store.snapshot().roon;
+    cfg.device_id       = device_id;
+    cfg.latency_ms      = roon_cfg.latency_ms;
+    cfg.queue_ms        = 250;
+    auto endpoint_name  = roon_cfg.render_loopback_endpoint_id == device_id
+                            ? roon_cfg.render_loopback_endpoint_name
+                            : std::string{};
+    if (endpoint_name.empty()) endpoint_name = "selected render endpoint";
     log::info("[roon] test capture requested device_id={}", device_id);
     if (!capture.start(cfg)) {
         fail(502, capture.status().error);
@@ -222,10 +228,16 @@ bool handle_test_capture(std::string_view body, ConfigStore& store, const JsonRe
               status.queued_bytes);
     if (status.peak < 0.01f) {
         log::warn("[roon] capture device is silent during test-capture");
-        fail(409, "capture device is silent; verify the selected Roon output is playing");
+        const auto message = "Roon appears to be playing, but FH6 is receiving silence from the "
+                             "selected render endpoint. Check that Roon is playing to " +
+                             endpoint_name + " and that exclusive mode is disabled.";
+        fail(409, message);
         return true;
     }
-    ok(json{{"ok", true}, {"peak", status.peak}, {"queued_bytes", status.queued_bytes}});
+    ok(json{{"ok", true},
+            {"peak", status.peak},
+            {"queued_bytes", status.queued_bytes},
+            {"message", "Audio detected on " + endpoint_name + " through WASAPI loopback."}});
     return true;
 }
 
@@ -284,6 +296,7 @@ bool dispatch_roon_route(std::string_view method, std::string_view path, std::st
     }
     const bool known_post =
         is_route(method, path, "POST", "/api/source/roon/select-zone") ||
+        is_route(method, path, "POST", "/api/source/roon/select-loopback-endpoint") ||
         is_route(method, path, "POST", "/api/source/roon/select-capture-device") ||
         is_route(method, path, "POST", "/api/source/roon/test-capture") ||
         is_route(method, path, "POST", "/api/source/roon/volume") ||
@@ -294,8 +307,10 @@ bool dispatch_roon_route(std::string_view method, std::string_view path, std::st
 
     if (is_route(method, path, "POST", "/api/source/roon/select-zone"))
         return handle_select_zone(body, store, ok, fail);
+    if (is_route(method, path, "POST", "/api/source/roon/select-loopback-endpoint"))
+        return handle_select_loopback(body, store, ok, fail, "endpoint_id");
     if (is_route(method, path, "POST", "/api/source/roon/select-capture-device"))
-        return handle_select_capture(body, store, ok, fail);
+        return handle_select_loopback(body, store, ok, fail, "device_id");
     if (is_route(method, path, "POST", "/api/source/roon/test-capture"))
         return handle_test_capture(body, store, ok, fail);
     if (is_route(method, path, "POST", "/api/source/roon/volume"))

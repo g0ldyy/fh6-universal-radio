@@ -42,7 +42,7 @@ foreach ($route in @(
     '/api/source/roon/zones',
     '/api/source/roon/loopback-endpoints',
     '/api/source/roon/select-zone',
-    '/api/source/roon/select-capture-device',
+    '/api/source/roon/select-loopback-endpoint',
     '/api/source/roon/test-capture',
     '/api/source/roon/reconnect',
     '/api/source/roon/artwork/current'

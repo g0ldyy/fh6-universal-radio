@@ -150,6 +150,7 @@ int main() {
                                "unregistered Roon GET route should return JSON 404");
         }
         for (const char* path : {"/api/source/roon/select-zone",
+                                 "/api/source/roon/select-loopback-endpoint",
                                  "/api/source/roon/select-capture-device",
                                  "/api/source/roon/test-capture", "/api/source/roon/volume",
                                  "/api/source/roon/reconnect"}) {
@@ -166,12 +167,34 @@ int main() {
 
         require_json_error(wait_post(port, "/api/source/roon/select-zone", "{}"), 400,
                            "select-zone should reject missing zone_id");
+        require_json_error(wait_post(port, "/api/source/roon/select-loopback-endpoint", "{}"),
+                           400, "select-loopback-endpoint should reject missing endpoint_id");
         require_json_error(wait_post(port, "/api/source/roon/select-capture-device", "{}"), 400,
                            "select-capture-device should reject missing device_id");
         require_json_error(wait_post(port, "/api/source/roon/test-capture", "{}"), 400,
                            "test-capture should reject missing device_id");
         require_json_error(wait_post(port, "/api/source/roon/volume", R"({"output_id":"out"})"),
                            400, "volume should reject missing value");
+
+        auto select_loopback = wait_post(port, "/api/source/roon/select-loopback-endpoint",
+                                         R"({"endpoint_id":"endpoint-1","name":"Hi-Fi Cable Input"})");
+        require(select_loopback, "select-loopback-endpoint should respond");
+        require(select_loopback->status == 200, "select-loopback-endpoint should accept endpoint");
+        auto selected = store.snapshot().roon;
+        require(selected.render_loopback_endpoint_id == "endpoint-1",
+                "select-loopback-endpoint should write canonical endpoint id");
+        require(selected.render_loopback_endpoint_name == "Hi-Fi Cable Input",
+                "select-loopback-endpoint should write canonical endpoint name");
+
+        auto select_legacy = wait_post(port, "/api/source/roon/select-capture-device",
+                                       R"({"device_id":"legacy-1","name":"CABLE Input"})");
+        require(select_legacy, "legacy select-capture-device should respond");
+        require(select_legacy->status == 200, "legacy select-capture-device should remain valid");
+        auto legacy_selected = store.snapshot().roon;
+        require(legacy_selected.render_loopback_endpoint_id == "legacy-1",
+                "legacy select-capture-device should write canonical endpoint id");
+        require(legacy_selected.render_loopback_endpoint_name == "CABLE Input",
+                "legacy select-capture-device should write canonical endpoint name");
 
         std::filesystem::remove_all(root);
     } catch (const std::exception& e) {
