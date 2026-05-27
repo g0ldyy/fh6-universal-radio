@@ -68,7 +68,8 @@ foreach ($text in @(
     'Open VB-Audio download',
     'Recheck',
     'Use recommended device',
-    'Test audio'
+    'Test audio',
+    'Optional validation'
 )) {
     Require-Text $surface $text "Roon setup panel should include '$text'"
 }
@@ -97,3 +98,7 @@ foreach ($forbidden in @(
 Require-Text $css '.roon-panel' 'styles should include the Roon panel'
 Require-Text $js 'renderRoonPanel' 'app should render the Roon setup panel idempotently'
 Require-Text $js 'roonNowPlaying' 'app should prefer Roon metadata when Roon is active'
+
+if ($js.Contains('renderStep("Test audio", testOk')) {
+    throw 'Test audio should be optional validation, not a required setup step'
+}

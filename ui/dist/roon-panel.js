@@ -172,8 +172,7 @@ export function createRoonPanel(deps) {
     const status = roon.status || {};
     return status.pairing_state === "authorized" &&
       !!(r.selected_zone_id || status.selected_zone_id) &&
-      !!selectedEndpointId() &&
-      !!roon.captureTest?.ok;
+      !!selectedEndpointId();
   }
 
   function shouldOpenSetupDialog() {
@@ -185,6 +184,14 @@ export function createRoonPanel(deps) {
     return `<li class="${ok ? "ok" : "warn"}">
       <span>${esc(label)}</span>
       <strong>${ok ? "Ready" : "Action needed"}</strong>
+      <small>${esc(detail)}</small>
+    </li>`;
+  }
+
+  function renderOptionalStep(label, ok, detail) {
+    return `<li class="${ok ? "ok" : "warn"}">
+      <span>${esc(label)}</span>
+      <strong>${ok ? "Ready" : "Optional validation"}</strong>
       <small>${esc(detail)}</small>
     </li>`;
   }
@@ -228,7 +235,7 @@ export function createRoonPanel(deps) {
       renderStep("Select zone", !!selectedZone, status.selected_zone_name || "Choose the Roon zone to control."),
       renderStep("Select loopback endpoint", !!selectedEndpoint,
                  selectedEndpointName() || endpoint?.name || "Use the recommended render endpoint."),
-      renderStep("Test audio", testOk, testResult),
+      renderOptionalStep("Test audio", testOk, testResult),
     ].join("");
     return `<div class="roon-panel roon-setup-surface" data-roon-setup="${esc(mode)}">
       <div class="card-head">
