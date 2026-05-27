@@ -6,6 +6,8 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 
+#include <winsock2.h>
+
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #include <httplib.h>
 #include <nlohmann/json.hpp>
@@ -182,19 +184,42 @@ struct HttpServer::Impl {
     httplib::Server svr;
     std::jthread thr;
     std::atomic<bool> stopping{false};
+    SOCKET srv_sock{INVALID_SOCKET};
 
     Impl(AudioSourceManager& m, fmod_bridge::DSPBridge& b, ConfigStore& s, uint16_t port,
          std::filesystem::path dist)
         : mgr{m}, bridge{b}, store{s}, ui_dist{std::move(dist)} {
         wire_routes();
         thr = std::jthread([this, port](const std::stop_token&) {
-            log::info("[http] listening on http://localhost:{}", port);
-            svr.listen("0.0.0.0", port);
+            WSADATA wsa;
+            WSAStartup(MAKEWORD(2, 2), &wsa);
+
+            srv_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            if (srv_sock == INVALID_SOCKET) {
+                log::error("[http] socket creation failed: {}", WSAGetLastError());
+                return;
+            }
+
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_port = htons(static_cast<u_short>(port));
+            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+            if (bind(srv_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+                log::error("[http] bind failed on 127.0.0.1:{} — {}", port, WSAGetLastError());
+                closesocket(srv_sock);
+                srv_sock = INVALID_SOCKET;
+                return;
+            }
+
+            log::info("[http] listening on http://127.0.0.1:{}", port);
+            svr.listen(srv_sock);
         });
     }
     ~Impl() {
         stopping.store(true);
         svr.stop();
+        if (srv_sock != INVALID_SOCKET) closesocket(srv_sock);
     }
 
     json build_state() const {
