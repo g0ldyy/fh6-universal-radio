@@ -35,8 +35,9 @@ void require_roon_defaults(const fh6::RoonConfig& roon) {
     require(roon.selected_core_id.empty(), "selected_core_id defaults empty");
     require(roon.selected_zone_id.empty(), "selected_zone_id defaults empty");
     require(roon.selected_output_id.empty(), "selected_output_id defaults empty");
-    require(roon.capture_device_id.empty(), "capture_device_id defaults empty");
-    require(roon.capture_device_name.empty(), "capture_device_name defaults empty");
+    require(roon.render_loopback_endpoint_id.empty(), "render loopback endpoint id defaults empty");
+    require(roon.render_loopback_endpoint_name.empty(),
+            "render loopback endpoint name defaults empty");
     require(roon.control_volume, "control_volume defaults true");
     require(roon.auto_start_bridge, "auto_start_bridge defaults true");
     require(roon.auto_reconnect, "auto_reconnect defaults true");
@@ -76,8 +77,10 @@ bridge_path = 'tools\roon-bridge\index.mjs'
 selected_core_id = 'core-1'
 selected_zone_id = 'zone-1'
 selected_output_id = 'output-1'
-capture_device_id = 'device-1'
-capture_device_name = 'Speakers'
+render_loopback_endpoint_id = 'new-render-id'
+render_loopback_endpoint_name = 'Hi-Fi Cable Input'
+capture_device_id = 'legacy-device'
+capture_device_name = 'Legacy Speakers'
 control_volume = false
 auto_start_bridge = false
 auto_reconnect = false
@@ -89,12 +92,28 @@ metadata_poll_ms = 900
         require(roon_cfg.roon.node_path == "C:\\Program Files\\nodejs\\node.exe",
                 "node_path parses");
         require(roon_cfg.roon.selected_zone_id == "zone-1", "selected_zone_id parses");
-        require(roon_cfg.roon.capture_device_name == "Speakers", "capture_device_name parses");
+        require(roon_cfg.roon.render_loopback_endpoint_id == "new-render-id",
+                "new render loopback endpoint id parses");
+        require(roon_cfg.roon.render_loopback_endpoint_name == "Hi-Fi Cable Input",
+                "new render loopback endpoint name parses");
         require(!roon_cfg.roon.control_volume, "control_volume parses");
         require(!roon_cfg.roon.auto_start_bridge, "auto_start_bridge parses");
         require(!roon_cfg.roon.auto_reconnect, "auto_reconnect parses");
         require(roon_cfg.roon.latency_ms == 125, "latency_ms parses");
         require(roon_cfg.roon.metadata_poll_ms == 900, "metadata_poll_ms parses");
+
+        const auto legacy_roon_config_path = root / "legacy-roon-config.toml";
+        write_text(legacy_roon_config_path, R"toml(
+[roon]
+enabled = true
+capture_device_id = 'legacy-render-id'
+capture_device_name = 'Legacy Render'
+)toml");
+        auto legacy_roon_cfg = fh6::load_config(legacy_roon_config_path);
+        require(legacy_roon_cfg.roon.render_loopback_endpoint_id == "legacy-render-id",
+                "legacy capture_device_id migrates to render loopback endpoint id");
+        require(legacy_roon_cfg.roon.render_loopback_endpoint_name == "Legacy Render",
+                "legacy capture_device_name migrates to render loopback endpoint name");
 
         const auto invalid_config_path = root / "invalid-config.toml";
         write_text(invalid_config_path, R"toml(
@@ -110,8 +129,16 @@ metadata_poll_ms = 'fast'
         fh6::save_config(saved_path, roon_cfg);
         auto saved_text = read_text(saved_path);
         require(saved_text.find("[roon]") != std::string::npos, "save_config emits roon section");
+        require(saved_text.find("render_loopback_endpoint_id") != std::string::npos,
+                "save_config emits render loopback endpoint id");
+        require(saved_text.find("render_loopback_endpoint_name") != std::string::npos,
+                "save_config emits render loopback endpoint name");
+        require(saved_text.find("capture_device_id") == std::string::npos,
+                "save_config does not emit legacy capture device id");
         auto saved_cfg = fh6::load_config(saved_path);
         require(saved_cfg.roon.enabled, "saved roon enabled round-trips");
+        require(saved_cfg.roon.render_loopback_endpoint_id == "new-render-id",
+                "saved render loopback endpoint id round-trips");
         require(saved_cfg.roon.latency_ms == 125, "saved latency round-trips");
         require(saved_cfg.roon.metadata_poll_ms == 900, "saved metadata poll round-trips");
 
@@ -119,21 +146,36 @@ metadata_poll_ms = 'fast'
         require(as_json["roon"]["enabled"] == true, "config_to_json emits roon enabled");
         require(as_json["roon"]["selected_zone_id"] == "zone-1",
                 "config_to_json emits selected_zone_id");
+        require(as_json["roon"]["render_loopback_endpoint_id"] == "new-render-id",
+                "config_to_json emits render loopback endpoint id");
         require(as_json["roon"]["latency_ms"] == 125, "config_to_json emits latency");
 
         fh6::Config patched;
         fh6::http::apply_config_patch(patched, nlohmann::json{{"roon",
                                                                {{"enabled", true},
                                                                 {"selected_zone_id", "zone-2"},
-                                                                {"capture_device_id", "device-2"},
+                                                                {"render_loopback_endpoint_id",
+                                                                 "device-2"},
+                                                                {"render_loopback_endpoint_name",
+                                                                 "Hi-Fi Cable Input"},
                                                                 {"latency_ms", 333}}}});
         require(patched.roon.enabled, "apply_config_patch updates roon enabled");
         require(patched.roon.selected_zone_id == "zone-2",
                 "apply_config_patch updates selected zone");
-        require(patched.roon.capture_device_id == "device-2",
-                "apply_config_patch updates capture device");
+        require(patched.roon.render_loopback_endpoint_id == "device-2",
+                "apply_config_patch updates render loopback endpoint");
+        require(patched.roon.render_loopback_endpoint_name == "Hi-Fi Cable Input",
+                "apply_config_patch updates render loopback endpoint name");
         require(patched.roon.latency_ms == 333, "apply_config_patch updates latency");
         require(patched.roon.metadata_poll_ms == 750, "partial roon patch keeps fallback");
+
+        fh6::http::apply_config_patch(
+            patched, nlohmann::json{{"roon", {{"capture_device_id", "legacy-device-2"},
+                                               {"capture_device_name", "Legacy Device 2"}}}});
+        require(patched.roon.render_loopback_endpoint_id == "legacy-device-2",
+                "legacy JSON capture_device_id updates render loopback endpoint");
+        require(patched.roon.render_loopback_endpoint_name == "Legacy Device 2",
+                "legacy JSON capture_device_name updates render loopback endpoint name");
 
         fh6::http::apply_config_patch(
             patched, nlohmann::json{{"roon", {{"latency_ms", -1}, {"metadata_poll_ms", "fast"}}}});

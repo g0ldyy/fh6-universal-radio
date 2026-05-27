@@ -38,8 +38,8 @@ struct RoonConfig {
     std::string selected_core_id;
     std::string selected_zone_id;
     std::string selected_output_id;
-    std::string capture_device_id;
-    std::string capture_device_name;
+    std::string render_loopback_endpoint_id;
+    std::string render_loopback_endpoint_name;
     bool control_volume       = true;
     bool auto_start_bridge    = true;
     bool auto_reconnect       = true;

@@ -159,8 +159,8 @@ bool handle_select_capture(std::string_view body, ConfigStore& store, const Json
         name = it->get<std::string>();
     log::info("[roon] selected capture device id={} name={}", device_id, name);
     store.patch([&](Config& c) {
-        c.roon.capture_device_id   = device_id;
-        c.roon.capture_device_name = name;
+        c.roon.render_loopback_endpoint_id   = device_id;
+        c.roon.render_loopback_endpoint_name = name;
     });
     ok(json::object());
     return true;

@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <system_error>
 
 namespace fh6 {
@@ -36,6 +37,22 @@ uint32_t pick_u32(const toml::value& tbl, const char* key, uint32_t fallback) {
     } catch (...) {
         return fallback;
     }
+}
+
+std::optional<std::string> pick_string_present(const toml::value& tbl, const char* key) {
+    try {
+        if (!tbl.contains(key)) return std::nullopt;
+        return toml::find<std::string>(tbl, key);
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::string pick_string_alias(const toml::value& tbl, const char* canonical_key,
+                              const char* legacy_key, const std::string& fallback) {
+    if (auto canonical = pick_string_present(tbl, canonical_key)) return *canonical;
+    if (auto legacy = pick_string_present(tbl, legacy_key)) return *legacy;
+    return fallback;
 }
 
 const toml::value& section(const toml::value& root, const char* key) {
@@ -101,10 +118,12 @@ Config load_config(const std::filesystem::path& path) {
         pick<std::string>(ro, "selected_zone_id", cfg.roon.selected_zone_id);
     cfg.roon.selected_output_id =
         pick<std::string>(ro, "selected_output_id", cfg.roon.selected_output_id);
-    cfg.roon.capture_device_id =
-        pick<std::string>(ro, "capture_device_id", cfg.roon.capture_device_id);
-    cfg.roon.capture_device_name =
-        pick<std::string>(ro, "capture_device_name", cfg.roon.capture_device_name);
+    cfg.roon.render_loopback_endpoint_id =
+        pick_string_alias(ro, "render_loopback_endpoint_id", "capture_device_id",
+                          cfg.roon.render_loopback_endpoint_id);
+    cfg.roon.render_loopback_endpoint_name =
+        pick_string_alias(ro, "render_loopback_endpoint_name", "capture_device_name",
+                          cfg.roon.render_loopback_endpoint_name);
     cfg.roon.control_volume    = pick<bool>(ro, "control_volume", cfg.roon.control_volume);
     cfg.roon.auto_start_bridge = pick<bool>(ro, "auto_start_bridge", cfg.roon.auto_start_bridge);
     cfg.roon.auto_reconnect    = pick<bool>(ro, "auto_reconnect", cfg.roon.auto_reconnect);
@@ -223,8 +242,8 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("selected_core_id", cfg.roon.selected_core_id);
     e.kv("selected_zone_id", cfg.roon.selected_zone_id);
     e.kv("selected_output_id", cfg.roon.selected_output_id);
-    e.kv("capture_device_id", cfg.roon.capture_device_id);
-    e.kv("capture_device_name", cfg.roon.capture_device_name);
+    e.kv("render_loopback_endpoint_id", cfg.roon.render_loopback_endpoint_id);
+    e.kv("render_loopback_endpoint_name", cfg.roon.render_loopback_endpoint_name);
     e.kv("control_volume", cfg.roon.control_volume);
     e.kv("auto_start_bridge", cfg.roon.auto_start_bridge);
     e.kv("auto_reconnect", cfg.roon.auto_reconnect);

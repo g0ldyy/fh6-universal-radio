@@ -104,7 +104,8 @@ bool RoonSource::initialize() {
     start_metadata_polling();
     log::info(
         "[roon] source initialized; auto_start_bridge={} zone_selected={} capture_selected={}",
-        cfg.auto_start_bridge, !cfg.selected_zone_id.empty(), !cfg.capture_device_id.empty());
+        cfg.auto_start_bridge, !cfg.selected_zone_id.empty(),
+        !cfg.render_loopback_endpoint_id.empty());
     return true;
 }
 
@@ -131,7 +132,7 @@ void RoonSource::update_config(RoonConfig cfg, std::filesystem::path data_dir) {
     const auto next = config_snapshot();
     clear_setup_error();
     log::info("[roon] config updated; zone_selected={} capture_selected={}",
-              !next.selected_zone_id.empty(), !next.capture_device_id.empty());
+              !next.selected_zone_id.empty(), !next.render_loopback_endpoint_id.empty());
 
     const bool was_playing = state_.load(std::memory_order_acquire) == PlaybackState::playing;
     stop_capture();
@@ -244,15 +245,16 @@ std::string RoonSource::auth_instructions() const {
         return "Set [roon].bridge_path to tools\\roon-bridge\\index.mjs or another Roon sidecar "
                "script path.";
     }
-    if (cfg.selected_zone_id.empty() && cfg.capture_device_id.empty()) {
+    if (cfg.selected_zone_id.empty() && cfg.render_loopback_endpoint_id.empty()) {
         return "Authorize FH6 Universal Radio in Roon, then select a Roon zone and Windows "
-               "capture device in Web Control.";
+               "Roon output / loopback capture device in Web Control.";
     }
     if (cfg.selected_zone_id.empty()) {
         return "Select a Roon zone in Web Control.";
     }
-    if (cfg.capture_device_id.empty()) {
-        return "Select a Windows capture device that receives the selected Roon zone audio.";
+    if (cfg.render_loopback_endpoint_id.empty()) {
+        return "Select the Roon output / loopback capture device that receives the selected Roon "
+               "zone audio.";
     }
     return {};
 }
@@ -266,7 +268,8 @@ AuthState RoonSource::setup_state() const noexcept {
     const auto cfg = config_snapshot();
     if (setup_error_present_.load(std::memory_order_acquire)) return AuthState::error;
     if (cfg.bridge_path.empty()) return AuthState::error;
-    if (cfg.selected_zone_id.empty() || cfg.capture_device_id.empty()) return AuthState::needs_auth;
+    if (cfg.selected_zone_id.empty() || cfg.render_loopback_endpoint_id.empty())
+        return AuthState::needs_auth;
     return AuthState::authenticated;
 }
 
@@ -312,7 +315,7 @@ bool RoonSource::send_transport(std::string_view control) {
 
 bool RoonSource::start_capture() {
     const auto current = config_snapshot();
-    if (current.capture_device_id.empty()) {
+    if (current.render_loopback_endpoint_id.empty()) {
         log::warn("[roon] capture start blocked: no capture device selected");
         return false;
     }
@@ -323,7 +326,7 @@ bool RoonSource::start_capture() {
     }
 
     audio::WasapiLoopbackCaptureConfig cfg;
-    cfg.device_id  = current.capture_device_id;
+    cfg.device_id  = current.render_loopback_endpoint_id;
     cfg.latency_ms = current.latency_ms;
     cfg.queue_ms   = roon_queue_ms(current.latency_ms);
     log::info("[roon] starting capture device_id={} latency_ms={} queue_ms={}", cfg.device_id,

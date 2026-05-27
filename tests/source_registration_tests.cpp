@@ -63,7 +63,7 @@ int main() {
             "incomplete Roon config should need setup");
 
     roon_cfg.selected_zone_id = "zone-1";
-    roon_cfg.capture_device_id = "device-1";
+    roon_cfg.render_loopback_endpoint_id = "device-1";
     fh6::sync_roon_source(mgr, roon_cfg);
     require(mgr.find("roon") == roon, "updating Roon config should keep the registered source");
     require(roon->auth_state() == fh6::AuthState::authenticated,

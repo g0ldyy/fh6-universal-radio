@@ -34,6 +34,18 @@ uint32_t pull_u32(const json& tbl, const char* k, uint32_t fallback) {
     return fallback;
 }
 
+std::string pull_string_alias(const json& tbl, const char* canonical, const char* legacy,
+                              const std::string& fallback) {
+    if (auto it = tbl.find(canonical); it != tbl.end() && !it->is_null()) {
+        try {
+            return it->get<std::string>();
+        } catch (...) {
+            return fallback;
+        }
+    }
+    return pull<std::string>(tbl, legacy, fallback);
+}
+
 std::filesystem::path pull_path(const json& tbl, const char* k,
                                 const std::filesystem::path& fallback) {
     auto s = pull<std::string>(tbl, k, path_s(fallback));
@@ -76,8 +88,10 @@ json config_to_json(const Config& c) {
              {"selected_core_id", c.roon.selected_core_id},
              {"selected_zone_id", c.roon.selected_zone_id},
              {"selected_output_id", c.roon.selected_output_id},
-             {"capture_device_id", c.roon.capture_device_id},
-             {"capture_device_name", c.roon.capture_device_name},
+             {"render_loopback_endpoint_id", c.roon.render_loopback_endpoint_id},
+             {"render_loopback_endpoint_name", c.roon.render_loopback_endpoint_name},
+             {"capture_device_id", c.roon.render_loopback_endpoint_id},
+             {"capture_device_name", c.roon.render_loopback_endpoint_name},
              {"control_volume", c.roon.control_volume},
              {"auto_start_bridge", c.roon.auto_start_bridge},
              {"auto_reconnect", c.roon.auto_reconnect},
@@ -116,19 +130,23 @@ void apply_config_patch(Config& c, const json& j) {
         c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
     }
     if (auto it = j.find("roon"); it != j.end()) {
-        c.roon.enabled             = pull(*it, "enabled", c.roon.enabled);
-        c.roon.node_path           = pull_path(*it, "node_path", c.roon.node_path);
-        c.roon.bridge_path         = pull_path(*it, "bridge_path", c.roon.bridge_path);
-        c.roon.selected_core_id    = pull(*it, "selected_core_id", c.roon.selected_core_id);
-        c.roon.selected_zone_id    = pull(*it, "selected_zone_id", c.roon.selected_zone_id);
-        c.roon.selected_output_id  = pull(*it, "selected_output_id", c.roon.selected_output_id);
-        c.roon.capture_device_id   = pull(*it, "capture_device_id", c.roon.capture_device_id);
-        c.roon.capture_device_name = pull(*it, "capture_device_name", c.roon.capture_device_name);
-        c.roon.control_volume      = pull(*it, "control_volume", c.roon.control_volume);
-        c.roon.auto_start_bridge   = pull(*it, "auto_start_bridge", c.roon.auto_start_bridge);
-        c.roon.auto_reconnect      = pull(*it, "auto_reconnect", c.roon.auto_reconnect);
-        c.roon.latency_ms          = pull_u32(*it, "latency_ms", c.roon.latency_ms);
-        c.roon.metadata_poll_ms    = pull_u32(*it, "metadata_poll_ms", c.roon.metadata_poll_ms);
+        c.roon.enabled            = pull(*it, "enabled", c.roon.enabled);
+        c.roon.node_path          = pull_path(*it, "node_path", c.roon.node_path);
+        c.roon.bridge_path        = pull_path(*it, "bridge_path", c.roon.bridge_path);
+        c.roon.selected_core_id   = pull(*it, "selected_core_id", c.roon.selected_core_id);
+        c.roon.selected_zone_id   = pull(*it, "selected_zone_id", c.roon.selected_zone_id);
+        c.roon.selected_output_id = pull(*it, "selected_output_id", c.roon.selected_output_id);
+        c.roon.render_loopback_endpoint_id =
+            pull_string_alias(*it, "render_loopback_endpoint_id", "capture_device_id",
+                              c.roon.render_loopback_endpoint_id);
+        c.roon.render_loopback_endpoint_name =
+            pull_string_alias(*it, "render_loopback_endpoint_name", "capture_device_name",
+                              c.roon.render_loopback_endpoint_name);
+        c.roon.control_volume    = pull(*it, "control_volume", c.roon.control_volume);
+        c.roon.auto_start_bridge = pull(*it, "auto_start_bridge", c.roon.auto_start_bridge);
+        c.roon.auto_reconnect    = pull(*it, "auto_reconnect", c.roon.auto_reconnect);
+        c.roon.latency_ms        = pull_u32(*it, "latency_ms", c.roon.latency_ms);
+        c.roon.metadata_poll_ms  = pull_u32(*it, "metadata_poll_ms", c.roon.metadata_poll_ms);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);

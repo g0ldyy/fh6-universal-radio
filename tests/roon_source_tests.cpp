@@ -112,8 +112,8 @@ int run_tests() {
     require_contains(source.auth_instructions(), "Authorize",
                      "instructions should mention authorize");
     require_contains(source.auth_instructions(), "zone", "instructions should mention zone setup");
-    require_contains(source.auth_instructions(), "capture",
-                     "instructions should mention capture setup");
+    require_contains(source.auth_instructions(), "loopback",
+                     "instructions should mention loopback setup");
 
     const auto caps = source.capabilities();
     require(!caps.seek, "placeholder should not advertise seek");
@@ -155,7 +155,7 @@ int run_tests() {
     ready_cfg.enabled           = true;
     ready_cfg.auto_start_bridge = false;
     ready_cfg.selected_zone_id  = "zone-1";
-    ready_cfg.capture_device_id = "device-1";
+    ready_cfg.render_loopback_endpoint_id = "device-1";
     ready_cfg.latency_ms        = 123;
 
     FakeControl* control         = nullptr;
@@ -272,7 +272,7 @@ int run_tests() {
             "stop should cache stopped state");
 
     fh6::RoonConfig changed_cfg   = ready_cfg;
-    changed_cfg.capture_device_id = "device-2";
+    changed_cfg.render_loopback_endpoint_id = "device-2";
     changed_cfg.latency_ms        = 456;
     capture_source.update_config(changed_cfg);
     capture_source.play();
