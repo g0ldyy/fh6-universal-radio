@@ -234,6 +234,11 @@ button.ghost {
 
 button.ghost:hover { color: var(--text); background: var(--panel-2); }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
 .slider { display: grid; grid-template-columns: 80px 1fr 56px; align-items: center; gap: 14px; padding: 10px 0; }
 
 .slider span { color: var(--text-dim); font-size: 13px; }
@@ -284,6 +289,46 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
 .roon-panel .muted { margin-bottom: 0; }
 
 .roon-stats { margin-top: 0; }
+
+.roon-wizard {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin-top: 16px;
+}
+
+.roon-step {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px;
+}
+
+.step-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.roon-step p {
+  margin: 0 0 10px; color: var(--text-dim); font-size: 13px;
+}
+
+.roon-step .value-line {
+  color: var(--text); font-weight: 600;
+}
+
+.action-row {
+  flex-wrap: wrap;
+}
+
+.warning-list {
+  margin: 0; padding-left: 18px; color: var(--text-dim); font-size: 12px;
+}
+
+.warning-list li { margin: 4px 0; }
+
+.warning-list .ok { color: var(--accent); }
+
+.warning-list .warn { color: var(--warn); }
+
+.warning-list .err { color: var(--danger); }
 
 .roon-controls {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
@@ -410,6 +455,8 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
   .transport { justify-content: center; }
 
   .roon-controls { grid-template-columns: 1fr; }
+
+  .roon-wizard { grid-template-columns: 1fr; }
 
   .card-head { align-items: stretch; flex-direction: column; }
 
