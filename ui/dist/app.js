@@ -292,6 +292,7 @@ const SCHEMA = [
     ["yt_dlp_path",      "yt-dlp path (optional)", "text"],
     ["ffmpeg_path",      "ffmpeg path (optional)", "text"],
     ["default_playlist", "Default playlist URL",   "text"],
+    ["shuffle",          "Shuffle",                "checkbox"],
   ]],
   ["roon", "Roon", [
     ["enabled",             "Enabled",                "checkbox"],
@@ -444,6 +445,16 @@ function wire() {
     } catch (err) { toast(err.message, true); }
   };
 
+  $("#yt-shuffle").addEventListener("click", async () => {
+    const yt = state?.sources?.available?.find(s => s.name === "youtube_music");
+    if (!yt) return;
+    const shuffle = !yt.details?.shuffle;
+    try {
+      await api.send("/api/source/youtube_music/shuffle", { shuffle });
+      toast(shuffle ? "Shuffle on" : "Shuffle off");
+    } catch (err) { toast(err.message, true); }
+  });
+
   $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); };
   $("#close-settings").onclick = closeDrawer;
   $("#scrim").onclick          = closeDrawer;
@@ -483,6 +494,12 @@ function render() {
   renderSources();
   renderRoonPanel();
   renderOutput();
+
+  const yt = state?.sources?.available?.find(s => s.name === "youtube_music");
+  const shuffleBtn = $("#yt-shuffle");
+  if (shuffleBtn) {
+    shuffleBtn.classList.toggle("active", !!yt?.details?.shuffle);
+  }
   void refreshRoon();
 }
 

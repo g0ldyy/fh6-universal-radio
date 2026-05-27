@@ -22,7 +22,7 @@ $cmake = $cmakeInfo.CMakePath
 Write-Host "Using cmake: $cmake" -ForegroundColor DarkGray
 Write-Host "Using generator: $($cmakeInfo.Generator)" -ForegroundColor DarkGray
 
-if (-not (Test-Path (Join-Path $root "third_party\cpp-httplib\httplib.h"))) {
+if (-not (Test-Path (Join-Path $root "third_party\nlohmann\nlohmann\json.hpp"))) {
     Write-Host "third_party/ is empty -- running get-deps.ps1 first." -ForegroundColor Yellow
     & (Join-Path $PSScriptRoot "get-deps.ps1")
 }

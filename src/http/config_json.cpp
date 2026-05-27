@@ -11,7 +11,9 @@ namespace {
 using json = nlohmann::json;
 
 std::string path_s(const std::filesystem::path& p) {
-    return p.empty() ? std::string{} : p.string();
+    if (p.empty()) return {};
+    auto u8 = p.u8string();
+    return std::string{u8.begin(), u8.end()};
 }
 
 template <class T> T pull(const json& tbl, const char* k, T fallback) {
@@ -64,6 +66,7 @@ json config_to_json(const Config& c) {
              {"yt_dlp_path", path_s(c.youtube_music.yt_dlp_path)},
              {"ffmpeg_path", path_s(c.youtube_music.ffmpeg_path)},
              {"default_playlist", c.youtube_music.default_playlist},
+             {"shuffle", c.youtube_music.shuffle},
          }},
         {"roon",
          json{
@@ -110,6 +113,7 @@ void apply_config_patch(Config& c, const json& j) {
         c.youtube_music.ffmpeg_path  = pull_path(*it, "ffmpeg_path", c.youtube_music.ffmpeg_path);
         c.youtube_music.default_playlist =
             pull(*it, "default_playlist", c.youtube_music.default_playlist);
+        c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
     }
     if (auto it = j.find("roon"); it != j.end()) {
         c.roon.enabled             = pull(*it, "enabled", c.roon.enabled);

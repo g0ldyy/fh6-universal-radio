@@ -153,6 +153,9 @@ void run_bridge(HMODULE self) noexcept {
                 local->play();
             }
         }
+        if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
+            yt->set_shuffle(c.youtube_music.shuffle);
+        }
     });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};

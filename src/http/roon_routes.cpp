@@ -8,44 +8,40 @@
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #include <httplib.h>
-#include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <string>
 #include <thread>
-#include <string_view>
+#include <vector>
 
 namespace fh6::http {
 namespace {
 
 using json = nlohmann::json;
 
-void cors(httplib::Response& res) {
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type");
+bool is_route(std::string_view method, std::string_view path, std::string_view want_method,
+              std::string_view want_path) {
+    return method == want_method && path == want_path;
 }
 
-void ok(httplib::Response& res, const json& body = json::object()) {
-    res.set_content(body.empty() ? std::string{R"({"ok":true})"} : body.dump(), "application/json");
-}
-
-void fail(httplib::Response& res, int status, std::string_view msg) {
-    res.status = status;
-    res.set_content(json{{"error", std::string{msg}}}.dump(), "application/json");
-}
-
-bool roon_registered(AudioSourceManager& mgr, httplib::Response& res) {
+bool roon_registered(AudioSourceManager& mgr, const ErrorResponder& fail) {
     if (mgr.find("roon")) return true;
-    fail(res, 404, "roon not registered");
+    fail(404, "roon not registered");
     return false;
 }
 
-void command_response(httplib::Response& res, const roon::RoonCommandResult& result) {
+void command_response(const JsonResponder& ok, const ErrorResponder& fail,
+                      const roon::RoonCommandResult& result) {
     if (result.ok) {
-        ok(res);
+        ok(json::object());
     } else {
-        fail(res, result.http_status > 0 ? result.http_status : 502, result.error);
+        fail(result.http_status > 0 ? result.http_status : 502, result.error);
     }
+}
+
+json parse_body(std::string_view body) {
+    if (body.empty()) return json::object();
+    return json::parse(body.begin(), body.end(), nullptr, false);
 }
 
 std::string required_string(const json& body, const char* key) {
@@ -116,153 +112,167 @@ audio::WasapiLoopbackCaptureStatus wait_for_capture_signal(audio::WasapiLoopback
     return capture.status();
 }
 
-void proxy_artwork(httplib::Response& res) {
+void proxy_artwork(const ErrorResponder& fail, const BodyResponder& send_body) {
     httplib::Client client{"127.0.0.1", 47821};
     client.set_connection_timeout(std::chrono::milliseconds{500});
     client.set_read_timeout(std::chrono::milliseconds{1000});
     auto sidecar = client.Get("/artwork/current");
     if (!sidecar || sidecar->status >= 400) {
-        fail(res, sidecar ? sidecar->status : 502, "current artwork is unavailable");
+        fail(sidecar ? sidecar->status : 502, "current artwork is unavailable");
         return;
     }
-    res.set_content(sidecar->body, sidecar->get_header_value("content-type"));
+    auto type = sidecar->get_header_value("content-type");
+    if (type.empty()) type = "application/octet-stream";
+    send_body(sidecar->status, sidecar->body, type);
+}
+
+bool handle_select_zone(std::string_view body, ConfigStore& store, const JsonResponder& ok,
+                        const ErrorResponder& fail) {
+    auto parsed  = parse_body(body);
+    auto zone_id = parsed.is_object() ? required_string(parsed, "zone_id") : std::string{};
+    if (zone_id.empty()) {
+        fail(400, "zone_id is required");
+        return true;
+    }
+    roon::RoonControlClient client;
+    auto result = client.select_zone(zone_id);
+    if (!result.ok) {
+        command_response(ok, fail, result);
+        return true;
+    }
+    log::info("[roon] selected zone {}", zone_id);
+    store.patch([&](Config& c) { c.roon.selected_zone_id = zone_id; });
+    ok(json::object());
+    return true;
+}
+
+bool handle_select_capture(std::string_view body, ConfigStore& store, const JsonResponder& ok,
+                           const ErrorResponder& fail) {
+    auto parsed    = parse_body(body);
+    auto device_id = parsed.is_object() ? required_string(parsed, "device_id") : std::string{};
+    if (device_id.empty()) {
+        fail(400, "device_id is required");
+        return true;
+    }
+    std::string name;
+    if (auto it = parsed.find("name"); it != parsed.end() && it->is_string())
+        name = it->get<std::string>();
+    log::info("[roon] selected capture device id={} name={}", device_id, name);
+    store.patch([&](Config& c) {
+        c.roon.capture_device_id   = device_id;
+        c.roon.capture_device_name = name;
+    });
+    ok(json::object());
+    return true;
+}
+
+bool handle_test_capture(std::string_view body, ConfigStore& store, const JsonResponder& ok,
+                         const ErrorResponder& fail) {
+    auto parsed    = parse_body(body);
+    auto device_id = parsed.is_object() ? required_string(parsed, "device_id") : std::string{};
+    if (device_id.empty()) {
+        fail(400, "device_id is required");
+        return true;
+    }
+    audio::WasapiLoopbackCapture capture;
+    audio::WasapiLoopbackCaptureConfig cfg;
+    cfg.device_id  = device_id;
+    cfg.latency_ms = store.snapshot().roon.latency_ms;
+    cfg.queue_ms   = 250;
+    log::info("[roon] test capture requested device_id={}", device_id);
+    if (!capture.start(cfg)) {
+        fail(502, capture.status().error);
+        return true;
+    }
+    auto status = wait_for_capture_signal(capture);
+    capture.stop();
+    log::info("[roon] test capture result peak={} queued_bytes={}", status.peak,
+              status.queued_bytes);
+    if (status.peak < 0.01f) {
+        log::warn("[roon] capture device is silent during test-capture");
+        fail(409, "capture device is silent; verify the selected Roon output is playing");
+        return true;
+    }
+    ok(json{{"ok", true}, {"peak", status.peak}, {"queued_bytes", status.queued_bytes}});
+    return true;
+}
+
+bool handle_volume(std::string_view body, const JsonResponder& ok, const ErrorResponder& fail) {
+    auto parsed    = parse_body(body);
+    auto output_id = parsed.is_object() ? required_string(parsed, "output_id") : std::string{};
+    if (output_id.empty() || !parsed.contains("value") || !parsed["value"].is_number()) {
+        fail(400, "output_id and numeric value are required");
+        return true;
+    }
+    std::string how = "absolute";
+    if (auto it = parsed.find("how"); it != parsed.end() && it->is_string())
+        how = it->get<std::string>();
+    roon::RoonControlClient client;
+    command_response(ok, fail, client.set_volume(output_id, parsed["value"].get<double>(), how));
+    return true;
 }
 
 } // namespace
 
-void wire_roon_routes(httplib::Server& svr, AudioSourceManager& mgr, ConfigStore& store) {
-    svr.Get("/api/source/roon/capture-devices",
-            [](const httplib::Request&, httplib::Response& res) {
-                cors(res);
-                ok(res, capture_devices_to_json());
-            });
-    svr.Get("/api/source/roon/status", [&](const httplib::Request&, httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
+bool dispatch_roon_route(std::string_view method, std::string_view path, std::string_view body,
+                         AudioSourceManager& mgr, ConfigStore& store, const JsonResponder& ok,
+                         const ErrorResponder& fail, const BodyResponder& send_body) {
+    if (is_route(method, path, "GET", "/api/source/roon/capture-devices")) {
+        ok(capture_devices_to_json());
+        return true;
+    }
+
+    if (is_route(method, path, "GET", "/api/source/roon/status")) {
+        if (!roon_registered(mgr, fail)) return true;
         roon::RoonControlClient client;
-        ok(res, roon_status_to_json(client.status()));
-    });
-    svr.Get("/api/source/roon/zones", [&](const httplib::Request&, httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
+        ok(roon_status_to_json(client.status()));
+        return true;
+    }
+    if (is_route(method, path, "GET", "/api/source/roon/zones")) {
+        if (!roon_registered(mgr, fail)) return true;
         roon::RoonControlClient client;
         auto zones = client.zones();
-        if (zones.empty() && !client.last_error().empty()) {
-            fail(res, 502, client.last_error());
-        } else {
-            ok(res, roon_zones_to_json(zones));
-        }
-    });
-    svr.Get("/api/source/roon/outputs", [&](const httplib::Request&, httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
+        zones.empty() && !client.last_error().empty() ? fail(502, client.last_error())
+                                                      : ok(roon_zones_to_json(zones));
+        return true;
+    }
+    if (is_route(method, path, "GET", "/api/source/roon/outputs")) {
+        if (!roon_registered(mgr, fail)) return true;
         roon::RoonControlClient client;
         auto outputs = client.outputs();
-        if (outputs.empty() && !client.last_error().empty()) {
-            fail(res, 502, client.last_error());
-        } else {
-            ok(res, roon_outputs_to_json(outputs));
-        }
-    });
-    svr.Post("/api/source/roon/select-zone",
-             [&](const httplib::Request& req, httplib::Response& res) {
-                 cors(res);
-                 if (!roon_registered(mgr, res)) return;
-                 auto body    = json::parse(req.body, nullptr, false);
-                 auto zone_id = body.is_object() ? required_string(body, "zone_id") : std::string{};
-                 if (zone_id.empty()) {
-                     fail(res, 400, "zone_id is required");
-                     return;
-                 }
-                 roon::RoonControlClient client;
-                 auto result = client.select_zone(zone_id);
-                 if (!result.ok) {
-                     command_response(res, result);
-                     return;
-                 }
-                 log::info("[roon] selected zone {}", zone_id);
-                 store.patch([&](Config& c) { c.roon.selected_zone_id = zone_id; });
-                 ok(res);
-             });
-    svr.Post("/api/source/roon/select-capture-device", [&](const httplib::Request& req,
-                                                           httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
-        auto body      = json::parse(req.body, nullptr, false);
-        auto device_id = body.is_object() ? required_string(body, "device_id") : std::string{};
-        if (device_id.empty()) {
-            fail(res, 400, "device_id is required");
-            return;
-        }
-        std::string name;
-        if (auto it = body.find("name"); it != body.end() && it->is_string())
-            name = it->get<std::string>();
-        log::info("[roon] selected capture device id={} name={}", device_id, name);
-        store.patch([&](Config& c) {
-            c.roon.capture_device_id   = device_id;
-            c.roon.capture_device_name = name;
-        });
-        ok(res);
-    });
-    svr.Post("/api/source/roon/test-capture", [&](const httplib::Request& req,
-                                                  httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
-        auto body      = json::parse(req.body, nullptr, false);
-        auto device_id = body.is_object() ? required_string(body, "device_id") : std::string{};
-        if (device_id.empty()) {
-            fail(res, 400, "device_id is required");
-            return;
-        }
-        audio::WasapiLoopbackCapture capture;
-        audio::WasapiLoopbackCaptureConfig cfg;
-        cfg.device_id  = device_id;
-        cfg.latency_ms = store.snapshot().roon.latency_ms;
-        cfg.queue_ms   = 250;
-        log::info("[roon] test capture requested device_id={}", device_id);
-        if (!capture.start(cfg)) {
-            fail(res, 502, capture.status().error);
-            return;
-        }
-        auto status = wait_for_capture_signal(capture);
-        capture.stop();
-        log::info("[roon] test capture result peak={} queued_bytes={}", status.peak,
-                  status.queued_bytes);
-        if (status.peak < 0.01f) {
-            log::warn("[roon] capture device is silent during test-capture");
-            fail(res, 409, "capture device is silent; verify the selected Roon output is playing");
-            return;
-        }
-        ok(res, json{{"ok", true}, {"peak", status.peak}, {"queued_bytes", status.queued_bytes}});
-    });
-    svr.Post("/api/source/roon/volume", [&](const httplib::Request& req, httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
-        auto body      = json::parse(req.body, nullptr, false);
-        auto output_id = body.is_object() ? required_string(body, "output_id") : std::string{};
-        if (output_id.empty() || !body.contains("value") || !body["value"].is_number()) {
-            fail(res, 400, "output_id and numeric value are required");
-            return;
-        }
-        std::string how = "absolute";
-        if (auto it = body.find("how"); it != body.end() && it->is_string())
-            how = it->get<std::string>();
-        roon::RoonControlClient client;
-        command_response(res, client.set_volume(output_id, body["value"].get<double>(), how));
-    });
-    svr.Post("/api/source/roon/reconnect", [&](const httplib::Request&, httplib::Response& res) {
-        cors(res);
-        if (!roon_registered(mgr, res)) return;
+        outputs.empty() && !client.last_error().empty() ? fail(502, client.last_error())
+                                                        : ok(roon_outputs_to_json(outputs));
+        return true;
+    }
+    const bool known_post =
+        is_route(method, path, "POST", "/api/source/roon/select-zone") ||
+        is_route(method, path, "POST", "/api/source/roon/select-capture-device") ||
+        is_route(method, path, "POST", "/api/source/roon/test-capture") ||
+        is_route(method, path, "POST", "/api/source/roon/volume") ||
+        is_route(method, path, "POST", "/api/source/roon/reconnect");
+    const bool known_get = is_route(method, path, "GET", "/api/source/roon/artwork/current");
+    if (!known_post && !known_get) return false;
+    if (!roon_registered(mgr, fail)) return true;
+
+    if (is_route(method, path, "POST", "/api/source/roon/select-zone"))
+        return handle_select_zone(body, store, ok, fail);
+    if (is_route(method, path, "POST", "/api/source/roon/select-capture-device"))
+        return handle_select_capture(body, store, ok, fail);
+    if (is_route(method, path, "POST", "/api/source/roon/test-capture"))
+        return handle_test_capture(body, store, ok, fail);
+    if (is_route(method, path, "POST", "/api/source/roon/volume"))
+        return handle_volume(body, ok, fail);
+    if (is_route(method, path, "POST", "/api/source/roon/reconnect")) {
         roon::RoonControlClient client;
         log::info("[roon] reconnect requested");
-        command_response(res, client.reconnect());
-    });
-    svr.Get("/api/source/roon/artwork/current",
-            [&](const httplib::Request&, httplib::Response& res) {
-                cors(res);
-                if (!roon_registered(mgr, res)) return;
-                proxy_artwork(res);
-            });
+        command_response(ok, fail, client.reconnect());
+        return true;
+    }
+    if (is_route(method, path, "GET", "/api/source/roon/artwork/current")) {
+        proxy_artwork(fail, send_body);
+        return true;
+    }
+    return false;
 }
 
 } // namespace fh6::http

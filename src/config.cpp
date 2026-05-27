@@ -89,6 +89,7 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.yt_dlp_path      = pick_path(ym, "yt_dlp_path");
     cfg.youtube_music.ffmpeg_path      = pick_path(ym, "ffmpeg_path");
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
+    cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
 
     const auto& ro       = section(root, "roon");
     cfg.roon.enabled     = pick<bool>(ro, "enabled", cfg.roon.enabled);
@@ -213,6 +214,7 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv_path("yt_dlp_path", cfg.youtube_music.yt_dlp_path);
     e.kv_path("ffmpeg_path", cfg.youtube_music.ffmpeg_path);
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
+    e.kv("shuffle", cfg.youtube_music.shuffle);
 
     e.header("roon");
     e.kv("enabled", cfg.roon.enabled);
