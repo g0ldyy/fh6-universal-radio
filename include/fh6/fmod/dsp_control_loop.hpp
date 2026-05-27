@@ -41,12 +41,16 @@ private:
     // no replacement written to +0x20).
     void recover_stale_dsp() noexcept;
 
+    void poll_media_keys() noexcept;
+
     DSPBridge& bridge_;
     const PEImage& img_;
     std::atomic<float> configured_gain_;
     MetadataInjector meta_;
     std::uint64_t prev_calls_ = 0;
     int stale_ticks_          = 0;
+    bool prev_next_key_       = false; // edge-detect VK_MEDIA_NEXT_TRACK
+    bool prev_prev_key_       = false; // edge-detect VK_MEDIA_PREV_TRACK
     std::jthread thread_;
 };
 

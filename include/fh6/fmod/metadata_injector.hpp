@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fh6::fmod_bridge {
 
@@ -25,17 +26,27 @@ namespace fh6::fmod_bridge {
 // leak is one buffer per outgrown overwrite.
 class MetadataInjector {
 public:
+    // Replace all current targets with a single one (backward-compat helper).
     void set_target(std::byte* sample_props_body) noexcept;
+
+    // Add a target without clearing existing ones. Used at discovery time to
+    // register every chain-valid RadioStreamFmod instance so metadata reaches
+    // the HUD whichever station the DSP happens to land on.
+    void add_target(std::byte* sample_props_body) noexcept;
+
+    // Remove all registered targets.
+    void clear_targets() noexcept;
 
     // Drops the cached strings so the next call rewrites unconditionally.
     void reset_cache() noexcept;
 
-    // Idempotent: writes only when title/artist differ from the last
-    // successful write. Returns true on a successful write (or no-op).
+    // Writes to every registered target. Idempotent: skips the write when
+    // title/artist match the last successful value. Returns true if at least
+    // one write succeeded (or was a no-op because the value didn't change).
     bool update(std::string_view title, std::string_view artist) noexcept;
 
 private:
-    std::byte* body_ = nullptr;
+    std::vector<std::byte*> bodies_;
     std::string last_title_;
     std::string last_artist_;
 };

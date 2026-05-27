@@ -3,6 +3,7 @@
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/log.hpp"
 
+#include <windows.h>
 #include <chrono>
 #include <cstring>
 
@@ -67,7 +68,13 @@ void ControlLoop::run(const std::stop_token& tok) {
         return;
     }
     bridge_.set_target(*chosen, fmod_system);
-    meta_.set_target(chosen->sample_props_body);
+
+    // Register every chain-valid instance so metadata reaches the HUD even
+    // when the DSP falls back to a station other than the primary target.
+    meta_.clear_targets();
+    for (const auto& inst : disc.instances)
+        meta_.add_target(inst.sample_props_body);
+
     log::info("[ctrl] targeting RadioStreamFmod @0x{:X} SoundName=\"{}\" SystemI*=0x{:X}",
               reinterpret_cast<uintptr_t>(chosen->radio_stream), chosen->sound_name,
               reinterpret_cast<uintptr_t>(fmod_system));
@@ -88,6 +95,8 @@ void ControlLoop::run(const std::stop_token& tok) {
             meta_tick = 0;
             push_metadata();
         }
+
+        poll_media_keys();
 
         // Staleness watchdog: while a source is actively producing audio,
         // FMOD's mixer should be invoking our read_callback every tick.
@@ -150,10 +159,31 @@ void ControlLoop::recover_stale_dsp() noexcept {
     if (!fmod_system) return;
 
     bridge_.set_target(*chosen, fmod_system);
-    meta_.set_target(chosen->sample_props_body);
+    meta_.add_target(chosen->sample_props_body); // keep existing targets, add if new
     log::info(R"([ctrl] DSP stale; recovered onto RadioStreamFmod @0x{:X} SoundName="{}")",
               reinterpret_cast<uintptr_t>(chosen->radio_stream), chosen->sound_name);
     // Next tick's retarget_if_needed installs the DSP on chosen's fresh handle.
+}
+
+void ControlLoop::poll_media_keys() noexcept {
+    // Numpad + / Numpad - skip forward and back. Edge-detect on the high bit
+    // so a held key only fires once.
+    const bool next_down = (GetAsyncKeyState(VK_ADD)      & 0x8000) != 0;
+    const bool prev_down = (GetAsyncKeyState(VK_SUBTRACT) & 0x8000) != 0;
+
+    if (next_down && !prev_next_key_) {
+        auto* src = bridge_.manager().active();
+        if (src) { src->next(); bridge_.manager().ring().drain(); }
+        log::info("[ctrl] media key: next track");
+    }
+    if (prev_down && !prev_prev_key_) {
+        auto* src = bridge_.manager().active();
+        if (src) { src->previous(); bridge_.manager().ring().drain(); }
+        log::info("[ctrl] media key: previous track");
+    }
+
+    prev_next_key_ = next_down;
+    prev_prev_key_ = prev_down;
 }
 
 void ControlLoop::push_metadata() noexcept {

@@ -104,11 +104,27 @@ bool write_string_slot(std::byte* target, std::string_view src) noexcept {
 } // namespace
 
 void MetadataInjector::set_target(std::byte* sample_props_body) noexcept {
-    if (body_ == sample_props_body) return;
-    body_ = sample_props_body;
+    bodies_.clear();
+    if (sample_props_body) {
+        bodies_.push_back(sample_props_body);
+        log::info("[meta] target set to SampleProperties body @0x{:X}",
+                  reinterpret_cast<uintptr_t>(sample_props_body));
+    }
     reset_cache();
-    log::info("[meta] target set to SampleProperties body @0x{:X}",
-              reinterpret_cast<uintptr_t>(body_));
+}
+
+void MetadataInjector::add_target(std::byte* sample_props_body) noexcept {
+    if (!sample_props_body) return;
+    for (auto* b : bodies_)
+        if (b == sample_props_body) return; // already registered
+    bodies_.push_back(sample_props_body);
+    log::info("[meta] added SampleProperties target @0x{:X} ({} total)",
+              reinterpret_cast<uintptr_t>(sample_props_body), bodies_.size());
+}
+
+void MetadataInjector::clear_targets() noexcept {
+    bodies_.clear();
+    reset_cache();
 }
 
 void MetadataInjector::reset_cache() noexcept {
@@ -117,30 +133,35 @@ void MetadataInjector::reset_cache() noexcept {
 }
 
 bool MetadataInjector::update(std::string_view title, std::string_view artist) noexcept {
-    if (!body_) return false;
+    if (bodies_.empty()) return false;
     if (title == last_title_ && artist == last_artist_) return true;
 
-    bool ok = true;
-    if (title != last_title_) {
-        if (write_string_slot(body_ + kTitleOffset, title)) {
-            last_title_.assign(title);
-        } else {
-            log::warn("[meta] title write failed (len={})", title.size());
-            ok = false;
+    bool any_ok = false;
+    for (auto* body : bodies_) {
+        bool ok = true;
+        if (title != last_title_) {
+            if (!write_string_slot(body + kTitleOffset, title)) {
+                log::warn("[meta] title write failed @0x{:X} (len={})",
+                          reinterpret_cast<uintptr_t>(body), title.size());
+                ok = false;
+            }
         }
-    }
-    if (artist != last_artist_) {
-        if (write_string_slot(body_ + kArtistOffset, artist)) {
-            last_artist_.assign(artist);
-        } else {
-            log::warn("[meta] artist write failed (len={})", artist.size());
-            ok = false;
+        if (artist != last_artist_) {
+            if (!write_string_slot(body + kArtistOffset, artist)) {
+                log::warn("[meta] artist write failed @0x{:X} (len={})",
+                          reinterpret_cast<uintptr_t>(body), artist.size());
+                ok = false;
+            }
         }
+        if (ok) any_ok = true;
     }
-    if (ok) {
-        log::info(R"([meta] wrote "{}" / "{}")", title, artist);
+    if (any_ok) {
+        last_title_.assign(title);
+        last_artist_.assign(artist);
+        log::info(R"([meta] wrote "{}" / "{}" to {} target(s))",
+                  title, artist, bodies_.size());
     }
-    return ok;
+    return any_ok;
 }
 
 } // namespace fh6::fmod_bridge
