@@ -243,6 +243,13 @@ void YouTubeMusicSource::shutdown() noexcept {
     stop_pipe_locked();
 }
 
+void YouTubeMusicSource::set_shuffle(bool shuffle) {
+    std::scoped_lock lk{mu_};
+    if (cfg_.shuffle == shuffle) return;
+    cfg_.shuffle = shuffle;
+    queue_built_for_.clear(); // force re-resolve with new order on next play
+}
+
 void YouTubeMusicSource::set_target(std::string url) {
     std::scoped_lock lk{mu_};
     target_url_ = std::move(url);

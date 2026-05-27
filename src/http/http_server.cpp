@@ -437,6 +437,9 @@ struct HttpServer::Impl {
         if (m == "PUT" && p == "/api/config") {
             auto patch = json::parse(req.body);
             store.patch([&](Config& c) { apply_patch(c, patch); });
+            // Propagate runtime-adjustable settings to live sources.
+            if (auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music"))
+                yt->set_shuffle(store.snapshot().youtube_music.shuffle);
             return ok(config_to_json(store.snapshot()));
         }
 

@@ -38,6 +38,10 @@ public:
     // URL / playlist to play next.
     void set_target(std::string url);
 
+    // Update shuffle at runtime; invalidates the cached queue so the next
+    // play re-resolves with the new order.
+    void set_shuffle(bool shuffle);
+
     TrackInfo current_track() const override;
     PlaybackState playback_state() const noexcept override {
         return state_.load(std::memory_order_acquire);
