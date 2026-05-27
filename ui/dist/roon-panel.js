@@ -164,7 +164,7 @@ export function createRoonPanel(deps) {
   }
 
   function roonSetupEnabled() {
-    return !!(getConfig()?.roon?.enabled || roonAvailable());
+    return roonAvailable();
   }
 
   function setupComplete() {
