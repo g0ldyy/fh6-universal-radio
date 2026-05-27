@@ -2,7 +2,6 @@
 #include "fh6/log.hpp"
 
 // miniaudio used only as a format-agnostic decoder into S16LE/48k/stereo.
-#define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_DEVICE_IO
 #define MA_NO_GENERATION
 #if defined(_MSC_VER)

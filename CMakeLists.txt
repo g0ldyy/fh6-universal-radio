@@ -27,6 +27,7 @@ add_library(version SHARED
     src/config_store.cpp
     src/ring_buffer.cpp
     src/source_registration.cpp
+    src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
     src/audio_source_manager.cpp
     src/fmod/pe_image.cpp
@@ -137,17 +138,21 @@ target_include_directories(roon_sidecar_process_tests PRIVATE
 
 add_executable(wasapi_loopback_capture_tests
     tests/wasapi_loopback_capture_tests.cpp
+    src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
+    src/ring_buffer.cpp
 )
 
 target_include_directories(wasapi_loopback_capture_tests PRIVATE
     include
+    third_party/miniaudio
 )
 
 target_link_libraries(wasapi_loopback_capture_tests PRIVATE ole32 uuid propsys)
 
 add_executable(http_server_routes_tests
     tests/http_server_routes_tests.cpp
+    src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
     src/audio_source_manager.cpp
     src/config.cpp
