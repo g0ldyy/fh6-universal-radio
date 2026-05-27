@@ -6,8 +6,8 @@
 #include <cstdio>
 #include <limits>
 
-// miniaudio used only as a format-agnostic decoder into S16LE/48k/stereo.
-// AAC/M4A/Opus/WMA fall through to the ffmpeg fallback below.
+// miniaudio decodes mp3/flac/wav/ogg to S16LE/48k/stereo; everything else
+// falls through to the ffmpeg fallback below.
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_DEVICE_IO
 #define MA_NO_GENERATION
@@ -46,18 +46,31 @@ bool extension_matches(const std::filesystem::path& p, const std::vector<std::st
     return std::ranges::find(exts, e) != exts.end();
 }
 
-// Run `ffmpeg -i <file>` with no output specified: ffmpeg writes the input
-// header (Duration, codec) to stderr then exits with an error. We parse the
-// duration line; total cost is one short-lived process per track open.
-std::uint64_t probe_duration_ms(const std::wstring& ff_bin, const std::filesystem::path& file) {
+struct ProbedMetadata {
+    std::uint64_t duration_ms = 0;
+    std::string title, artist, album;
+};
+
+bool ieq_str(std::string_view a, std::string_view b) noexcept {
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
+    return true;
+}
+
+// `ffmpeg -i <file>` with no output specified exits non-zero but first dumps
+// the input header (Duration + container Metadata block) to stderr.
+ProbedMetadata probe_metadata(const std::wstring& ff_bin, const std::filesystem::path& file) {
+    ProbedMetadata out;
+
     HANDLE job = create_kill_on_close_job();
-    if (!job) return 0;
+    if (!job) return out;
 
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
     HANDLE rd = nullptr, wr = nullptr;
     if (!CreatePipe(&rd, &wr, &sa, 1 << 16)) {
         CloseHandle(job);
-        return 0;
+        return out;
     }
     SetHandleInformation(rd, 0, HANDLE_FLAG_INHERIT);
 
@@ -73,7 +86,7 @@ std::uint64_t probe_duration_ms(const std::wstring& ff_bin, const std::filesyste
     if (!proc) {
         CloseHandle(rd);
         CloseHandle(job);
-        return 0;
+        return out;
     }
 
     std::string err;
@@ -84,14 +97,40 @@ std::uint64_t probe_duration_ms(const std::wstring& ff_bin, const std::filesyste
     CloseHandle(proc);
     CloseHandle(job);
 
-    auto pos = err.find("Duration:");
-    if (pos == std::string::npos) return 0;
-    pos += 9;
-    while (pos < err.size() && err[pos] == ' ') ++pos;
-    int h = 0, m = 0;
-    double s = 0.0;
-    if (std::sscanf(err.c_str() + pos, "%d:%d:%lf", &h, &m, &s) != 3) return 0;
-    return static_cast<std::uint64_t>((h * 3600 + m * 60) * 1000.0 + s * 1000.0);
+    if (auto pos = err.find("Duration:"); pos != std::string::npos) {
+        pos += 9;
+        while (pos < err.size() && err[pos] == ' ') ++pos;
+        int h = 0, m = 0;
+        double s = 0.0;
+        if (std::sscanf(err.c_str() + pos, "%d:%d:%lf", &h, &m, &s) == 3)
+            out.duration_ms = static_cast<std::uint64_t>((h * 3600 + m * 60) * 1000.0 + s * 1000.0);
+    }
+
+    // First non-empty match wins so the container block (emitted before any
+    // per-stream block) beats codec-internal "encoder" tags.
+    for (std::size_t lstart = 0; lstart < err.size();) {
+        auto nl   = err.find('\n', lstart);
+        auto stop = (nl == std::string::npos) ? err.size() : nl;
+        std::string_view line(err.data() + lstart, stop - lstart);
+        lstart = (nl == std::string::npos) ? err.size() : nl + 1;
+
+        while (!line.empty() && (line.front() == ' ' || line.front() == '\t'))
+            line.remove_prefix(1);
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+            line.remove_suffix(1);
+        auto colon = line.find(':');
+        if (colon == std::string_view::npos) continue;
+        auto key = line.substr(0, colon);
+        while (!key.empty() && key.back() == ' ') key.remove_suffix(1);
+        auto val = line.substr(colon + 1);
+        while (!val.empty() && val.front() == ' ') val.remove_prefix(1);
+        if (val.empty()) continue;
+
+        if (out.title.empty()       && ieq_str(key, "title"))  out.title.assign(val);
+        else if (out.artist.empty() && ieq_str(key, "artist")) out.artist.assign(val);
+        else if (out.album.empty()  && ieq_str(key, "album"))  out.album.assign(val);
+    }
+    return out;
 }
 
 } // namespace
@@ -186,9 +225,16 @@ bool LocalFileSource::open_track(std::size_t index) {
 
     dec_->close_all();
 
+    auto meta = probe_metadata(ffmpeg_path_.empty() ? L"ffmpeg" : ffmpeg_path_.wstring(), path);
+    dec_->info.duration_ms = meta.duration_ms;
+    dec_->info.title       = std::move(meta.title);
+    dec_->info.artist      = std::move(meta.artist);
+    dec_->info.album       = std::move(meta.album);
+
     ma_decoder_config mc = ma_decoder_config_init(ma_format_s16, 2, kSampleRate);
     if (ma_decoder_init_file(path.string().c_str(), &mc, &dec_->ma) == MA_SUCCESS) {
-        dec_->ma_open    = true;
+        dec_->ma_open = true;
+        // Decoded frame count beats ffmpeg's header duration on VBR MP3s.
         ma_uint64 frames = 0;
         if (ma_decoder_get_length_in_pcm_frames(&dec_->ma, &frames) == MA_SUCCESS)
             dec_->info.duration_ms = (frames * 1000ull) / kSampleRate;
@@ -199,8 +245,8 @@ bool LocalFileSource::open_track(std::size_t index) {
         return false;
     }
 
-    dec_->info.title = path.stem().string();
-    dec_->info.album = path.parent_path().filename().string();
+    if (dec_->info.title.empty()) dec_->info.title = path.stem().string();
+    if (dec_->info.album.empty()) dec_->info.album = path.parent_path().filename().string();
     position_ms_.store(0, std::memory_order_release);
 
     float gain_db = std::numeric_limits<float>::quiet_NaN();
@@ -214,8 +260,6 @@ bool LocalFileSource::open_track(std::size_t index) {
 
 bool LocalFileSource::open_track_ffmpeg(const std::filesystem::path& path) {
     const std::wstring ff = ffmpeg_path_.empty() ? L"ffmpeg" : ffmpeg_path_.wstring();
-
-    dec_->info.duration_ms = probe_duration_ms(ff, path);
 
     auto* d = dec_.get();
     d->ff_job = create_kill_on_close_job();
@@ -353,7 +397,6 @@ void LocalFileSource::pump(RingBuffer& ring) {
         return;
     }
 
-    // ffmpeg fallback path: drain the PCM pipe.
     auto update_position = [&] {
         const std::uint64_t queued = ring.readable();
         const std::uint64_t played =
