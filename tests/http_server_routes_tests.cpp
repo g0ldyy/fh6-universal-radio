@@ -2,6 +2,7 @@
 #include "fh6/config_store.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/http/http_server.hpp"
+#include "fh6/sources/roon_source.hpp"
 
 #include <winsock2.h>
 
@@ -61,6 +62,26 @@ httplib::Result wait_get(uint16_t port, const char* path) {
     return {};
 }
 
+httplib::Result wait_post(uint16_t port, const char* path, const char* body) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+    while (std::chrono::steady_clock::now() < deadline) {
+        httplib::Client client{"127.0.0.1", port};
+        if (auto res = client.Post(path, body, "application/json")) return res;
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
+    return {};
+}
+
+void require_json_error(const httplib::Result& res, int status, const char* message) {
+    require(res, message);
+    require(res->status == status, message);
+    require(res->get_header_value("Access-Control-Allow-Origin") == "*",
+            "error responses should include CORS");
+    auto body = nlohmann::json::parse(res->body);
+    require(body.contains("error") && body["error"].is_string(),
+            "error responses should return JSON error");
+}
+
 } // namespace
 
 int main() {
@@ -92,6 +113,36 @@ int main() {
             require(device.contains("is_default") && device["is_default"].is_boolean(),
                     "capture devices should include boolean is_default");
         }
+
+        for (const char* path : {"/api/source/roon/status", "/api/source/roon/zones",
+                                 "/api/source/roon/outputs",
+                                 "/api/source/roon/artwork/current"}) {
+            require_json_error(wait_get(port, path), 404,
+                               "unregistered Roon GET route should return JSON 404");
+        }
+        for (const char* path : {"/api/source/roon/select-zone",
+                                 "/api/source/roon/select-capture-device",
+                                 "/api/source/roon/test-capture", "/api/source/roon/volume",
+                                 "/api/source/roon/reconnect"}) {
+            require_json_error(wait_post(port, path, "{}"), 404,
+                               "unregistered Roon POST route should return JSON 404");
+        }
+
+        fh6::RoonConfig roon_cfg;
+        roon_cfg.enabled = true;
+        roon_cfg.auto_start_bridge = false;
+        auto roon = std::make_unique<fh6::sources::RoonSource>(roon_cfg);
+        require(roon->initialize(), "test Roon source should initialize");
+        mgr.register_source(std::move(roon));
+
+        require_json_error(wait_post(port, "/api/source/roon/select-zone", "{}"), 400,
+                           "select-zone should reject missing zone_id");
+        require_json_error(wait_post(port, "/api/source/roon/select-capture-device", "{}"), 400,
+                           "select-capture-device should reject missing device_id");
+        require_json_error(wait_post(port, "/api/source/roon/test-capture", "{}"), 400,
+                           "test-capture should reject missing device_id");
+        require_json_error(wait_post(port, "/api/source/roon/volume", R"({"output_id":"out"})"),
+                           400, "volume should reject missing value");
 
         std::filesystem::remove_all(root);
     } catch (const std::exception& e) {

@@ -1,12 +1,12 @@
 #include "fh6/http/http_server.hpp"
 #include "fh6/audio_source_manager.hpp"
-#include "fh6/audio/wasapi_loopback_capture.hpp"
 #include "fh6/config_store.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/http/config_json.hpp"
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "roon_routes.hpp"
 
 #include <winsock2.h>
 
@@ -83,18 +83,6 @@ json source_to_json(IAudioSource* s) {
     if (auto* lf = dynamic_cast<sources::LocalFileSource*>(s))
         j["details"]["track_count"] = lf->track_count();
     return j;
-}
-
-json capture_devices_to_json() {
-    json devices = json::array();
-    for (const auto& device : audio::enumerate_render_devices()) {
-        devices.push_back(json{
-            {"id", device.id},
-            {"name", device.name},
-            {"is_default", device.is_default},
-        });
-    }
-    return json{{"devices", std::move(devices)}};
 }
 
 void cors(httplib::Response& res) {
@@ -205,7 +193,6 @@ struct HttpServer::Impl {
     template <class T> T* find_typed(std::string_view name) const {
         return dynamic_cast<T*>(find(name));
     }
-
     void wire_routes() {
         svr.Options(R"(/.*)", [](const httplib::Request&, httplib::Response& r) { cors(r); });
 
@@ -334,11 +321,7 @@ struct HttpServer::Impl {
                     }
                     ok(r, json{{"tracks", lf->playlist_snapshot()}});
                 });
-        svr.Get("/api/source/roon/capture-devices",
-                [](const httplib::Request&, httplib::Response& r) {
-                    cors(r);
-                    ok(r, capture_devices_to_json());
-                });
+        wire_roon_routes(svr, mgr, store);
 
         // Config editing
         svr.Get("/api/config", [this](const httplib::Request&, httplib::Response& r) {
