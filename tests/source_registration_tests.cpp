@@ -62,7 +62,8 @@ int main() {
 
     require(mgr.switch_to("roon"), "default_source roon should be switchable after registration");
     require(mgr.active() == roon, "switch_to roon should make Roon active");
-    require(roon->playback_state() == fh6::PlaybackState::playing, "switch_to should play Roon");
+    require(roon->playback_state() == fh6::PlaybackState::stopped,
+            "incomplete Roon capture setup should not start playback");
 
     const std::uint32_t marker = 0x12345678u;
     require(mgr.ring().write(&marker, sizeof(marker)) == sizeof(marker), "test should seed ring data");

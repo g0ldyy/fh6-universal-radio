@@ -76,6 +76,8 @@ target_include_directories(config_roundtrip_tests PRIVATE
 
 add_executable(roon_source_tests
     tests/roon_source_tests.cpp
+    src/audio/miniaudio.cpp
+    src/audio/wasapi_loopback_capture.cpp
     src/log.cpp
     src/roon/roon_sidecar_process.cpp
     src/ring_buffer.cpp
@@ -84,10 +86,15 @@ add_executable(roon_source_tests
 
 target_include_directories(roon_source_tests PRIVATE
     include
+    third_party/miniaudio
 )
+
+target_link_libraries(roon_source_tests PRIVATE ole32 uuid propsys)
 
 add_executable(source_registration_tests
     tests/source_registration_tests.cpp
+    src/audio/miniaudio.cpp
+    src/audio/wasapi_loopback_capture.cpp
     src/audio_source_manager.cpp
     src/log.cpp
     src/ring_buffer.cpp
@@ -98,7 +105,10 @@ add_executable(source_registration_tests
 
 target_include_directories(source_registration_tests PRIVATE
     include
+    third_party/miniaudio
 )
+
+target_link_libraries(source_registration_tests PRIVATE ole32 uuid propsys)
 
 add_executable(youtube_music_runtime_tests
     tests/youtube_music_runtime_tests.cpp
