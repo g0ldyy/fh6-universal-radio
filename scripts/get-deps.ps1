@@ -1,4 +1,4 @@
-# Downloads the four single-header dependencies into third_party/.
+# Downloads the three single-header dependencies into third_party/.
 # Run this once after cloning the project, before configuring CMake.
 #
 #   PS> .\scripts\get-deps.ps1
@@ -10,8 +10,6 @@ $root = Split-Path -Parent $PSScriptRoot
 $tp   = Join-Path $root "third_party"
 
 $deps = @(
-    @{ Url = "https://raw.githubusercontent.com/yhirose/cpp-httplib/master/httplib.h";
-       Out = "cpp-httplib/httplib.h" },
     @{ Url = "https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp";
        Out = "nlohmann/nlohmann/json.hpp" },
     @{ Url = "https://raw.githubusercontent.com/ToruNiina/toml11/main/single_include/toml.hpp";
