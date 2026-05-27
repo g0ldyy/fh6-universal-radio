@@ -7,16 +7,13 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "roon_routes.hpp"
-
 #include <nlohmann/json.hpp>
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
-
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -28,13 +25,10 @@
 #include <string_view>
 #include <thread>
 #include <utility>
-
 namespace fh6::http {
 
 using json = nlohmann::json;
-
 namespace {
-
 constexpr const char* state_string(PlaybackState s) noexcept {
     switch (s) {
         case PlaybackState::stopped: return "stopped";

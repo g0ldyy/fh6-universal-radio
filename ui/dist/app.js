@@ -1,10 +1,8 @@
 // FH6 Universal Radio dashboard. Vanilla JS, no build step. `state` holds
 // the latest /api/state; `cfg` holds the latest /api/config. Render functions
 // are idempotent and only touch nodes whose displayed value changed.
-
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-
 const api = {
   async get(path)        { return (await fetch(path)).json(); },
   async send(path, body, method = "POST") {
@@ -17,7 +15,6 @@ const api = {
     return r.json().catch(() => ({}));
   },
 };
-
 let state = null;
 let cfg   = null;
 const roon  = {
@@ -30,13 +27,11 @@ const roon  = {
   loading: false,
   fetchedAt: 0,
 };
-
 const fmt = ms => {
   if (!ms || ms < 0) return "0:00";
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
-
 const toast = (msg, isErr = false) => {
   const el = document.createElement("div");
   el.className = "toast" + (isErr ? " err" : "");
@@ -44,10 +39,8 @@ const toast = (msg, isErr = false) => {
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2400);
 };
-
 // Only write when the displayed value changes, to avoid cursor jumps in inputs.
 const setText = (el, v) => { if (el && el.textContent !== String(v)) el.textContent = v; };
-
 const roonAvailable = () => state?.sources?.available?.some(s => s.name === "roon");
 
 function cfgRoon() {

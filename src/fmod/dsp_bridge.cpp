@@ -5,14 +5,10 @@
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/log.hpp"
 #include "fh6/safe_mem.hpp"
-
 #include <algorithm>
 #include <cstring>
-
 namespace fh6::fmod_bridge {
-
 namespace {
-
 struct FMODSig {
     const char* anchor;
     const char* pattern;
@@ -38,12 +34,10 @@ constexpr FMODSig kAnchored[] = {
                                 "40 53 48 83 EC 20|"
                                 "48 89 5C 24 08 57 48 83 EC 20"},
 };
-
 // FMOD_LOOP_NORMAL: makes the channel loop forever on its source sample.
 // Set once at install time so the placeholder sample doesn't end and
 // drop the channel out from under our DSP.
 constexpr uint32_t kFmodLoopNormal = 0x2;
-
 // FMOD's `Handle::open` / `Handle::unlock` have no .rdata anchor; we match
 // their (unique) prologues directly.
 constexpr const char* kResolverPattern =
@@ -51,7 +45,6 @@ constexpr const char* kResolverPattern =
     "8B C1 C1 EF 11 49 8B F0 D1 E8 81 E7 FF 0F 00 00 0F B7 E8 4C 8B "
     "F2 4C 8B F9";
 constexpr const char* kUnlockPattern = "48 8B 89 F0 09 01 00 48 85 C9 0F 85 ?? ?? ?? ?? 33 C0 C3";
-
 DSPBridge* g_bridge = nullptr;
 
 // FMOD Studio Core API DSP descriptor (216 bytes). Zero-valued fields are
