@@ -62,9 +62,10 @@ FH6 Universal Radio
 Thanks for grabbing this. It's a free, open-source mod that drops a
 brand new station into Forza Horizon 6's radio dial. You feed it audio
 either from a folder of music files on your PC, or from any YouTube /
-YouTube Music link, and the game treats the result like every other
-station -- it ducks for menus, follows your in-game volume slider, and
-fades on the loading screen.
+YouTube Music link, or from a Roon zone captured through Windows
+loopback audio. The game treats the result like every other station --
+it ducks for menus, follows your in-game volume slider, and fades on
+the loading screen.
 
 
 Getting it running
@@ -121,6 +122,20 @@ From there:
 
     For age-gated or private content, export your browser's cookies
     as a Netscape cookies.txt and load that from the same panel.
+
+  * Roon Source -- enable Roon in Settings > Roon, then authorize
+    "FH6 Universal Radio" in Roon Settings > Extensions. Pick the Roon
+    zone to control, then pick the Windows capture device that receives
+    that zone's audio and run Test capture. A dedicated output or
+    virtual audio cable is recommended when you want FH6 isolated from
+    your normal speakers. This is not Roon Ready and does not implement
+    RAAT; the sidecar only handles Roon control, metadata, and artwork.
+
+    Roon needs Node.js 20 or newer on PATH, or node_path set in
+    fh6-radio/config.toml. Sidecar logs are written to:
+
+      fh6-radio\roon-sidecar.out.log
+      fh6-radio\roon-sidecar.err.log
 
 Edits save the moment you change them -- no need to bounce the game.
 

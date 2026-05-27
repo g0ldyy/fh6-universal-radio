@@ -13,9 +13,18 @@ npm start -- --host 127.0.0.1 --port 47821
 The HTTP API binds to `127.0.0.1` by default and exposes JSON endpoints for health,
 status, zone selection, transport, volume, reconnect, and current artwork.
 
-Authorize `FH6 Universal Radio` in Roon Settings when the extension appears.
+The packaged mod starts this process automatically when `[roon].auto_start_bridge`
+is true. A local Node.js 20+ runtime is still required; leave `[roon].node_path`
+blank to use `node.exe` from `PATH`, or set it to an absolute path.
+
+Authorize `FH6 Universal Radio` in **Roon Settings > Extensions** when the
+extension appears.
 The sidecar stores only Roon extension authorization state through the official Roon API.
 It does not store Roon account credentials.
+
+This process is control-only. PCM audio is not sent through the sidecar; FH6
+Universal Radio captures the selected Windows render endpoint through WASAPI
+loopback inside `version.dll`.
 
 ## Local API
 
@@ -30,3 +39,15 @@ It does not store Roon account credentials.
 - `POST /reconnect`
 
 Allowed transport controls are `play`, `pause`, `playpause`, `stop`, `previous`, and `next`.
+
+## Logs and failure behavior
+
+When the C++ mod starts the sidecar, stdout and stderr are written next to the
+game:
+
+- `fh6-radio\roon-sidecar.out.log`
+- `fh6-radio\roon-sidecar.err.log`
+
+The sidecar binds only to `127.0.0.1` by default. If it exits, cannot find a
+Roon Core, or remains unauthorized, the game should keep running and Web Control
+should surface an actionable Roon status.
