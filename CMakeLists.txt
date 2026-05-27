@@ -33,6 +33,7 @@ add_library(version SHARED
     src/fmod/dsp_bridge.cpp
     src/fmod/dsp_control_loop.cpp
     src/fmod/metadata_injector.cpp
+    src/http/config_json.cpp
     src/http/http_server.cpp
     src/sources/local_file_source.cpp
     src/sources/youtube_music_support.cpp
@@ -52,4 +53,17 @@ target_link_libraries(version PRIVATE ws2_32 bcrypt psapi)
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version
     PREFIX ""
+)
+
+add_executable(config_roundtrip_tests
+    tests/config_roundtrip_tests.cpp
+    src/config.cpp
+    src/http/config_json.cpp
+    src/log.cpp
+)
+
+target_include_directories(config_roundtrip_tests PRIVATE
+    include
+    third_party/nlohmann
+    third_party/toml11
 )

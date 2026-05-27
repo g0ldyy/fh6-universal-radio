@@ -2,6 +2,7 @@
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/config_store.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
+#include "fh6/http/config_json.hpp"
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
@@ -81,85 +82,6 @@ json source_to_json(IAudioSource* s) {
     if (auto* lf = dynamic_cast<sources::LocalFileSource*>(s))
         j["details"]["track_count"] = lf->track_count();
     return j;
-}
-
-std::string path_s(const std::filesystem::path& p) {
-    return p.empty() ? std::string{} : p.string();
-}
-
-json config_to_json(const Config& c) {
-    return json{
-        {"general",
-         json{
-             {"port", c.general.port},
-             {"ring_buffer_mb", c.general.ring_buffer_mb},
-             {"default_source", c.general.default_source},
-             {"fallback_source", c.general.fallback_source},
-         }},
-        {"local_files",
-         json{
-             {"enabled", c.local_files.enabled},
-             {"music_dir", path_s(c.local_files.music_dir)},
-             {"recursive", c.local_files.recursive},
-             {"shuffle", c.local_files.shuffle},
-             {"supported_formats", c.local_files.supported_formats},
-         }},
-        {"youtube_music",
-         json{
-             {"enabled", c.youtube_music.enabled},
-             {"cookies_path", path_s(c.youtube_music.cookies_path)},
-             {"yt_dlp_path", path_s(c.youtube_music.yt_dlp_path)},
-             {"ffmpeg_path", path_s(c.youtube_music.ffmpeg_path)},
-             {"default_playlist", c.youtube_music.default_playlist},
-         }},
-        {"audio",
-         json{
-             {"output_gain", c.audio.output_gain},
-         }},
-    };
-}
-
-template <class T> T pull(const json& tbl, const char* k, T fallback) {
-    if (auto it = tbl.find(k); it != tbl.end() && !it->is_null()) {
-        try {
-            return it->get<T>();
-        } catch (...) {}
-    }
-    return fallback;
-}
-std::filesystem::path pull_path(const json& tbl, const char* k,
-                                const std::filesystem::path& fallback) {
-    auto s = pull<std::string>(tbl, k, path_s(fallback));
-    return s.empty() ? std::filesystem::path{} : std::filesystem::path{s};
-}
-
-// Deep-merge a partial JSON patch into Config. Absent keys keep their value.
-void apply_patch(Config& c, const json& j) {
-    if (auto it = j.find("general"); it != j.end()) {
-        c.general.port            = pull(*it, "port", c.general.port);
-        c.general.ring_buffer_mb  = pull(*it, "ring_buffer_mb", c.general.ring_buffer_mb);
-        c.general.default_source  = pull(*it, "default_source", c.general.default_source);
-        c.general.fallback_source = pull(*it, "fallback_source", c.general.fallback_source);
-    }
-    if (auto it = j.find("local_files"); it != j.end()) {
-        c.local_files.enabled   = pull(*it, "enabled", c.local_files.enabled);
-        c.local_files.music_dir = pull_path(*it, "music_dir", c.local_files.music_dir);
-        c.local_files.recursive = pull(*it, "recursive", c.local_files.recursive);
-        c.local_files.shuffle   = pull(*it, "shuffle", c.local_files.shuffle);
-        if (auto fmts = it->find("supported_formats"); fmts != it->end() && fmts->is_array())
-            c.local_files.supported_formats = fmts->get<std::vector<std::string>>();
-    }
-    if (auto it = j.find("youtube_music"); it != j.end()) {
-        c.youtube_music.enabled      = pull(*it, "enabled", c.youtube_music.enabled);
-        c.youtube_music.cookies_path = pull_path(*it, "cookies_path", c.youtube_music.cookies_path);
-        c.youtube_music.yt_dlp_path  = pull_path(*it, "yt_dlp_path", c.youtube_music.yt_dlp_path);
-        c.youtube_music.ffmpeg_path  = pull_path(*it, "ffmpeg_path", c.youtube_music.ffmpeg_path);
-        c.youtube_music.default_playlist =
-            pull(*it, "default_playlist", c.youtube_music.default_playlist);
-    }
-    if (auto it = j.find("audio"); it != j.end()) {
-        c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
-    }
 }
 
 void cors(httplib::Response& res) {
@@ -409,7 +331,7 @@ struct HttpServer::Impl {
             cors(r);
             try {
                 auto patch = json::parse(q.body);
-                store.patch([&](Config& c) { apply_patch(c, patch); });
+                store.patch([&](Config& c) { apply_config_patch(c, patch); });
                 ok(r, config_to_json(store.snapshot()));
             } catch (const std::exception& e) {
                 fail(r, 400, e.what());

@@ -4,6 +4,7 @@
 #include <toml.hpp>
 
 #include <fstream>
+#include <limits>
 #include <system_error>
 
 namespace fh6 {
@@ -19,9 +20,22 @@ template <class T> T pick(const toml::value& tbl, const char* key, T fallback) {
     }
 }
 
-std::filesystem::path pick_path(const toml::value& tbl, const char* key) {
-    auto s = pick<std::string>(tbl, key, "");
+std::filesystem::path pick_path(const toml::value& tbl, const char* key,
+                                const std::filesystem::path& fallback = {}) {
+    auto s = pick<std::string>(tbl, key, fallback.empty() ? std::string{} : fallback.string());
     return s.empty() ? std::filesystem::path{} : std::filesystem::path{s};
+}
+
+uint32_t pick_u32(const toml::value& tbl, const char* key, uint32_t fallback) {
+    try {
+        if (!tbl.contains(key)) return fallback;
+        const auto v              = toml::find<int64_t>(tbl, key);
+        constexpr auto kMaxUint32 = static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
+        if (v < 0 || v > kMaxUint32) return fallback;
+        return static_cast<uint32_t>(v);
+    } catch (...) {
+        return fallback;
+    }
 }
 
 const toml::value& section(const toml::value& root, const char* key) {
@@ -75,6 +89,26 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.yt_dlp_path      = pick_path(ym, "yt_dlp_path");
     cfg.youtube_music.ffmpeg_path      = pick_path(ym, "ffmpeg_path");
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
+
+    const auto& ro       = section(root, "roon");
+    cfg.roon.enabled     = pick<bool>(ro, "enabled", cfg.roon.enabled);
+    cfg.roon.node_path   = pick_path(ro, "node_path", cfg.roon.node_path);
+    cfg.roon.bridge_path = pick_path(ro, "bridge_path", cfg.roon.bridge_path);
+    cfg.roon.selected_core_id =
+        pick<std::string>(ro, "selected_core_id", cfg.roon.selected_core_id);
+    cfg.roon.selected_zone_id =
+        pick<std::string>(ro, "selected_zone_id", cfg.roon.selected_zone_id);
+    cfg.roon.selected_output_id =
+        pick<std::string>(ro, "selected_output_id", cfg.roon.selected_output_id);
+    cfg.roon.capture_device_id =
+        pick<std::string>(ro, "capture_device_id", cfg.roon.capture_device_id);
+    cfg.roon.capture_device_name =
+        pick<std::string>(ro, "capture_device_name", cfg.roon.capture_device_name);
+    cfg.roon.control_volume    = pick<bool>(ro, "control_volume", cfg.roon.control_volume);
+    cfg.roon.auto_start_bridge = pick<bool>(ro, "auto_start_bridge", cfg.roon.auto_start_bridge);
+    cfg.roon.auto_reconnect    = pick<bool>(ro, "auto_reconnect", cfg.roon.auto_reconnect);
+    cfg.roon.latency_ms        = pick_u32(ro, "latency_ms", cfg.roon.latency_ms);
+    cfg.roon.metadata_poll_ms  = pick_u32(ro, "metadata_poll_ms", cfg.roon.metadata_poll_ms);
 
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
@@ -179,6 +213,21 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv_path("yt_dlp_path", cfg.youtube_music.yt_dlp_path);
     e.kv_path("ffmpeg_path", cfg.youtube_music.ffmpeg_path);
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
+
+    e.header("roon");
+    e.kv("enabled", cfg.roon.enabled);
+    e.kv_path("node_path", cfg.roon.node_path);
+    e.kv_path("bridge_path", cfg.roon.bridge_path);
+    e.kv("selected_core_id", cfg.roon.selected_core_id);
+    e.kv("selected_zone_id", cfg.roon.selected_zone_id);
+    e.kv("selected_output_id", cfg.roon.selected_output_id);
+    e.kv("capture_device_id", cfg.roon.capture_device_id);
+    e.kv("capture_device_name", cfg.roon.capture_device_name);
+    e.kv("control_volume", cfg.roon.control_volume);
+    e.kv("auto_start_bridge", cfg.roon.auto_start_bridge);
+    e.kv("auto_reconnect", cfg.roon.auto_reconnect);
+    e.kv("latency_ms", (int64_t)cfg.roon.latency_ms);
+    e.kv("metadata_poll_ms", (int64_t)cfg.roon.metadata_poll_ms);
 
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);

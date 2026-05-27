@@ -29,6 +29,23 @@ struct YouTubeMusicConfig {
     std::string default_playlist;
 };
 
+struct RoonConfig {
+    bool enabled = false;
+    std::filesystem::path node_path;
+    std::filesystem::path bridge_path =
+        std::filesystem::path{"tools"} / "roon-bridge" / "index.mjs";
+    std::string selected_core_id;
+    std::string selected_zone_id;
+    std::string selected_output_id;
+    std::string capture_device_id;
+    std::string capture_device_name;
+    bool control_volume       = true;
+    bool auto_start_bridge    = true;
+    bool auto_reconnect       = true;
+    uint32_t latency_ms       = 250;
+    uint32_t metadata_poll_ms = 750;
+};
+
 struct AudioConfig {
     float output_gain = 1.0f;
 };
@@ -37,6 +54,7 @@ struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
     YouTubeMusicConfig youtube_music;
+    RoonConfig roon;
     AudioConfig audio;
 };
 
