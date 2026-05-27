@@ -26,6 +26,7 @@ add_library(version SHARED
     src/config.cpp
     src/config_store.cpp
     src/ring_buffer.cpp
+    src/source_registration.cpp
     src/audio_source_manager.cpp
     src/fmod/pe_image.cpp
     src/fmod/sig_scanner.cpp
@@ -76,5 +77,18 @@ add_executable(roon_source_tests
 )
 
 target_include_directories(roon_source_tests PRIVATE
+    include
+)
+
+add_executable(source_registration_tests
+    tests/source_registration_tests.cpp
+    src/audio_source_manager.cpp
+    src/log.cpp
+    src/ring_buffer.cpp
+    src/source_registration.cpp
+    src/sources/roon_source.cpp
+)
+
+target_include_directories(source_registration_tests PRIVATE
     include
 )

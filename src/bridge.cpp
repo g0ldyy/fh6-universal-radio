@@ -4,12 +4,14 @@
 #include "fh6/log.hpp"
 #include "fh6/config.hpp"
 #include "fh6/config_store.hpp"
+#include "fh6/source_registration.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/pe_image.hpp"
 #include "fh6/http/http_server.hpp"
 #include "fh6/sources/local_file_source.hpp"
+#include "fh6/sources/roon_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 
 #include <windows.h>
@@ -117,6 +119,7 @@ void run_bridge(HMODULE self) noexcept {
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
+        sync_roon_source(mgr, c.roon);
     };
 
     sync_sources(cfg);
