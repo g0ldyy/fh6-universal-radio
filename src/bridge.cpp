@@ -50,7 +50,6 @@ bool verify_ui_credits(const std::filesystem::path& ui_dir) {
         log::error("[bridge] webui index.html missing or unreadable at {}", index.string());
         return false;
     }
-
     constexpr std::array<std::string_view, 5> required = {
         "g0ldyy",                                // author attribution
         "GPLv3",                                 // license credit
@@ -81,7 +80,6 @@ void run_bridge(HMODULE self) noexcept {
     log::info("[bridge] FH6 Universal Radio starting; data_dir={}", data_dir.string());
 
     const auto ui_dir = data_dir / "ui";
-
     if (!verify_ui_credits(ui_dir)) {
         log::error("[bridge] aborting startup: webui credits/donation links check failed");
         return;
@@ -132,7 +130,10 @@ void run_bridge(HMODULE self) noexcept {
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
     if (fns.ready())
-        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.audio.output_gain);
+        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.playback,
+                                                          cfg.audio.output_gain);
+
+    for (auto* s : mgr.sources_snapshot()) s->set_playback_options(cfg.playback);
 
     store.on_change([&bridge, &mgr, sync_sources, ctrl_ptr = ctrl.get()](const Config& c) {
         sync_sources(c);
@@ -155,6 +156,9 @@ void run_bridge(HMODULE self) noexcept {
         if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
             yt->set_shuffle(c.youtube_music.shuffle);
         }
+
+        for (auto* s : mgr.sources_snapshot()) s->set_playback_options(c.playback);
+        if (ctrl_ptr) ctrl_ptr->push_playback_options(c.playback);
     });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};

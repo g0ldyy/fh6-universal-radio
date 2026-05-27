@@ -1,6 +1,8 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/log.hpp"
 
+#include <limits>
+
 // miniaudio used only as a format-agnostic decoder into S16LE/48k/stereo.
 #define MINIAUDIO_IMPLEMENTATION
 #define MA_NO_DEVICE_IO
@@ -112,6 +114,13 @@ bool LocalFileSource::open_track(std::size_t index) {
     if (ma_decoder_get_length_in_pcm_frames(&dec_->ma, &frames) == MA_SUCCESS)
         dec_->info.duration_ms = (frames * 1000ull) / 48000ull;
     position_ms_.store(0, std::memory_order_release);
+
+    float gain_db = std::numeric_limits<float>::quiet_NaN();
+    float peak    = std::numeric_limits<float>::quiet_NaN();
+    parse_replaygain_file(path, gain_db, peak);
+    loudness_coef_.store(compute_loudness_correction(gain_db, peak),
+                         std::memory_order_release);
+
     log::info("[local] now playing: {}", path.string());
     return true;
 }
@@ -126,6 +135,22 @@ void LocalFileSource::play() {
 }
 
 void LocalFileSource::pause() { state_.store(PlaybackState::paused, std::memory_order_release); }
+
+bool LocalFileSource::skip_next() {
+    std::scoped_lock lk{mu_};
+    if (playlist_.empty() || !open_track(cursor_ + 1)) return false;
+    state_.store(PlaybackState::playing, std::memory_order_release);
+    return true;
+}
+
+bool LocalFileSource::restart_current() {
+    std::scoped_lock lk{mu_};
+    if (!dec_->open) return false;
+    if (ma_decoder_seek_to_pcm_frame(&dec_->ma, 0) != MA_SUCCESS) return false;
+    position_ms_.store(0, std::memory_order_release);
+    state_.store(PlaybackState::playing, std::memory_order_release);
+    return true;
+}
 
 void LocalFileSource::stop() {
     close_current();
@@ -152,6 +177,9 @@ void LocalFileSource::pump(RingBuffer& ring) {
 
     constexpr std::size_t kChunkFrames = 4096;
     constexpr std::size_t kFrameBytes  = 4;
+    const float rg = volume_norm_.load(std::memory_order_acquire)
+                         ? loudness_coef_.load(std::memory_order_acquire)
+                         : 1.0f;
     while (ring.writable() >= kChunkFrames * kFrameBytes) {
         int16_t scratch[kChunkFrames * 2];
         ma_uint64 read = 0;
@@ -162,6 +190,16 @@ void LocalFileSource::pump(RingBuffer& ring) {
             open_track(cursor_ + 1);
             return;
         }
+        if (rg != 1.0f) {
+            const std::size_t n = static_cast<std::size_t>(read) * 2;
+            for (std::size_t i = 0; i < n; ++i) {
+                float s = static_cast<float>(scratch[i]) * rg;
+                if (s >  32767.0f) s =  32767.0f;
+                if (s < -32768.0f) s = -32768.0f;
+                scratch[i] = static_cast<int16_t>(s);
+            }
+        }
+        eq_.process(scratch, static_cast<std::size_t>(read));
         ring.write(scratch, read * kFrameBytes);
         if (read < kChunkFrames) break;
     }
@@ -227,6 +265,11 @@ void LocalFileSource::set_shuffle(bool shuffle) {
         cfg_.shuffle = shuffle;
     }
     rebuild_playlist();
+}
+
+void LocalFileSource::set_playback_options(const PlaybackConfig& opts) {
+    volume_norm_.store(opts.volume_normalization, std::memory_order_release);
+    eq_.set_options(opts.equalizer_enabled, opts.equalizer_bands, 48000.0f);
 }
 
 std::vector<std::string> LocalFileSource::playlist_snapshot() const {

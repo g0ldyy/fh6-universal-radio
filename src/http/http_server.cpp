@@ -129,6 +129,14 @@ json config_to_json(const Config& c) {
          json{
              {"output_gain", c.audio.output_gain},
          }},
+        {"playback",
+         json{
+             {"race_start_playback", c.playback.race_start_playback},
+             {"quick_station_skip", c.playback.quick_station_skip},
+             {"volume_normalization", c.playback.volume_normalization},
+             {"equalizer_enabled", c.playback.equalizer_enabled},
+             {"equalizer_bands", c.playback.equalizer_bands},
+         }},
     };
 }
 
@@ -171,6 +179,27 @@ void apply_patch(Config& c, const json& j) {
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
+    }
+    if (auto it = j.find("playback"); it != j.end()) {
+        auto rs = pull<std::string>(*it, "race_start_playback", c.playback.race_start_playback);
+        if (rs == "next" || rs == "restart" || rs == "ignore")
+            c.playback.race_start_playback = std::move(rs);
+        c.playback.quick_station_skip =
+            pull(*it, "quick_station_skip", c.playback.quick_station_skip);
+        c.playback.volume_normalization =
+            pull(*it, "volume_normalization", c.playback.volume_normalization);
+        c.playback.equalizer_enabled =
+            pull(*it, "equalizer_enabled", c.playback.equalizer_enabled);
+        if (auto bands = it->find("equalizer_bands");
+            bands != it->end() && bands->is_array()) {
+            for (std::size_t i = 0; i < c.playback.equalizer_bands.size() && i < bands->size();
+                 ++i) {
+                float b = (*bands)[i].get<float>();
+                if (b < -6.f) b = -6.f;
+                if (b > 6.f)  b =  6.f;
+                c.playback.equalizer_bands[i] = b;
+            }
+        }
     }
 }
 

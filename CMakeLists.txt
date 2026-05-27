@@ -8,29 +8,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
+    set(CMAKE_BUILD_TYPE Release)
 endif()
 
 if(MSVC)
-  add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /MP /EHsc /wd4324)
-  add_compile_options("$<$<CONFIG:Release>:/O2;/GL;/Gy;/Gw>")
-  add_link_options("$<$<CONFIG:Release>:/LTCG;/OPT:REF;/OPT:ICF>")
-elseif(MINGW)
-  # MinGW-w64 cross-compilation flags
-  add_compile_options(-Wall -Wextra -Wpedantic)
-  # Disable stack protection to avoid Wine/Proton issues with stack canaries
-  add_compile_options(-fno-stack-protector)
-  # NOTE: Disabled LTO on MinGW due to stack issues with Proton/Wine
-  # add_compile_options("$<$<CONFIG:Release>:-O3;-flto>")
-  add_compile_options("$<$<CONFIG:Release>:-O3>")
-  # add_link_options("$<$<CONFIG:Release>:-flto>")
-  # MinGW uses -fexceptions instead of /EHsc for exception handling
-  add_compile_options(-fexceptions)
+    add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /MP /EHsc /wd4324)
+    add_compile_options("$<$<CONFIG:Release>:/O2;/GL;/Gy;/Gw>")
+    add_link_options("$<$<CONFIG:Release>:/LTCG;/OPT:REF;/OPT:ICF>")
+    add_compile_definitions(_WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX
+                            _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
 endif()
-
-# Common Windows definitions for both MSVC and MinGW
-add_compile_definitions(_WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX
-                        _CRT_SECURE_NO_WARNINGS UNICODE _UNICODE)
 
 add_library(version SHARED
     src/proxy/dll_main.cpp
@@ -38,6 +25,7 @@ add_library(version SHARED
     src/log.cpp
     src/config.cpp
     src/config_store.cpp
+    src/playback_dsp.cpp
     src/ring_buffer.cpp
     src/audio_source_manager.cpp
     src/fmod/pe_image.cpp
@@ -45,6 +33,7 @@ add_library(version SHARED
     src/fmod/radio_discovery.cpp
     src/fmod/dsp_bridge.cpp
     src/fmod/dsp_control_loop.cpp
+    src/fmod/game_state_probe.cpp
     src/fmod/metadata_injector.cpp
     src/http/http_server.cpp
     src/sources/local_file_source.cpp
@@ -64,19 +53,3 @@ set_target_properties(version PROPERTIES
     OUTPUT_NAME version
     PREFIX ""
 )
-
-# Copy MinGW runtime DLLs to build directory
-if(MINGW)
-  set(MINGW_DLL_DIR "/usr/x86_64-w64-mingw32/sys-root/mingw/bin")
-  add_custom_command(TARGET version POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${MINGW_DLL_DIR}/libgcc_s_seh-1.dll"
-      "$<TARGET_FILE_DIR:version>/libgcc_s_seh-1.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${MINGW_DLL_DIR}/libstdc++-6.dll"
-      "$<TARGET_FILE_DIR:version>/libstdc++-6.dll"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${MINGW_DLL_DIR}/libwinpthread-1.dll"
-      "$<TARGET_FILE_DIR:version>/libwinpthread-1.dll"
-  )
-endif()

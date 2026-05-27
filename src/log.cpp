@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <cstdio>
-#include <ctime>
 #include <mutex>
 #include <string>
 
@@ -43,13 +42,7 @@ void emit(Level level, std::string_view message) noexcept {
     auto now = system_clock::now();
     auto t   = system_clock::to_time_t(now);
     std::tm tm{};
-#ifdef _MSC_VER
     localtime_s(&tm, &t);
-#else
-    // MinGW: localtime is thread-safe enough for our purposes (we lock before use)
-    auto* ptm = std::localtime(&t);
-    if (ptm) tm = *ptm;
-#endif
     auto ms = duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000;
     char ts[32];
     std::snprintf(ts, sizeof(ts), "%04d-%02d-%02d %02d:%02d:%02d.%03lld", tm.tm_year + 1900,

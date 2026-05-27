@@ -115,6 +115,8 @@ function renderOutput() {
   }
 }
 
+const EQ_BAND_LABELS = ["60 Hz", "250 Hz", "1 kHz", "4 kHz", "12 kHz"];
+
 const SCHEMA = [
   ["general", "General", [
     ["port",            "Port",            "number", 1, 65535],
@@ -139,10 +141,17 @@ const SCHEMA = [
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],
   ]],
+  ["playback", "Playback", [
+    ["race_start_playback",  "Race start",                "select",   ["next", "restart", "ignore"]],
+    ["quick_station_skip",   "Quick station skip",        "checkbox"],
+    ["volume_normalization", "Normalize loudness",        "checkbox"],
+    ["equalizer_enabled",    "Equalizer",                 "checkbox"],
+    ["equalizer_bands",      "Equalizer bands",           "bands"],
+  ]],
 ];
 
-function field(section, [key, label, type, min, max, step]) {
-  const id = `f-${section}-${key}`;
+function field(section, [key, label, type, a, b, c]) {
+  const id  = `f-${section}-${key}`;
   const cur = cfg?.[section]?.[key];
   if (type === "checkbox") {
     return `<div class="field checkbox">
@@ -150,8 +159,27 @@ function field(section, [key, label, type, min, max, step]) {
       <label for="${id}">${label}</label>
     </div>`;
   }
+  if (type === "select") {
+    const opts = (a || []).map(v =>
+      `<option value="${v}" ${cur === v ? "selected" : ""}>${v}</option>`).join("");
+    return `<div class="field">
+      <label for="${id}">${label}</label>
+      <select id="${id}" data-section="${section}" data-key="${key}">${opts}</select>
+    </div>`;
+  }
+  if (type === "bands") {
+    const vals = Array.isArray(cur) ? cur : [0, 0, 0, 0, 0];
+    const rows = EQ_BAND_LABELS.map((lbl, i) => `
+      <div class="band">
+        <span class="band-label">${lbl}</span>
+        <input type="range" min="-6" max="6" step="0.5" value="${vals[i] ?? 0}"
+               data-section="${section}" data-key="${key}" data-index="${i}">
+        <output>${(vals[i] ?? 0).toFixed(1)} dB</output>
+      </div>`).join("");
+    return `<div class="field bands"><label>${label}</label>${rows}</div>`;
+  }
   const attrs = type === "number"
-    ? ` min="${min ?? ''}" max="${max ?? ''}" step="${step ?? 1}"`
+    ? ` min="${a ?? ''}" max="${b ?? ''}" step="${c ?? 1}"`
     : "";
   return `<div class="field">
     <label for="${id}">${label}</label>
@@ -160,9 +188,15 @@ function field(section, [key, label, type, min, max, step]) {
 }
 
 function renderSettings() {
-  $("#settings-form").innerHTML = SCHEMA.map(([sec, title, fields]) =>
+  const form = $("#settings-form");
+  form.innerHTML = SCHEMA.map(([sec, title, fields]) =>
     `<fieldset><legend>${title}</legend>${fields.map(f => field(sec, f)).join("")}</fieldset>`
   ).join("");
+  // Live "X.X dB" readout next to each EQ slider.
+  $$(".field.bands input[type='range']", form).forEach(r => {
+    const out = r.nextElementSibling;
+    r.addEventListener("input", () => { out.textContent = `${parseFloat(r.value).toFixed(1)} dB`; });
+  });
 }
 
 function collectSettings() {
@@ -171,9 +205,15 @@ function collectSettings() {
     const sec = el.dataset.section;
     const key = el.dataset.key;
     (patch[sec] ??= {});
-    if (el.type === "checkbox")    patch[sec][key] = el.checked;
-    else if (el.type === "number") patch[sec][key] = parseFloat(el.value);
-    else                           patch[sec][key] = el.value;
+    if (el.dataset.index !== undefined) {
+      const arr = (patch[sec][key] ??= []);
+      arr[parseInt(el.dataset.index, 10)] = parseFloat(el.value);
+      return;
+    }
+    if (el.type === "checkbox")     patch[sec][key] = el.checked;
+    else if (el.type === "number" ||
+             el.type === "range")   patch[sec][key] = parseFloat(el.value);
+    else                            patch[sec][key] = el.value;
   });
   return patch;
 }

@@ -9,7 +9,7 @@ namespace fh6::fmod_bridge {
 
 // Overwrites the std::string slots the game reads to render the radio HUD,
 // so the active source's title/artist show up in-game instead of the
-// placeholder station's "Spotify Radio" / "Spotify".
+// placeholder.
 //
 // The target is the SampleProperties body resolved during discovery (see
 // RadioInstance::sample_props_body). Layout:

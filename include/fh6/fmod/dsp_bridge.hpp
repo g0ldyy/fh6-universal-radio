@@ -20,15 +20,10 @@ struct FMODFns {
     using SystemCreateDSP_t = uint32_t (*)(void* system, const void* desc, void** out);
     using DSPRelease_t      = uint32_t (*)(void* dsp);
 
-    // ChannelControl* arg is actually FMOD's packed 32-bit handle widened
-    // to 64 bits (`(void*)(uint64_t)handle`). Resolver returns the real
-    // pointer, but addDSP/removeDSP both want the handle.
     using ChannelControlAddDSP_t  = uint32_t (*)(uint64_t channel_handle, int32_t index, void* dsp);
     using ChannelControlRemDSP_t  = uint32_t (*)(uint64_t channel_handle, void* dsp);
     using ChannelControlSetMode_t = uint32_t (*)(uint64_t channel_handle, uint32_t mode);
 
-    // Handle::open. Third out param is __int64 in the reference; declaring
-    // it uint32_t* would risk a 4-byte stack overrun.
     using HandleResolver_t = uint32_t (*)(uint32_t handle, void** out_inst, uint64_t* out_kind);
     // Handle::unlock. Must pair every open or the handle table leaks a
     // slot and the game thread eventually freezes contending on it.
