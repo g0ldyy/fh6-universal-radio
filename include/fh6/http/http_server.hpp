@@ -14,7 +14,8 @@ class DSPBridge;
 
 namespace fh6::http {
 
-// Thin wrapper around cpp-httplib. All routes are CORS-enabled.
+// Loopback-wildcard HTTP server (raw Winsock, single accept loop). All
+// routes are CORS-enabled.
 //
 //   GET  /api/state                       unified live state
 //   GET  /api/events                      SSE stream of /api/state snapshots

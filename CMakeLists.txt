@@ -53,7 +53,6 @@ add_library(version SHARED
 
 target_include_directories(version PRIVATE
     include
-    third_party/cpp-httplib
     third_party/nlohmann
     third_party/toml11
     third_party/miniaudio

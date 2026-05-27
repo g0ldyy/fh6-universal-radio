@@ -67,9 +67,7 @@ if (-not $SkipCpp) {
                 "-std=c++20", "-x", "c++",
                 "-D_WIN32_WINNT=0x0A00", "-DWIN32_LEAN_AND_MEAN", "-DNOMINMAX",
                 "-D_CRT_SECURE_NO_WARNINGS", "-DUNICODE", "-D_UNICODE",
-                "-DCPPHTTPLIB_NO_EXCEPTIONS",
                 "-I$(Join-Path $root 'include')",
-                "-I$(Join-Path $root 'third_party\cpp-httplib')",
                 "-I$(Join-Path $root 'third_party\nlohmann')",
                 "-I$(Join-Path $root 'third_party\toml11')",
                 "-I$(Join-Path $root 'third_party\miniaudio')"

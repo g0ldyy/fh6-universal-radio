@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -251,6 +252,27 @@ void YouTubeMusicSource::set_target(std::string url) {
     queue_built_for_.clear();
 }
 
+void YouTubeMusicSource::set_shuffle(bool shuffle) {
+    std::scoped_lock lk{mu_};
+    cfg_.shuffle = shuffle;
+    if (!queue_.empty() && queue_built_for_ == target_url_) {
+        // Re-shuffle or re-sort the remaining queue (preserve current track)
+        if (shuffle) {
+            static thread_local std::mt19937 rng{std::random_device{}()};
+            auto start = queue_.begin() + static_cast<std::ptrdiff_t>(queue_idx_ + 1);
+            if (start < queue_.end()) {
+                std::shuffle(start, queue_.end(), rng);
+            }
+        } else {
+            // Re-sort the remaining queue (by URL, which is roughly chronological for playlists)
+            auto start = queue_.begin() + static_cast<std::ptrdiff_t>(queue_idx_ + 1);
+            if (start < queue_.end()) {
+                std::sort(start, queue_.end());
+            }
+        }
+    }
+}
+
 void YouTubeMusicSource::resolve_queue_locked() {
     if (target_url_.empty()) {
         queue_.clear();
@@ -323,6 +345,11 @@ void YouTubeMusicSource::resolve_queue_locked() {
             line.pop_back();
         if (!line.empty() && line != "NA") queue_.push_back(watch_url_for_id(line));
         pos = (nl == std::string::npos) ? raw.size() : nl + 1;
+    }
+
+    if (cfg_.shuffle && queue_.size() > 1) {
+        static thread_local std::mt19937 rng{std::random_device{}()};
+        std::shuffle(queue_.begin(), queue_.end(), rng);
     }
 
     queue_built_for_ = target_url_;
