@@ -22,6 +22,7 @@ int main() {
 
     fh6::RoonConfig cfg;
     cfg.enabled = true;
+    cfg.auto_start_bridge = false;
     fh6::sources::RoonSource source{cfg};
 
     require(source.name() == "roon", "name should be roon");
@@ -60,6 +61,17 @@ int main() {
     source.shutdown();
     source.shutdown();
     require(source.playback_state() == fh6::PlaybackState::stopped, "shutdown should be idempotent");
+
+    fh6::RoonConfig missing_node_cfg;
+    missing_node_cfg.enabled = true;
+    missing_node_cfg.node_path = R"(Z:\fh6-missing-node\node.exe)";
+    missing_node_cfg.bridge_path = R"(Z:\fh6-missing-node\index.mjs)";
+    fh6::sources::RoonSource missing_node{missing_node_cfg};
+    require(missing_node.initialize(), "node setup errors should keep Roon registered");
+    require(missing_node.auth_state() == fh6::AuthState::error,
+            "missing Node should surface as auth/setup error");
+    require_contains(missing_node.auth_instructions(), "Node.js",
+                     "missing Node instructions should be actionable");
 
     return 0;
 }

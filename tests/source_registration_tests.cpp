@@ -42,6 +42,7 @@ private:
 fh6::RoonConfig enabled_roon_config() {
     fh6::RoonConfig cfg;
     cfg.enabled = true;
+    cfg.auto_start_bridge = false;
     return cfg;
 }
 

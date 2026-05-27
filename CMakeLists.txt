@@ -37,6 +37,7 @@ add_library(version SHARED
     src/http/config_json.cpp
     src/http/http_server.cpp
     src/roon/roon_control_client.cpp
+    src/roon/roon_sidecar_process.cpp
     src/sources/local_file_source.cpp
     src/sources/roon_source.cpp
     src/sources/youtube_music_support.cpp
@@ -73,6 +74,8 @@ target_include_directories(config_roundtrip_tests PRIVATE
 
 add_executable(roon_source_tests
     tests/roon_source_tests.cpp
+    src/log.cpp
+    src/roon/roon_sidecar_process.cpp
     src/ring_buffer.cpp
     src/sources/roon_source.cpp
 )
@@ -86,6 +89,7 @@ add_executable(source_registration_tests
     src/audio_source_manager.cpp
     src/log.cpp
     src/ring_buffer.cpp
+    src/roon/roon_sidecar_process.cpp
     src/source_registration.cpp
     src/sources/roon_source.cpp
 )
@@ -119,3 +123,13 @@ target_include_directories(roon_control_client_tests PRIVATE
 )
 
 target_link_libraries(roon_control_client_tests PRIVATE ws2_32)
+
+add_executable(roon_sidecar_process_tests
+    tests/roon_sidecar_process_tests.cpp
+    src/log.cpp
+    src/roon/roon_sidecar_process.cpp
+)
+
+target_include_directories(roon_sidecar_process_tests PRIVATE
+    include
+)

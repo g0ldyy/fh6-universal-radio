@@ -106,7 +106,7 @@ void run_bridge(HMODULE self) noexcept {
     // Register/unregister sources to match the enabled flags. Called at
     // startup and on every config change so toggling enabled adds/removes
     // the dashboard tile live, without a game restart.
-    auto sync_sources = [&mgr](const Config& c) {
+    auto sync_sources = [&mgr, data_dir](const Config& c) {
         if (c.local_files.enabled && !mgr.find("local_files")) {
             auto src = std::make_unique<sources::LocalFileSource>(c.local_files);
             if (src->initialize()) mgr.register_source(std::move(src));
@@ -119,7 +119,7 @@ void run_bridge(HMODULE self) noexcept {
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
-        sync_roon_source(mgr, c.roon);
+        sync_roon_source(mgr, c.roon, data_dir);
     };
 
     sync_sources(cfg);
