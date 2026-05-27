@@ -11,6 +11,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <thread>
 #include <string_view>
 
 namespace fh6::http {
@@ -102,6 +103,17 @@ json roon_outputs_to_json(const std::vector<roon::RoonOutputInfo>& outputs) {
         out.push_back(std::move(item));
     }
     return json{{"outputs", std::move(out)}};
+}
+
+audio::WasapiLoopbackCaptureStatus wait_for_capture_signal(audio::WasapiLoopbackCapture& capture) {
+    audio::WasapiLoopbackCaptureStatus status;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{1500};
+    do {
+        status = capture.status();
+        if (status.peak >= 0.01f || !status.running) return status;
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    } while (std::chrono::steady_clock::now() < deadline);
+    return capture.status();
 }
 
 void proxy_artwork(httplib::Response& res) {
@@ -212,10 +224,15 @@ void wire_roon_routes(httplib::Server& svr, AudioSourceManager& mgr, ConfigStore
             fail(res, 502, capture.status().error);
             return;
         }
-        auto status = capture.status();
+        auto status = wait_for_capture_signal(capture);
         capture.stop();
         log::info("[roon] test capture result peak={} queued_bytes={}", status.peak,
                   status.queued_bytes);
+        if (status.peak < 0.01f) {
+            log::warn("[roon] capture device is silent during test-capture");
+            fail(res, 409, "capture device is silent; verify the selected Roon output is playing");
+            return;
+        }
         ok(res, json{{"ok", true}, {"peak", status.peak}, {"queued_bytes", status.queued_bytes}});
     });
     svr.Post("/api/source/roon/volume", [&](const httplib::Request& req, httplib::Response& res) {

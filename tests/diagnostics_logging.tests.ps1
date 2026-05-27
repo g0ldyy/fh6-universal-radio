@@ -23,7 +23,8 @@ foreach ($needle in @(
 foreach ($needle in @(
     "selected zone",
     "selected capture device",
-    "reconnect requested"
+    "reconnect requested",
+    "capture device is silent"
 )) {
     Require-Text $routes $needle "Roon HTTP diagnostics should log $needle"
 }
