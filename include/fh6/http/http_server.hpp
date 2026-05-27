@@ -26,6 +26,7 @@ namespace fh6::http {
 //   POST /api/source/youtube_music/cast   body {"url":"..."}
 //   POST /api/source/local_files/rescan   body {"music_dir":"...","recursive":bool}
 //   GET  /api/source/local_files/playlist
+//   GET  /api/source/roon/capture-devices
 //
 //   GET  /api/config                      full config.toml as JSON
 //   PUT  /api/config                      deep-patch config; writes file + notifies

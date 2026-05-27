@@ -27,6 +27,7 @@ add_library(version SHARED
     src/config_store.cpp
     src/ring_buffer.cpp
     src/source_registration.cpp
+    src/audio/wasapi_loopback_capture.cpp
     src/audio_source_manager.cpp
     src/fmod/pe_image.cpp
     src/fmod/sig_scanner.cpp
@@ -52,7 +53,7 @@ target_include_directories(version PRIVATE
     third_party/miniaudio
 )
 
-target_link_libraries(version PRIVATE ws2_32 bcrypt psapi)
+target_link_libraries(version PRIVATE ws2_32 bcrypt psapi ole32 uuid propsys)
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version
@@ -133,3 +134,44 @@ add_executable(roon_sidecar_process_tests
 target_include_directories(roon_sidecar_process_tests PRIVATE
     include
 )
+
+add_executable(wasapi_loopback_capture_tests
+    tests/wasapi_loopback_capture_tests.cpp
+    src/audio/wasapi_loopback_capture.cpp
+)
+
+target_include_directories(wasapi_loopback_capture_tests PRIVATE
+    include
+)
+
+target_link_libraries(wasapi_loopback_capture_tests PRIVATE ole32 uuid propsys)
+
+add_executable(http_server_routes_tests
+    tests/http_server_routes_tests.cpp
+    src/audio/wasapi_loopback_capture.cpp
+    src/audio_source_manager.cpp
+    src/config.cpp
+    src/config_store.cpp
+    src/fmod/dsp_bridge.cpp
+    src/fmod/pe_image.cpp
+    src/fmod/sig_scanner.cpp
+    src/http/config_json.cpp
+    src/http/http_server.cpp
+    src/log.cpp
+    src/ring_buffer.cpp
+    src/roon/roon_sidecar_process.cpp
+    src/sources/local_file_source.cpp
+    src/sources/roon_source.cpp
+    src/sources/youtube_music_support.cpp
+    src/sources/youtube_music_source.cpp
+)
+
+target_include_directories(http_server_routes_tests PRIVATE
+    include
+    third_party/cpp-httplib
+    third_party/miniaudio
+    third_party/nlohmann
+    third_party/toml11
+)
+
+target_link_libraries(http_server_routes_tests PRIVATE ws2_32 bcrypt psapi ole32 uuid propsys)

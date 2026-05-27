@@ -1,5 +1,6 @@
 #include "fh6/http/http_server.hpp"
 #include "fh6/audio_source_manager.hpp"
+#include "fh6/audio/wasapi_loopback_capture.hpp"
 #include "fh6/config_store.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/http/config_json.hpp"
@@ -82,6 +83,18 @@ json source_to_json(IAudioSource* s) {
     if (auto* lf = dynamic_cast<sources::LocalFileSource*>(s))
         j["details"]["track_count"] = lf->track_count();
     return j;
+}
+
+json capture_devices_to_json() {
+    json devices = json::array();
+    for (const auto& device : audio::enumerate_render_devices()) {
+        devices.push_back(json{
+            {"id", device.id},
+            {"name", device.name},
+            {"is_default", device.is_default},
+        });
+    }
+    return json{{"devices", std::move(devices)}};
 }
 
 void cors(httplib::Response& res) {
@@ -320,6 +333,11 @@ struct HttpServer::Impl {
                         return;
                     }
                     ok(r, json{{"tracks", lf->playlist_snapshot()}});
+                });
+        svr.Get("/api/source/roon/capture-devices",
+                [](const httplib::Request&, httplib::Response& r) {
+                    cors(r);
+                    ok(r, capture_devices_to_json());
                 });
 
         // Config editing
