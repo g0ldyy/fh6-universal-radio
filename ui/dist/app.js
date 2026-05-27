@@ -234,9 +234,11 @@ function renderRoonPanel() {
 
   const r = cfg?.roon || {};
   const status = roon.status || {};
+  const source = state?.sources?.available?.find(s => s.name === "roon");
   const core = status.core?.name || "Core not found";
   const selectedDevice = roon.devices.find(d => d.id === r.capture_device_id);
   const captureName = r.capture_device_name || selectedDevice?.name || "";
+  const setupNote = source?.auth_state === "authenticated" ? "" : source?.auth_instructions || "";
   const pairing = status.pairing_state || "unknown";
   const level = roon.captureTest?.peak == null
     ? "untested"
@@ -249,7 +251,7 @@ function renderRoonPanel() {
   $("#roon-pairing").className = "value " + (pairing === "authorized" ? "" : "warn");
   setText($("#roon-core"), core);
   setText($("#roon-level"), level);
-  setText($("#roon-error"), roon.error || status.error || "");
+  setText($("#roon-error"), roon.error || status.error || setupNote);
 
   syncOptions($("#roon-zone"), roon.zones.map(z => ({
     value: z.id || z.zone_id,

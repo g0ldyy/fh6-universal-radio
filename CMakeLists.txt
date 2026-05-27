@@ -29,6 +29,7 @@ add_library(version SHARED
     src/source_registration.cpp
     src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
+    src/audio/wasapi_render_devices.cpp
     src/audio_source_manager.cpp
     src/fmod/pe_image.cpp
     src/fmod/sig_scanner.cpp
@@ -151,6 +152,8 @@ add_executable(wasapi_loopback_capture_tests
     tests/wasapi_loopback_capture_tests.cpp
     src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
+    src/audio/wasapi_render_devices.cpp
+    src/log.cpp
     src/ring_buffer.cpp
 )
 
@@ -165,6 +168,7 @@ add_executable(http_server_routes_tests
     tests/http_server_routes_tests.cpp
     src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
+    src/audio/wasapi_render_devices.cpp
     src/audio_source_manager.cpp
     src/config.cpp
     src/config_store.cpp

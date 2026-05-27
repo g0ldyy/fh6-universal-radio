@@ -3,6 +3,7 @@
 #include "fh6/audio/wasapi_loopback_capture.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/config_store.hpp"
+#include "fh6/log.hpp"
 #include "fh6/roon/roon_control_client.hpp"
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
@@ -167,6 +168,7 @@ void wire_roon_routes(httplib::Server& svr, AudioSourceManager& mgr, ConfigStore
                      command_response(res, result);
                      return;
                  }
+                 log::info("[roon] selected zone {}", zone_id);
                  store.patch([&](Config& c) { c.roon.selected_zone_id = zone_id; });
                  ok(res);
              });
@@ -183,6 +185,7 @@ void wire_roon_routes(httplib::Server& svr, AudioSourceManager& mgr, ConfigStore
         std::string name;
         if (auto it = body.find("name"); it != body.end() && it->is_string())
             name = it->get<std::string>();
+        log::info("[roon] selected capture device id={} name={}", device_id, name);
         store.patch([&](Config& c) {
             c.roon.capture_device_id   = device_id;
             c.roon.capture_device_name = name;
@@ -204,12 +207,15 @@ void wire_roon_routes(httplib::Server& svr, AudioSourceManager& mgr, ConfigStore
         cfg.device_id  = device_id;
         cfg.latency_ms = store.snapshot().roon.latency_ms;
         cfg.queue_ms   = 250;
+        log::info("[roon] test capture requested device_id={}", device_id);
         if (!capture.start(cfg)) {
             fail(res, 502, capture.status().error);
             return;
         }
         auto status = capture.status();
         capture.stop();
+        log::info("[roon] test capture result peak={} queued_bytes={}", status.peak,
+                  status.queued_bytes);
         ok(res, json{{"ok", true}, {"peak", status.peak}, {"queued_bytes", status.queued_bytes}});
     });
     svr.Post("/api/source/roon/volume", [&](const httplib::Request& req, httplib::Response& res) {
@@ -231,6 +237,7 @@ void wire_roon_routes(httplib::Server& svr, AudioSourceManager& mgr, ConfigStore
         cors(res);
         if (!roon_registered(mgr, res)) return;
         roon::RoonControlClient client;
+        log::info("[roon] reconnect requested");
         command_response(res, client.reconnect());
     });
     svr.Get("/api/source/roon/artwork/current",

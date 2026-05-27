@@ -1,4 +1,5 @@
 #include "fh6/sources/roon_source.hpp"
+#include "fh6/log.hpp"
 
 #include <algorithm>
 #include <array>
@@ -40,7 +41,10 @@ RoonSource::RoonSource(RoonConfig cfg, std::filesystem::path data_dir,
 RoonSource::~RoonSource() { shutdown(); }
 
 bool RoonSource::initialize() {
-    if (!cfg_.enabled) return false;
+    if (!cfg_.enabled) {
+        log::info("[roon] initialize skipped: source disabled");
+        return false;
+    }
     if (cfg_.auto_start_bridge) {
         sidecar_ = std::make_unique<roon::RoonSidecarProcess>(cfg_, data_dir_);
         if (!sidecar_->start()) {
@@ -49,6 +53,9 @@ bool RoonSource::initialize() {
     }
     initialized_.store(true, std::memory_order_release);
     state_.store(PlaybackState::stopped, std::memory_order_release);
+    log::info(
+        "[roon] source initialized; auto_start_bridge={} zone_selected={} capture_selected={}",
+        cfg_.auto_start_bridge, !cfg_.selected_zone_id.empty(), !cfg_.capture_device_id.empty());
     return true;
 }
 
@@ -57,9 +64,11 @@ void RoonSource::shutdown() noexcept {
     if (sidecar_) sidecar_->stop();
     state_.store(PlaybackState::stopped, std::memory_order_release);
     initialized_.store(false, std::memory_order_release);
+    log::info("[roon] source shutdown");
 }
 
 void RoonSource::play() {
+    log::info("[roon] play requested");
     if (!initialized_.load(std::memory_order_acquire)) return;
     if (!start_capture()) {
         state_.store(PlaybackState::stopped, std::memory_order_release);
@@ -69,22 +78,26 @@ void RoonSource::play() {
 }
 
 void RoonSource::pause() {
+    log::info("[roon] pause requested");
     if (!initialized_.load(std::memory_order_acquire)) return;
     stop_capture();
     state_.store(PlaybackState::paused, std::memory_order_release);
 }
 
 void RoonSource::stop() {
+    log::info("[roon] stop requested");
     stop_capture();
     state_.store(PlaybackState::stopped, std::memory_order_release);
 }
 
 void RoonSource::next() {
+    log::info("[roon] next requested");
     clear_capture();
     play();
 }
 
 void RoonSource::previous() {
+    log::info("[roon] previous requested");
     clear_capture();
     play();
 }
@@ -145,12 +158,16 @@ std::string RoonSource::setup_error() const {
 
 void RoonSource::set_setup_error(std::string message) {
     std::scoped_lock lk{setup_mu_};
+    log::warn("[roon] setup error: {}", message);
     setup_error_ = std::move(message);
     setup_error_present_.store(true, std::memory_order_release);
 }
 
 bool RoonSource::start_capture() {
-    if (cfg_.capture_device_id.empty()) return false;
+    if (cfg_.capture_device_id.empty()) {
+        log::warn("[roon] capture start blocked: no capture device selected");
+        return false;
+    }
     if (!capture_) capture_ = capture_factory_();
     if (!capture_) {
         set_setup_error("Roon WASAPI capture could not be created.");
@@ -161,21 +178,32 @@ bool RoonSource::start_capture() {
     cfg.device_id  = cfg_.capture_device_id;
     cfg.latency_ms = cfg_.latency_ms;
     cfg.queue_ms   = std::clamp<uint32_t>(cfg_.latency_ms * 4U, 250U, 5000U);
-    if (capture_->start(cfg)) return true;
+    log::info("[roon] starting capture device_id={} latency_ms={} queue_ms={}", cfg.device_id,
+              cfg.latency_ms, cfg.queue_ms);
+    if (capture_->start(cfg)) {
+        log::info("[roon] capture started");
+        return true;
+    }
 
     auto status = capture_->status();
+    log::warn("[roon] capture start failed: {}",
+              status.error.empty() ? "unknown error" : status.error);
     set_setup_error(status.error.empty() ? "Roon WASAPI capture failed to start." : status.error);
     return false;
 }
 
 void RoonSource::stop_capture() noexcept {
     if (!capture_) return;
+    log::info("[roon] stopping capture");
     capture_->stop();
     capture_->clear();
 }
 
 void RoonSource::clear_capture() noexcept {
-    if (capture_) capture_->clear();
+    if (capture_) {
+        log::info("[roon] clearing capture queue");
+        capture_->clear();
+    }
 }
 
 } // namespace fh6::sources

@@ -1,4 +1,5 @@
 #include "fh6/audio/wasapi_loopback_capture.hpp"
+#include "fh6/log.hpp"
 #include "fh6/ring_buffer.hpp"
 
 #include <windows.h>
@@ -50,21 +51,12 @@ struct ComApartment {
     bool usable() const noexcept { return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE; }
 };
 
-struct PropVariant {
-    PROPVARIANT value{};
-    PropVariant() { PropVariantInit(&value); }
-    ~PropVariant() { PropVariantClear(&value); }
-    PropVariant(const PropVariant&)            = delete;
-    PropVariant& operator=(const PropVariant&) = delete;
-};
-
 struct CoTaskMemDeleter {
     template <class T> void operator()(T* value) const noexcept {
         if (value) CoTaskMemFree(value);
     }
 };
 
-using CoTaskMemString = std::unique_ptr<wchar_t, CoTaskMemDeleter>;
 using CoTaskMemFormat = std::unique_ptr<WAVEFORMATEX, CoTaskMemDeleter>;
 
 struct MixFormat {
@@ -73,18 +65,6 @@ struct MixFormat {
     uint32_t sample_rate = 0;
     uint32_t block_align = 0;
 };
-
-std::string wide_to_utf8(std::wstring_view value) {
-    if (value.empty()) return {};
-    const int needed = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
-                                           nullptr, 0, nullptr, nullptr);
-    if (needed <= 0) return {};
-
-    std::string out(static_cast<std::size_t>(needed), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), out.data(),
-                        needed, nullptr, nullptr);
-    return out;
-}
 
 std::wstring utf8_to_wide(std::string_view value) {
     if (value.empty()) return {};
@@ -102,32 +82,14 @@ std::string hr_error(std::string_view context, HRESULT hr) {
     return std::string{context} + " failed with HRESULT " + std::to_string(static_cast<long>(hr));
 }
 
-std::wstring device_id(IMMDevice* device) {
-    if (!device) return {};
-    wchar_t* raw_id = nullptr;
-    if (FAILED(device->GetId(&raw_id)) || !raw_id) return {};
-    CoTaskMemString owned{raw_id};
-    return owned.get();
-}
-
-std::string friendly_name(IMMDevice* device) {
-    if (!device) return {};
-
-    ComPtr<IPropertyStore> props;
-    if (FAILED(device->OpenPropertyStore(STGM_READ, &props))) return {};
-
-    PropVariant name;
-    if (FAILED(props->GetValue(PKEY_Device_FriendlyName, &name.value))) return {};
-    if (name.value.vt != VT_LPWSTR || !name.value.pwszVal) return {};
-
-    return wide_to_utf8(name.value.pwszVal);
-}
-
-std::wstring default_render_id(IMMDeviceEnumerator* enumerator) {
-    if (!enumerator) return {};
-    ComPtr<IMMDevice> device;
-    if (FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device))) return {};
-    return device_id(device.Get());
+std::string_view format_name(ma_format format) noexcept {
+    switch (format) {
+        case ma_format_f32: return "f32";
+        case ma_format_s16: return "s16";
+        case ma_format_s24: return "s24";
+        case ma_format_s32: return "s32";
+        default: return "unknown";
+    }
 }
 
 ComPtr<IMMDevice> open_render_device(IMMDeviceEnumerator* enumerator, std::string_view id,
@@ -244,8 +206,11 @@ struct WasapiLoopbackCapture::Impl {
     std::string error;
 
     void set_error(std::string message) {
-        std::scoped_lock lk{mu};
-        error = std::move(message);
+        {
+            std::scoped_lock lk{mu};
+            error = message;
+        }
+        log::warn("[wasapi] {}", message);
     }
 
     std::string current_error() const {
@@ -308,6 +273,10 @@ struct WasapiLoopbackCapture::Impl {
             ready.set_value(false);
             return;
         }
+        log::info("[wasapi] capture mix format: {}ch {}Hz {} block_align={}", format->channels,
+                  format->sample_rate, format_name(format->format), format->block_align);
+        log::info("[wasapi] conversion path: miniaudio {}ch {}Hz {} -> 2ch 48000Hz s16",
+                  format->channels, format->sample_rate, format_name(format->format));
 
         ma_data_converter_config converter_cfg =
             ma_data_converter_config_init(format->format, ma_format_s16, format->channels,
@@ -351,9 +320,12 @@ struct WasapiLoopbackCapture::Impl {
 
         running.store(true, std::memory_order_release);
         ready.set_value(true);
+        log::info("[wasapi] capture worker started");
 
         std::vector<std::byte> silence;
         std::vector<std::byte> converted;
+        bool saw_signal           = false;
+        auto last_silence_warning = std::chrono::steady_clock::now();
         while (!stop.stop_requested()) {
             UINT32 packet_frames = 0;
             hr                   = capture->GetNextPacketSize(&packet_frames);
@@ -385,8 +357,15 @@ struct WasapiLoopbackCapture::Impl {
                 }
 
                 if (convert_packet(converter, *format, input, frames, converted)) {
-                    peak.store(peak_s16(converted.data(), converted.size()),
-                               std::memory_order_release);
+                    const auto level = peak_s16(converted.data(), converted.size());
+                    peak.store(level, std::memory_order_release);
+                    saw_signal     = saw_signal || level > 0.01f;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (!saw_signal && now - last_silence_warning > std::chrono::seconds{5}) {
+                        log::warn("[wasapi] capture is silent; verify the selected Roon output "
+                                  "and Windows capture device");
+                        last_silence_warning = now;
+                    }
                     write_queue(*pcm_queue, converted.data(), converted.size());
                 }
 
@@ -401,6 +380,7 @@ struct WasapiLoopbackCapture::Impl {
 
         client->Stop();
         running.store(false, std::memory_order_release);
+        log::info("[wasapi] capture worker stopped");
     }
 };
 
@@ -409,6 +389,8 @@ WasapiLoopbackCapture::~WasapiLoopbackCapture() { stop(); }
 
 bool WasapiLoopbackCapture::start(const WasapiLoopbackCaptureConfig& cfg) {
     stop();
+    log::info("[wasapi] capture start requested device_id={} latency_ms={} queue_ms={}",
+              cfg.device_id, cfg.latency_ms, cfg.queue_ms);
     auto queue = std::make_shared<RingBuffer>(queue_bytes(cfg.queue_ms));
     {
         std::scoped_lock lk{impl_->mu};
@@ -423,11 +405,14 @@ bool WasapiLoopbackCapture::start(const WasapiLoopbackCaptureConfig& cfg) {
         [this, cfg, queue, ready = std::move(ready)](const std::stop_token& stop) mutable {
             impl_->run(stop, cfg, queue, std::move(ready));
         }};
-    return started.get();
+    const bool ok = started.get();
+    log::info("[wasapi] capture start result={}", ok);
+    return ok;
 }
 
 void WasapiLoopbackCapture::stop() noexcept {
     if (impl_->worker.joinable()) {
+        log::info("[wasapi] capture stop requested");
         impl_->worker.request_stop();
         impl_->worker.join();
     }
@@ -453,46 +438,6 @@ std::size_t WasapiLoopbackCapture::read_pcm(void* dst, std::size_t bytes) noexce
 void WasapiLoopbackCapture::clear() noexcept {
     auto queue = impl_->queue_snapshot();
     if (queue) queue->drain();
-}
-
-std::vector<WasapiRenderDevice> enumerate_render_devices() {
-    ComApartment com;
-    if (!com.usable()) return {};
-
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                IID_PPV_ARGS(&enumerator)))) {
-        return {};
-    }
-
-    ComPtr<IMMDeviceCollection> collection;
-    if (FAILED(enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &collection))) {
-        return {};
-    }
-
-    UINT count = 0;
-    if (FAILED(collection->GetCount(&count))) return {};
-
-    const auto default_id = default_render_id(enumerator.Get());
-    std::vector<WasapiRenderDevice> out;
-    out.reserve(count);
-
-    for (UINT i = 0; i < count; ++i) {
-        ComPtr<IMMDevice> device;
-        if (FAILED(collection->Item(i, &device))) continue;
-
-        const auto id   = device_id(device.Get());
-        const auto name = friendly_name(device.Get());
-        if (id.empty() || name.empty()) continue;
-
-        out.push_back(WasapiRenderDevice{
-            wide_to_utf8(id),
-            name,
-            !default_id.empty() && id == default_id,
-        });
-    }
-
-    return out;
 }
 
 } // namespace fh6::audio

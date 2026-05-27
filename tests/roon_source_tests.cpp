@@ -1,6 +1,9 @@
 #include "fh6/sources/roon_source.hpp"
+#include "fh6/log.hpp"
 
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -15,6 +18,11 @@ void require(bool condition, const char* message) {
 
 void require_contains(const std::string& text, const char* needle, const char* message) {
     if (text.find(needle) == std::string::npos) throw std::runtime_error{message};
+}
+
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream in{path};
+    return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 }
 
 class FakeCapture final : public fh6::sources::IRoonCapture {
@@ -50,6 +58,11 @@ public:
 } // namespace
 
 int run_tests() {
+    const auto log_path = std::filesystem::current_path() / "tmp" / "roon-source-tests.log";
+    std::filesystem::create_directories(log_path.parent_path());
+    std::filesystem::remove(log_path);
+    fh6::log::init(log_path);
+
     fh6::RoonConfig disabled_cfg;
     fh6::sources::RoonSource disabled{disabled_cfg};
     require(!disabled.initialize(), "disabled Roon source should not initialize");
@@ -164,6 +177,18 @@ int run_tests() {
             "capture start failure should surface as auth error");
     require_contains(failing_capture_source.auth_instructions(), "capture failed",
                      "capture failure should be actionable");
+
+    fh6::log::shutdown();
+    const auto log_text = read_text(log_path);
+    require_contains(log_text, "[roon] source initialized",
+                     "Roon source should log initialization");
+    require_contains(log_text, "[roon] play requested", "Roon source should log play requests");
+    require_contains(log_text, "[roon] capture started",
+                     "Roon source should log capture start success");
+    require_contains(log_text, "[roon] capture start failed",
+                     "Roon source should log capture start failure");
+    require_contains(log_text, "[roon] source shutdown", "Roon source should log shutdown");
+    std::filesystem::remove(log_path);
 
     return 0;
 }

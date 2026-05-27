@@ -3,6 +3,7 @@
 
 #include <windows.h>
 
+#include <string>
 #include <system_error>
 #include <utility>
 
@@ -47,6 +48,17 @@ HANDLE open_log(const std::filesystem::path& path) {
     return CreateFileW(path.wstring().c_str(), FILE_APPEND_DATA | SYNCHRONIZE,
                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa, OPEN_ALWAYS,
                        FILE_ATTRIBUTE_NORMAL, nullptr);
+}
+
+std::string wide_to_utf8(const std::wstring& value) {
+    if (value.empty()) return {};
+    const int needed = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                                           nullptr, 0, nullptr, nullptr);
+    if (needed <= 0) return {};
+    std::string out(static_cast<std::size_t>(needed), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), out.data(),
+                        needed, nullptr, nullptr);
+    return out;
 }
 
 } // namespace
@@ -109,6 +121,8 @@ bool RoonSidecarProcess::start() {
         set_error("Failed to open Roon sidecar stdout/stderr log files in " + dir.string());
         return false;
     }
+    log::info("[roon-sidecar] log files stdout={} stderr={}",
+              (dir / "roon-sidecar.out.log").string(), (dir / "roon-sidecar.err.log").string());
 
     HANDLE job_handle = create_job();
     if (!job_handle) {
@@ -123,6 +137,7 @@ bool RoonSidecarProcess::start() {
         command +=
             L" --zone-id " + quote_arg(std::filesystem::path{cfg_.selected_zone_id}.wstring());
     }
+    log::info("[roon-sidecar] start command={}", wide_to_utf8(command));
 
     STARTUPINFOW si{};
     si.cb         = sizeof(si);
