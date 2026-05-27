@@ -41,17 +41,19 @@ Private/age-restricted content also needs a Netscape `cookies.txt` exported from
 
 ### Roon Source
 
-Roon support is a Web Control integration, not Roon Ready and not RAAT. FH6 Universal Radio uses the official Roon API for pairing, zone metadata, artwork, and transport controls, then captures the selected zone's Windows render endpoint with WASAPI loopback.
+Roon support is configured from Web Control. It is not Roon Ready and not RAAT. FH6 Universal Radio uses the official Roon API for pairing, zone metadata, artwork, and transport controls, then captures the selected zone's Windows render endpoint with WASAPI loopback.
 
 To set it up:
 
-1. Install Node.js 20 or newer, or set `[roon].node_path` to the full `node.exe` path.
-2. Enable Roon from the dashboard or set `[roon].enabled = true`.
+1. Open <http://localhost:8420>, go to **Settings > Roon**, and enable Roon.
+2. Use the Roon panel's setup checks to confirm Node.js, Roon Server, and a VB-Audio render endpoint are present. Normal Roon setup does not require PowerShell or CLI commands.
 3. Open Roon, go to **Settings > Extensions**, and authorize **FH6 Universal Radio** when it appears.
-4. In the dashboard Roon panel, select the Roon zone to control.
-5. Select the Windows capture device that receives that zone's audio, then use **Test capture**.
+4. In Web Control, select the Roon zone to control.
+5. Set that Roon zone's audio output to the recommended render endpoint, normally **Hi-Fi Cable Input** or **CABLE Input**, then click **Use recommended device** and **Test audio**.
 
-For the most reliable setup, route the Roon zone to a dedicated Windows output or a virtual audio cable. Do not pick the same output that FH6 itself is using unless you are comfortable with feedback/monitoring tradeoffs. The correct capture device should report a non-silent peak while Roon is playing; wrong devices report a silent capture error.
+For the most reliable setup, route the Roon zone to a dedicated Windows output or a virtual audio cable. Do not pick the same output that FH6 itself is using unless you are comfortable with feedback/monitoring tradeoffs. **Hi-Fi Cable Output** is the recording side of the VB-Audio device and is not the current MVP target. The correct loopback endpoint should report a non-silent peak while Roon is playing; wrong endpoints report a silent capture error.
+
+Roon Bridge by itself is not a replacement for Roon Server. The sidecar controls Roon and reads metadata only; PCM audio stays inside `version.dll` through WASAPI loopback capture.
 
 Roon logs are written next to the game in `fh6-radio\bridge.log`, `fh6-radio\roon-sidecar.out.log`, and `fh6-radio\roon-sidecar.err.log`.
 
@@ -83,7 +85,7 @@ Requires **Visual Studio 2022+** with the *Desktop development with C++* workloa
 | YouTube Music produces no audio | Check `%TEMP%\fh6-yt-stderr.log` (child stderr lands there). Usually missing yt-dlp/ffmpeg, expired cookies, or geo/format restrictions. |
 | Roon panel says authorization is pending | Open Roon **Settings > Extensions** and authorize **FH6 Universal Radio**. |
 | Roon zone list is empty | Confirm Roon Core is running, the extension is authorized, and `fh6-radio\roon-sidecar.out.log` shows a successful registry response. |
-| Roon capture is silent | Make sure the selected Roon zone is playing and select the Windows render endpoint that actually receives that audio. A virtual audio cable or dedicated output is recommended. |
+| Roon loopback is silent | Make sure the selected Roon zone is playing to **Hi-Fi Cable Input** or **CABLE Input**. Do not select **Hi-Fi Cable Output** for the MVP loopback path. |
 | Roon sidecar does not start | Install Node.js 20+ or set `[roon].node_path`; verify `fh6-radio\tools\roon-bridge\index.mjs` exists. |
 | Roon sidecar crashes or disconnects | The game should continue running. Check `fh6-radio\roon-sidecar.err.log`, then use **Reconnect** in the Roon panel. |
 

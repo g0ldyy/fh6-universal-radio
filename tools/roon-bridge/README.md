@@ -5,6 +5,12 @@ It is not Roon Ready, does not implement RAAT, and does not carry PCM audio.
 
 ## Usage
 
+Packaged users should configure Roon from Web Control. The dashboard checks for
+Node.js, Roon Server, and the selected VB-Audio render endpoint, then starts this
+sidecar automatically when `[roon].auto_start_bridge` is true.
+
+Manual startup is only for development:
+
 ```powershell
 npm install
 npm start -- --host 127.0.0.1 --port 47821
@@ -17,6 +23,9 @@ The packaged mod starts this process automatically when `[roon].auto_start_bridg
 is true. A local Node.js 20+ runtime is still required; leave `[roon].node_path`
 blank to use `node.exe` from `PATH`, or set it to an absolute path.
 
+Roon Bridge is not a replacement for Roon Server. The extension must be authorized
+against a running Roon Core before transport and metadata calls can succeed.
+
 Authorize `FH6 Universal Radio` in **Roon Settings > Extensions** when the
 extension appears.
 The sidecar stores only Roon extension authorization state through the official Roon API.
@@ -24,7 +33,9 @@ It does not store Roon account credentials.
 
 This process is control-only. PCM audio is not sent through the sidecar; FH6
 Universal Radio captures the selected Windows render endpoint through WASAPI
-loopback inside `version.dll`.
+loopback inside `version.dll`. The usual endpoint is `Hi-Fi Cable Input` or
+`CABLE Input`; `Hi-Fi Cable Output` is the recording side and is not the MVP
+loopback target.
 
 ## Local API
 
