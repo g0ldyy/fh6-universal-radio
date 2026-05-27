@@ -42,7 +42,7 @@ public:
     PlaybackState playback_state() const noexcept override {
         return state_.load(std::memory_order_acquire);
     }
-    AuthState auth_state() const noexcept override { return auth_; }
+    AuthState auth_state() const noexcept override { return auth_.load(std::memory_order_acquire); }
     std::string auth_instructions() const override;
     SourceCapabilities capabilities() const noexcept override { return {false, true, true}; }
 
@@ -64,7 +64,8 @@ private:
     TrackInfo info_{};
     std::atomic<uint64_t> position_ms_{0};
     int consecutive_failed_ = 0; // tracks-in-a-row that produced 0 PCM bytes
-    AuthState auth_         = AuthState::none_required;
+    std::string auth_message_;
+    std::atomic<AuthState> auth_{AuthState::none_required};
     std::atomic<PlaybackState> state_{PlaybackState::stopped};
 };
 

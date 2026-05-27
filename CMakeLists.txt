@@ -92,3 +92,15 @@ add_executable(source_registration_tests
 target_include_directories(source_registration_tests PRIVATE
     include
 )
+
+add_executable(youtube_music_runtime_tests
+    tests/youtube_music_runtime_tests.cpp
+    src/log.cpp
+    src/ring_buffer.cpp
+    src/sources/youtube_music_support.cpp
+    src/sources/youtube_music_source.cpp
+)
+
+target_include_directories(youtube_music_runtime_tests PRIVATE
+    include
+)

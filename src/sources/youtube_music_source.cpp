@@ -7,6 +7,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -14,17 +15,50 @@ namespace fh6::sources {
 
 using namespace youtube_music_detail;
 
+namespace {
+
+bool tool_available(const std::filesystem::path& configured_path, const wchar_t* command_name) {
+    if (!configured_path.empty()) {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(configured_path, ec);
+    }
+
+    wchar_t resolved[MAX_PATH] = {};
+    return SearchPathW(nullptr, command_name, L".exe", MAX_PATH, resolved, nullptr) != 0;
+}
+
+std::string youtube_tool_setup_message(const YouTubeMusicConfig& cfg) {
+    const bool missing_yt = !tool_available(cfg.yt_dlp_path, L"yt-dlp");
+    const bool missing_ff = !tool_available(cfg.ffmpeg_path, L"ffmpeg");
+    if (!missing_yt && !missing_ff) return {};
+
+    return "YouTube Music is enabled, but yt-dlp or ffmpeg could not be found. Run "
+           "`winget install yt-dlp.yt-dlp`, `winget install Gyan.FFmpeg`, and "
+           "`winget install DenoLand.Deno`, then keep yt-dlp/ffmpeg on PATH or set "
+           "[youtube_music].yt_dlp_path and ffmpeg_path to the full .exe paths.";
+}
+
+} // namespace
+
 YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg) : cfg_{std::move(cfg)} {}
 
 YouTubeMusicSource::~YouTubeMusicSource() { stop_pipe_locked(); }
 
 bool YouTubeMusicSource::initialize() {
     if (!cfg_.enabled) return false;
+    const auto setup_message = youtube_tool_setup_message(cfg_);
     if (!cfg_.default_playlist.empty()) {
         std::scoped_lock lk{mu_};
         target_url_ = cfg_.default_playlist;
     }
-    auth_ = cfg_.cookies_path.empty() ? AuthState::none_required : AuthState::authenticated;
+    {
+        std::scoped_lock lk{mu_};
+        auth_message_ = setup_message;
+    }
+    auth_.store(setup_message.empty() ? (cfg_.cookies_path.empty() ? AuthState::none_required
+                                                                   : AuthState::authenticated)
+                                      : AuthState::error,
+                std::memory_order_release);
     return true;
 }
 
@@ -304,6 +338,10 @@ TrackInfo YouTubeMusicSource::current_track() const {
 }
 
 std::string YouTubeMusicSource::auth_instructions() const {
+    {
+        std::scoped_lock lk{mu_};
+        if (!auth_message_.empty()) return auth_message_;
+    }
     return "Export your YouTube cookies to a Netscape cookies.txt and set "
            "[youtube_music].cookies_path in config.toml. Public content works "
            "without cookies.";
