@@ -2,6 +2,10 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
+function installNodeRoonWebSocket() {
+  globalThis.WebSocket = require("ws");
+}
+
 function normalizeZone(zone) {
   return {
     zone_id: zone.zone_id,
@@ -36,6 +40,8 @@ function callbackResult(resolve, reject) {
 }
 
 export function createRoonRuntime(options = {}) {
+  installNodeRoonWebSocket();
+
   const RoonApi = require("node-roon-api");
   const RoonApiStatus = require("node-roon-api-status");
   const RoonApiTransport = require("node-roon-api-transport");
