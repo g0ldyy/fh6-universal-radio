@@ -1,7 +1,8 @@
 #include "fh6/sources/youtube_music_source.hpp"
+#include "youtube_music_support.hpp"
+
 #include "fh6/log.hpp"
 
-#include <windows.h>
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -11,217 +12,7 @@
 
 namespace fh6::sources {
 
-namespace {
-
-// PCM contract written by ffmpeg: 48000 Hz * 2 ch * 2 bytes.
-constexpr std::uint64_t kPcmBytesPerSec = 48000ull * 2ull * 2ull;
-
-// CreateProcess hands one string to the child via GetCommandLineW, so any
-// argument with whitespace must be double-quoted.
-std::wstring quote(const std::wstring& s) {
-    if (s.empty()) return L"\"\"";
-    if (s.find_first_of(L" \t\"") == std::wstring::npos) return s;
-    std::wstring out{L"\""};
-    for (auto c : s) {
-        if (c == L'"') out += L'\\';
-        out += c;
-    }
-    out += L'"';
-    return out;
-}
-
-std::wstring widen(std::string_view s) {
-    if (s.empty()) return {};
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
-    std::wstring out(n, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), out.data(), n);
-    return out;
-}
-
-// GetStdHandle returns NULL in a windowed DLL injection; passing NULL with
-// STARTF_USESTDHANDLES makes the child's stdio invalid and yt-dlp exits
-// before producing audio. NUL is Windows' /dev/null and works as a safe substitute.
-HANDLE open_nul(DWORD access) {
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    HANDLE h = CreateFileW(L"NUL", access, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, OPEN_EXISTING,
-                           0, nullptr);
-    return h == INVALID_HANDLE_VALUE ? nullptr : h;
-}
-
-// Tee both children's stderr to %TEMP%\fh6-yt-stderr.log so failures (bad
-// cookies, geo-block, codec issues) can be diagnosed without a debug build.
-// FILE_APPEND_DATA makes per-syscall writes atomic across all children.
-HANDLE open_stderr_log() {
-    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    auto path = std::filesystem::temp_directory_path() / "fh6-yt-stderr.log";
-    HANDLE h  = CreateFileW(path.wstring().c_str(), FILE_APPEND_DATA | SYNCHRONIZE,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa, OPEN_ALWAYS,
-                            FILE_ATTRIBUTE_NORMAL, nullptr);
-    return h == INVALID_HANDLE_VALUE ? open_nul(GENERIC_WRITE) : h;
-}
-
-std::filesystem::path stderr_log_path() {
-    return std::filesystem::temp_directory_path() / "fh6-yt-stderr.log";
-}
-
-std::string narrow(std::wstring_view ws) {
-    if (ws.empty()) return {};
-    int n = WideCharToMultiByte(CP_UTF8, 0, ws.data(), (int)ws.size(), nullptr, 0,
-                                nullptr, nullptr);
-    std::string out(n, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, ws.data(), (int)ws.size(), out.data(), n, nullptr, nullptr);
-    return out;
-}
-
-std::string describe_launch_failure(const std::wstring& bin, DWORD ec, bool from_config) {
-    // Resolve where (if anywhere) the binary actually lives. ".exe" default
-    // matches what CreateProcess does when no extension is given.
-    wchar_t resolved[MAX_PATH] = {};
-    DWORD got = SearchPathW(nullptr, bin.c_str(), L".exe", MAX_PATH, resolved, nullptr);
-    std::string where = got ? narrow({resolved, got})
-                            : (from_config ? "(configured path not found on disk)"
-                                           : "(not found on PATH)");
-
-    // FormatMessage gives the localised Win32 string; trim trailing CRLF.
-    std::string sys_msg;
-    LPWSTR raw = nullptr;
-    DWORD len = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                   FORMAT_MESSAGE_IGNORE_INSERTS,
-                               nullptr, ec, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                               (LPWSTR)&raw, 0, nullptr);
-    if (raw && len) {
-        while (len && (raw[len - 1] == L'\r' || raw[len - 1] == L'\n' || raw[len - 1] == L' '))
-            --len;
-        sys_msg = narrow({raw, len});
-    }
-    if (raw) LocalFree(raw);
-
-    const char* hint = "";
-    switch (ec) {
-        case ERROR_FILE_NOT_FOUND:  // 2
-        case ERROR_PATH_NOT_FOUND:  // 3
-            hint = from_config
-                       ? " -- the path in [youtube_music].yt_dlp_path/ffmpeg_path does not "
-                         "exist. Fix the path or clear it to fall back to PATH lookup."
-                       : " -- yt-dlp/ffmpeg is not on your PATH. Install it (winget install "
-                         "yt-dlp.yt-dlp / Gyan.FFmpeg) or set [youtube_music].yt_dlp_path and "
-                         "ffmpeg_path in config.toml to the full .exe paths.";
-            break;
-        case ERROR_ACCESS_DENIED:  // 5
-            hint = " -- likely blocked or quarantined by antivirus. Whitelist the binary and "
-                   "the game folder.";
-            break;
-        case ERROR_BAD_EXE_FORMAT:  // 193
-            hint = " -- the file isn't a valid Win64 executable. Download yt-dlp.exe (Windows "
-                   "build), not yt-dlp_linux or the bare Python script.";
-            break;
-        case ERROR_SHARING_VIOLATION:  // 32
-            hint = " -- another process has the file open (often AV scanning). Retry in a few "
-                   "seconds.";
-            break;
-        default:
-            break;
-    }
-
-    return std::format("ec={} ({}) tried={} resolved={}{}", ec,
-                       sys_msg.empty() ? "unknown" : sys_msg, narrow(bin), where, hint);
-}
-
-// Job Object with KILL_ON_JOB_CLOSE so closing the last handle reaps every
-// assigned process AND its descendants. yt-dlp spawns deno (the JS runtime
-// it needs to solve YouTube's n-challenge); without a job, terminating
-// yt-dlp leaves deno orphaned, and that's why ps showed yt-dlp/deno still
-// alive after FH6 exited. Forza exiting closes our DLL's handles, which
-// drops the job's last ref, which kills everything inside.
-HANDLE create_kill_on_close_job() {
-    HANDLE job = CreateJobObjectW(nullptr, nullptr);
-    if (!job) return nullptr;
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
-    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &info, sizeof(info))) {
-        CloseHandle(job);
-        return nullptr;
-    }
-    return job;
-}
-
-// Spawn under `job`. CREATE_SUSPENDED + AssignProcessToJobObject + ResumeThread
-// ensures yt-dlp is inside the job before it can spawn deno -- otherwise a
-// fast-starting child could escape into its own process tree.
-HANDLE spawn_in_job(HANDLE job, const std::wstring& cmd, HANDLE stdin_h, HANDLE stdout_h,
-                    HANDLE stderr_h) {
-    STARTUPINFOW si{};
-    si.cb         = sizeof(si);
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdInput  = stdin_h;
-    si.hStdOutput = stdout_h;
-    si.hStdError  = stderr_h;
-
-    PROCESS_INFORMATION pi{};
-    std::wstring mut = cmd;
-    if (!CreateProcessW(nullptr, mut.data(), nullptr, nullptr, TRUE,
-                        CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi))
-        return nullptr;
-    if (job && !AssignProcessToJobObject(job, pi.hProcess)) {
-        // Preserve the AssignProcessToJobObject error across the cleanup calls so
-        // the caller's GetLastError() reflects the real cause, not CloseHandle's.
-        const DWORD assign_ec = GetLastError();
-        TerminateProcess(pi.hProcess, 1);
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-        SetLastError(assign_ec);
-        return nullptr;
-    }
-    ResumeThread(pi.hThread);
-    CloseHandle(pi.hThread);
-    return pi.hProcess;
-}
-
-// Block until the child closes its stdout. Used by the playlist enumerator,
-// which is small (one id per line) and runs once per cast.
-std::string drain_to_eof(HANDLE pipe) {
-    std::string out;
-    char buf[4096];
-    DWORD got = 0;
-    while (ReadFile(pipe, buf, sizeof(buf), &got, nullptr) && got > 0) out.append(buf, got);
-    return out;
-}
-
-bool is_playlist_url(std::string_view url) {
-    return url.find("playlist?") != std::string_view::npos;
-}
-
-std::string watch_url_for_id(std::string_view id) {
-    std::string s = "https://www.youtube.com/watch?v=";
-    s.append(id);
-    return s;
-}
-
-} // namespace
-
-struct YouTubeMusicSource::Pipe {
-    HANDLE job        = nullptr;
-    HANDLE proc_yt    = nullptr;
-    HANDLE proc_ff    = nullptr;
-    HANDLE proc_title = nullptr;
-    HANDLE read_pipe  = nullptr;
-    HANDLE title_pipe = nullptr;
-    std::string title_buf;
-    std::uint64_t bytes_written = 0;
-    bool ended = false;
-
-    ~Pipe() {
-        // Close pipes first so any blocked ReadFile in the children unblocks
-        // with broken-pipe, then drop the job handle -- KILL_ON_JOB_CLOSE
-        // reaps the entire tree (yt-dlp + deno + ffmpeg + title resolver).
-        if (read_pipe)  CloseHandle(read_pipe);
-        if (title_pipe) CloseHandle(title_pipe);
-        if (job)        CloseHandle(job);
-        if (proc_yt)    CloseHandle(proc_yt);
-        if (proc_ff)    CloseHandle(proc_ff);
-        if (proc_title) CloseHandle(proc_title);
-    }
-};
+using namespace youtube_music_detail;
 
 YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg) : cfg_{std::move(cfg)} {}
 
@@ -300,7 +91,7 @@ void YouTubeMusicSource::resolve_queue_locked() {
     // Capture the error before any other Win32 call clobbers it (CloseHandle resets it).
     const DWORD ec_yt = proc ? 0u : GetLastError();
     CloseHandle(wr);
-    if (nul_in)  CloseHandle(nul_in);
+    if (nul_in) CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
     if (!proc) {
         CloseHandle(rd);
@@ -313,7 +104,7 @@ void YouTubeMusicSource::resolve_queue_locked() {
     std::string raw = drain_to_eof(rd);
     CloseHandle(rd);
     CloseHandle(proc);
-    CloseHandle(job);  // KILL_ON_JOB_CLOSE -- ensures any straggling deno child dies
+    CloseHandle(job); // KILL_ON_JOB_CLOSE -- ensures any straggling deno child dies
 
     for (std::size_t pos = 0; pos < raw.size();) {
         auto nl   = raw.find('\n', pos);
@@ -364,11 +155,20 @@ void YouTubeMusicSource::start_pipe_locked() {
         if (tl_out_w) CloseHandle(tl_out_w);
     };
 
-    if (!CreatePipe(&yt_out_r, &yt_out_w, &sa, 1 << 20)) { bail(); return; }
+    if (!CreatePipe(&yt_out_r, &yt_out_w, &sa, 1 << 20)) {
+        bail();
+        return;
+    }
     SetHandleInformation(yt_out_r, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-    if (!CreatePipe(&ff_out_r, &ff_out_w, &sa, 1 << 20)) { bail(); return; }
+    if (!CreatePipe(&ff_out_r, &ff_out_w, &sa, 1 << 20)) {
+        bail();
+        return;
+    }
     SetHandleInformation(ff_out_r, 0, HANDLE_FLAG_INHERIT);
-    if (!CreatePipe(&tl_out_r, &tl_out_w, &sa, 1 << 16)) { bail(); return; }
+    if (!CreatePipe(&tl_out_r, &tl_out_w, &sa, 1 << 16)) {
+        bail();
+        return;
+    }
     SetHandleInformation(tl_out_r, 0, HANDLE_FLAG_INHERIT);
 
     HANDLE nul_in  = open_nul(GENERIC_READ);
@@ -398,7 +198,7 @@ void YouTubeMusicSource::start_pipe_locked() {
         tl_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
     tl_cmd += L"-- " + quote(widen(play_url));
 
-    pipe->proc_yt = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
+    pipe->proc_yt     = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
     const DWORD ec_yt = pipe->proc_yt ? 0u : GetLastError();
     CloseHandle(yt_out_w);
     yt_out_w = nullptr;
@@ -406,24 +206,26 @@ void YouTubeMusicSource::start_pipe_locked() {
         log::warn("[yt] failed to launch yt-dlp -- {}",
                   describe_launch_failure(std::wstring{yt}, ec_yt, !cfg_.yt_dlp_path.empty()));
         bail();
-        if (nul_in)  CloseHandle(nul_in);
+        if (nul_in) CloseHandle(nul_in);
         if (err_log) CloseHandle(err_log);
         return;
     }
 
-    pipe->proc_ff = spawn_in_job(pipe->job, ff_cmd, yt_out_r, ff_out_w, err_log);
+    pipe->proc_ff     = spawn_in_job(pipe->job, ff_cmd, yt_out_r, ff_out_w, err_log);
     const DWORD ec_ff = pipe->proc_ff ? 0u : GetLastError();
-    CloseHandle(yt_out_r); yt_out_r = nullptr;
-    CloseHandle(ff_out_w); ff_out_w = nullptr;
+    CloseHandle(yt_out_r);
+    yt_out_r = nullptr;
+    CloseHandle(ff_out_w);
+    ff_out_w = nullptr;
     if (!pipe->proc_ff) {
         log::warn("[yt] failed to launch ffmpeg -- {}",
                   describe_launch_failure(std::wstring{ff}, ec_ff, !cfg_.ffmpeg_path.empty()));
         if (ff_out_r) CloseHandle(ff_out_r);
         if (tl_out_r) CloseHandle(tl_out_r);
         if (tl_out_w) CloseHandle(tl_out_w);
-        if (nul_in)   CloseHandle(nul_in);
-        if (err_log)  CloseHandle(err_log);
-        return;  // ~Pipe closes the job, which kills the orphan yt-dlp
+        if (nul_in) CloseHandle(nul_in);
+        if (err_log) CloseHandle(err_log);
+        return; // ~Pipe closes the job, which kills the orphan yt-dlp
     }
 
     pipe->proc_title = spawn_in_job(pipe->job, tl_cmd, nul_in, tl_out_w, err_log);
@@ -437,16 +239,16 @@ void YouTubeMusicSource::start_pipe_locked() {
         tl_out_r = nullptr;
     }
 
-    if (nul_in)  CloseHandle(nul_in);
+    if (nul_in) CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
 
     pipe->read_pipe = ff_out_r;
     pipe_           = std::move(pipe);
 
-    info_              = TrackInfo{};
-    info_.title        = "(loading)";
-    info_.artist       = "YouTube Music";
-    info_.duration_ms  = 0;
+    info_             = TrackInfo{};
+    info_.title       = "(loading)";
+    info_.artist      = "YouTube Music";
+    info_.duration_ms = 0;
     position_ms_.store(0, std::memory_order_release);
     state_.store(PlaybackState::buffering, std::memory_order_release);
 
@@ -465,9 +267,7 @@ void YouTubeMusicSource::play() {
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
 
-void YouTubeMusicSource::pause() {
-    state_.store(PlaybackState::paused, std::memory_order_release);
-}
+void YouTubeMusicSource::pause() { state_.store(PlaybackState::paused, std::memory_order_release); }
 
 void YouTubeMusicSource::stop() {
     std::scoped_lock lk{mu_};
@@ -477,10 +277,10 @@ void YouTubeMusicSource::stop() {
 void YouTubeMusicSource::next() {
     std::scoped_lock lk{mu_};
     if (queue_.empty()) return;
-    consecutive_failed_ = 0;   // user override clears the give-up state
-    const auto n = static_cast<std::ptrdiff_t>(queue_.size());
-    auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
-    queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
+    consecutive_failed_ = 0; // user override clears the give-up state
+    const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i              = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
+    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
     start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
@@ -489,9 +289,9 @@ void YouTubeMusicSource::previous() {
     std::scoped_lock lk{mu_};
     if (queue_.empty()) return;
     consecutive_failed_ = 0;
-    const auto n = static_cast<std::ptrdiff_t>(queue_.size());
-    auto i       = static_cast<std::ptrdiff_t>(queue_idx_) - 1;
-    queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
+    const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i              = static_cast<std::ptrdiff_t>(queue_idx_) - 1;
+    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
     start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
@@ -529,7 +329,10 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
         for (int safety = 0; safety < 8; ++safety) {
             DWORD tavail = 0;
             BOOL ok      = PeekNamedPipe(p->title_pipe, nullptr, 0, nullptr, &tavail, nullptr);
-            if (!ok) { finalise = true; break; }
+            if (!ok) {
+                finalise = true;
+                break;
+            }
             if (tavail == 0) {
                 DWORD ec = STILL_ACTIVE;
                 if (p->proc_title && GetExitCodeProcess(p->proc_title, &ec) && ec != STILL_ACTIVE)
@@ -570,7 +373,10 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
 
     // ---- PCM drain ----
     auto advance_to_next = [&] {
-        if (queue_.empty()) { stop_pipe_locked(); return; }
+        if (queue_.empty()) {
+            stop_pipe_locked();
+            return;
+        }
         const auto n = static_cast<std::ptrdiff_t>(queue_.size());
         auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
         queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
@@ -579,11 +385,9 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
     };
 
     auto update_position = [&] {
-        const std::size_t r   = ring.readable();
-        const std::uint64_t played =
-            p->bytes_written > r ? p->bytes_written - r : 0;
-        position_ms_.store(played * 1000ull / kPcmBytesPerSec,
-                           std::memory_order_release);
+        const std::size_t r        = ring.readable();
+        const std::uint64_t played = p->bytes_written > r ? p->bytes_written - r : 0;
+        position_ms_.store(played * 1000ull / kPcmBytesPerSec, std::memory_order_release);
     };
 
     if (p->ended) {
@@ -597,8 +401,7 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
     auto on_eof = [&] {
         if (p->bytes_written == 0) {
             if (++consecutive_failed_ >= 3) {
-                log::warn("[yt] giving up after {} consecutive empty tracks",
-                          consecutive_failed_);
+                log::warn("[yt] giving up after {} consecutive empty tracks", consecutive_failed_);
                 stop_pipe_locked();
                 return;
             }

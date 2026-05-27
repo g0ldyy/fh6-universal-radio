@@ -49,22 +49,22 @@ public:
 private:
     struct Pipe;
 
-    void start_pipe_locked();   // mu_ held
-    void stop_pipe_locked();    // mu_ held
-    void resolve_queue_locked();// mu_ held; populates queue_ from target_url_
+    void start_pipe_locked();    // mu_ held
+    void stop_pipe_locked();     // mu_ held
+    void resolve_queue_locked(); // mu_ held; populates queue_ from target_url_
 
     YouTubeMusicConfig cfg_;
     std::unique_ptr<Pipe> pipe_;
 
     mutable std::mutex mu_;
     std::string target_url_;
-    std::vector<std::string> queue_;     // canonical watch URLs in playback order
+    std::vector<std::string> queue_; // canonical watch URLs in playback order
     std::size_t queue_idx_ = 0;
-    std::string queue_built_for_;        // value of target_url_ when queue_ was resolved
+    std::string queue_built_for_; // value of target_url_ when queue_ was resolved
     TrackInfo info_{};
     std::atomic<uint64_t> position_ms_{0};
-    int consecutive_failed_ = 0;        // tracks-in-a-row that produced 0 PCM bytes
-    AuthState auth_ = AuthState::none_required;
+    int consecutive_failed_ = 0; // tracks-in-a-row that produced 0 PCM bytes
+    AuthState auth_         = AuthState::none_required;
     std::atomic<PlaybackState> state_{PlaybackState::stopped};
 };
 

@@ -35,6 +35,7 @@ add_library(version SHARED
     src/fmod/metadata_injector.cpp
     src/http/http_server.cpp
     src/sources/local_file_source.cpp
+    src/sources/youtube_music_support.cpp
     src/sources/youtube_music_source.cpp
 )
 

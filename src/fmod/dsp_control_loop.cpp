@@ -96,7 +96,7 @@ void ControlLoop::run(const std::stop_token& tok) {
         // sample ended). Re-discover and switch to a live channel.
         auto* active          = bridge_.manager().active();
         const bool busy       = active && (active->playback_state() == PlaybackState::playing ||
-                                           active->playback_state() == PlaybackState::buffering);
+                                     active->playback_state() == PlaybackState::buffering);
         const std::uint64_t c = bridge_.call_count();
         if (busy && c == prev_calls_) {
             if (++stale_ticks_ >= kStaleTickThreshold) {
@@ -131,7 +131,7 @@ void ControlLoop::run(const std::stop_token& tok) {
 const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc,
                                                   bool require_live) const noexcept {
     const RadioInstance* fallback = nullptr;
-    for (auto& i : disc.instances) {
+    for (const auto& i : disc.instances) {
         if (require_live && !bridge_.channel_handle_alive(i.radio_stream)) continue;
         if (i.sound_name == kTargetSoundName) return &i;
         if (!fallback) fallback = &i;
@@ -140,9 +140,9 @@ const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc,
 }
 
 void ControlLoop::recover_stale_dsp() noexcept {
-    if (bridge_.current_handle_alive()) return;  // false alarm; channel still live
+    if (bridge_.current_handle_alive()) return; // false alarm; channel still live
 
-    auto disc = discover_radio_instances(img_);
+    auto disc                   = discover_radio_instances(img_);
     const RadioInstance* chosen = select_instance(disc, /*require_live=*/true);
     if (!chosen) return;
 
@@ -172,10 +172,10 @@ void ControlLoop::push_metadata() noexcept {
     std::string artist = info.artist;
     if (artist.empty()) {
         switch (a->playback_state()) {
-            case PlaybackState::playing:   artist = "Playing"; break;
+            case PlaybackState::playing: artist = "Playing"; break;
             case PlaybackState::buffering: artist = "Buffering"; break;
-            case PlaybackState::paused:    artist = "Paused"; break;
-            case PlaybackState::stopped:   artist = "Stopped"; break;
+            case PlaybackState::paused: artist = "Paused"; break;
+            case PlaybackState::stopped: artist = "Stopped"; break;
         }
     }
     meta_.update(title, artist);

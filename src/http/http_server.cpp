@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <thread>
 
 namespace fh6::http {
@@ -199,15 +200,16 @@ struct HttpServer::Impl {
             WSADATA wsa;
             WSAStartup(MAKEWORD(2, 2), &wsa);
 
-            auto sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-            if (sock == INVALID_SOCKET) {
+            SOCKET sock                     = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            constexpr SOCKET kInvalidSocket = std::numeric_limits<SOCKET>::max();
+            if (sock == kInvalidSocket) {
                 log::error("[http] socket creation failed: {}", WSAGetLastError());
                 return;
             }
 
             sockaddr_in addr{};
-            addr.sin_family = AF_INET;
-            addr.sin_port = htons(static_cast<u_short>(port));
+            addr.sin_family      = AF_INET;
+            addr.sin_port        = htons(static_cast<u_short>(port));
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
             if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
@@ -346,7 +348,7 @@ struct HttpServer::Impl {
                          return;
                      }
                      try {
-                         auto url = json::parse(q.body).at("url").get<std::string>();
+                         auto url              = json::parse(q.body).at("url").get<std::string>();
                          const bool was_active = (mgr.active() == yt);
                          yt->set_target(std::move(url));
                          yt->stop();

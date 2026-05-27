@@ -52,8 +52,8 @@ struct FMODFns {
     // channel can die when the placeholder sample's natural duration elapses
     // (Forza won't always allocate a new one).
     bool ready() const noexcept {
-        return host_base && dsp_release && channel_control_add_dsp &&
-               channel_control_rem_dsp && handle_resolver;
+        return host_base && dsp_release && channel_control_add_dsp && channel_control_rem_dsp &&
+               handle_resolver;
     }
 };
 
@@ -122,7 +122,8 @@ private:
     void* fmod_system_       = nullptr;
     void* current_dsp_       = nullptr;
     uint32_t current_handle_ = 0;
-    mutable uint32_t last_bad_handle_ = 0;  // suppress repeated rc=3 / SEH warnings for the same handle
+    mutable uint32_t last_bad_handle_ =
+        0; // suppress repeated rc=3 / SEH warnings for the same handle
     std::byte* radio_stream_ = nullptr;
 
     std::atomic<DSPMode> mode_{DSPMode::pcm};
