@@ -1,5 +1,6 @@
 #include "roon_routes.hpp"
 
+#include "fh6/audio/endpoint_classifier.hpp"
 #include "fh6/audio/wasapi_loopback_capture.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/config_store.hpp"
@@ -52,13 +53,17 @@ std::string required_string(const json& body, const char* key) {
     return {};
 }
 
-json capture_devices_to_json() {
+json loopback_devices_to_json() {
     json devices = json::array();
     for (const auto& device : audio::enumerate_render_devices()) {
+        const auto classification = audio::classify_endpoint(device.name);
         devices.push_back(json{
             {"id", device.id},
             {"name", device.name},
             {"is_default", device.is_default},
+            {"kind", classification.kind},
+            {"recommendation", classification.recommendation},
+            {"warning", classification.warning},
         });
     }
     return json{{"devices", std::move(devices)}};
@@ -217,8 +222,9 @@ bool handle_volume(std::string_view body, const JsonResponder& ok, const ErrorRe
 bool dispatch_roon_route(std::string_view method, std::string_view path, std::string_view body,
                          AudioSourceManager& mgr, ConfigStore& store, const JsonResponder& ok,
                          const ErrorResponder& fail, const BodyResponder& send_body) {
-    if (is_route(method, path, "GET", "/api/source/roon/capture-devices")) {
-        ok(capture_devices_to_json());
+    if (is_route(method, path, "GET", "/api/source/roon/loopback-endpoints") ||
+        is_route(method, path, "GET", "/api/source/roon/capture-devices")) {
+        ok(loopback_devices_to_json());
         return true;
     }
 

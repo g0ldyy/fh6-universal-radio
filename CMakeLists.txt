@@ -27,6 +27,7 @@ add_library(version SHARED
     src/config_store.cpp
     src/ring_buffer.cpp
     src/source_registration.cpp
+    src/audio/endpoint_classifier.cpp
     src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
     src/audio/wasapi_render_devices.cpp
@@ -200,8 +201,18 @@ target_include_directories(wasapi_loopback_capture_tests PRIVATE
 
 target_link_libraries(wasapi_loopback_capture_tests PRIVATE ole32 uuid propsys)
 
+add_executable(audio_endpoint_classifier_tests
+    tests/audio_endpoint_classifier_tests.cpp
+    src/audio/endpoint_classifier.cpp
+)
+
+target_include_directories(audio_endpoint_classifier_tests PRIVATE
+    include
+)
+
 add_executable(http_server_routes_tests
     tests/http_server_routes_tests.cpp
+    src/audio/endpoint_classifier.cpp
     src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
     src/audio/wasapi_render_devices.cpp

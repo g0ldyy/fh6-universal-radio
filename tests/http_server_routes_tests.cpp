@@ -98,21 +98,34 @@ int main() {
         const auto port = find_free_port();
         fh6::http::HttpServer server{mgr, bridge, store, port, {}};
 
-        auto res = wait_get(port, "/api/source/roon/capture-devices");
-        require(res, "capture devices route should respond");
-        require(res->status == 200, "capture devices route should return HTTP 200");
+        auto res = wait_get(port, "/api/source/roon/loopback-endpoints");
+        require(res, "loopback endpoints route should respond");
+        require(res->status == 200, "loopback endpoints route should return HTTP 200");
 
         auto body = nlohmann::json::parse(res->body);
         require(body.contains("devices") && body["devices"].is_array(),
-                "capture devices route should return a devices array");
+                "loopback endpoints route should return a devices array");
         for (const auto& device : body["devices"]) {
             require(device.contains("id") && device["id"].is_string(),
-                    "capture devices should include string id");
+                    "loopback endpoints should include string id");
             require(device.contains("name") && device["name"].is_string(),
-                    "capture devices should include string name");
+                    "loopback endpoints should include string name");
             require(device.contains("is_default") && device["is_default"].is_boolean(),
-                    "capture devices should include boolean is_default");
+                    "loopback endpoints should include boolean is_default");
+            require(device.contains("kind") && device["kind"].is_string(),
+                    "loopback endpoints should include classification kind");
+            require(device.contains("recommendation") && device["recommendation"].is_string(),
+                    "loopback endpoints should include recommendation");
+            require(device.contains("warning") && device["warning"].is_string(),
+                    "loopback endpoints should include warning");
         }
+
+        auto legacy_res = wait_get(port, "/api/source/roon/capture-devices");
+        require(legacy_res, "legacy capture devices route should respond");
+        require(legacy_res->status == 200, "legacy capture devices route should return HTTP 200");
+        auto legacy_body = nlohmann::json::parse(legacy_res->body);
+        require(legacy_body.contains("devices") && legacy_body["devices"].is_array(),
+                "legacy capture devices route should still return devices");
 
         for (const char* path : {"/api/source/roon/status", "/api/source/roon/zones",
                                  "/api/source/roon/outputs",
