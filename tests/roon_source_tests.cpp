@@ -55,6 +55,20 @@ public:
     fh6::audio::WasapiLoopbackCaptureStatus status_value{};
 };
 
+class FakeControl final : public fh6::sources::IRoonControl {
+public:
+    fh6::roon::RoonCommandResult transport(std::string_view control,
+                                           std::string_view zone_id) override {
+        controls.emplace_back(control);
+        zone_ids.emplace_back(zone_id);
+        return result;
+    }
+
+    std::vector<std::string> controls;
+    std::vector<std::string> zone_ids;
+    fh6::roon::RoonCommandResult result{true, 200, {}};
+};
+
 } // namespace
 
 int run_tests() {
@@ -122,13 +136,45 @@ int run_tests() {
     ready_cfg.capture_device_id = "device-1";
     ready_cfg.latency_ms = 123;
 
+    FakeControl* control = nullptr;
+    FakeCapture* controlled_fake = nullptr;
+    fh6::sources::RoonSource controlled_source{
+        ready_cfg, {},
+        [&] {
+            auto capture = std::make_unique<FakeCapture>();
+            controlled_fake = capture.get();
+            return capture;
+        },
+        [&] {
+            auto fake = std::make_unique<FakeControl>();
+            control = fake.get();
+            return fake;
+        }};
+    require(controlled_source.initialize(), "controlled Roon source should initialize");
+    controlled_source.play();
+    controlled_source.pause();
+    controlled_source.play();
+    controlled_source.next();
+    controlled_source.previous();
+    controlled_source.stop();
+    require(control != nullptr, "RoonSource should create a control client");
+    require((control->controls == std::vector<std::string>{"play", "pause", "play", "next",
+                                                           "previous", "stop"}),
+            "RoonSource should forward transport controls to Roon");
+    require((control->zone_ids == std::vector<std::string>{"zone-1", "zone-1", "zone-1",
+                                                          "zone-1", "zone-1", "zone-1"}),
+            "RoonSource should send the selected zone id with transport controls");
+    require(controlled_fake != nullptr && controlled_fake->starts >= 2,
+            "controlled play should still start capture");
+
     FakeCapture* fake = nullptr;
     fh6::sources::RoonSource capture_source{
         ready_cfg, {}, [&] {
             auto capture = std::make_unique<FakeCapture>();
             fake = capture.get();
             return capture;
-        }};
+        },
+        [] { return std::make_unique<FakeControl>(); }};
     require(capture_source.initialize(), "ready Roon source should initialize");
     require(capture_source.auth_state() == fh6::AuthState::authenticated,
             "complete Roon setup should authenticate");
@@ -178,7 +224,8 @@ int run_tests() {
             capture->status_value.error = "capture failed";
             failing_fake = capture.get();
             return capture;
-        }};
+        },
+        [] { return std::make_unique<FakeControl>(); }};
     require(failing_capture_source.initialize(), "capture failure source should initialize");
     failing_capture_source.play();
     require(failing_fake != nullptr && failing_fake->starts == 1,

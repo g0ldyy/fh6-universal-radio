@@ -3,6 +3,7 @@
 #include "fh6/audio_source.hpp"
 #include "fh6/audio/wasapi_loopback_capture.hpp"
 #include "fh6/config.hpp"
+#include "fh6/roon/roon_control_client.hpp"
 #include "fh6/roon/roon_sidecar_process.hpp"
 
 #include <atomic>
@@ -24,12 +25,22 @@ public:
     virtual std::size_t read_pcm(void* dst, std::size_t bytes) noexcept = 0;
 };
 
+class IRoonControl {
+public:
+    virtual ~IRoonControl() = default;
+
+    virtual roon::RoonCommandResult transport(std::string_view control,
+                                              std::string_view zone_id) = 0;
+};
+
 using RoonCaptureFactory = std::function<std::unique_ptr<IRoonCapture>()>;
+using RoonControlFactory = std::function<std::unique_ptr<IRoonControl>()>;
 
 class RoonSource final : public IAudioSource {
 public:
     explicit RoonSource(RoonConfig cfg, std::filesystem::path data_dir = {},
-                        RoonCaptureFactory capture_factory = {});
+                        RoonCaptureFactory capture_factory = {},
+                        RoonControlFactory control_factory = {});
     ~RoonSource() override;
 
     std::string_view name() const noexcept override { return "roon"; }
@@ -58,6 +69,7 @@ private:
     std::string setup_error() const;
     void clear_setup_error();
     void set_setup_error(std::string message);
+    bool send_transport(std::string_view control);
     bool start_capture();
     void stop_capture() noexcept;
     void clear_capture() noexcept;
@@ -67,7 +79,9 @@ private:
     std::filesystem::path data_dir_;
     std::unique_ptr<roon::RoonSidecarProcess> sidecar_;
     RoonCaptureFactory capture_factory_;
+    RoonControlFactory control_factory_;
     std::unique_ptr<IRoonCapture> capture_;
+    std::unique_ptr<IRoonControl> control_;
     mutable std::mutex setup_mu_;
     std::string setup_error_;
     std::atomic<bool> setup_error_present_{false};

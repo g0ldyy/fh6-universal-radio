@@ -25,17 +25,32 @@ private:
     audio::WasapiLoopbackCapture capture_;
 };
 
+class RoonClientControl final : public IRoonControl {
+public:
+    roon::RoonCommandResult transport(std::string_view control, std::string_view zone_id) override {
+        return client_.transport(control, zone_id);
+    }
+
+private:
+    roon::RoonControlClient client_;
+};
+
 std::unique_ptr<IRoonCapture> make_default_capture() {
     return std::make_unique<WasapiRoonCapture>();
+}
+
+std::unique_ptr<IRoonControl> make_default_control() {
+    return std::make_unique<RoonClientControl>();
 }
 
 } // namespace
 
 RoonSource::RoonSource(RoonConfig cfg, std::filesystem::path data_dir,
-                       RoonCaptureFactory capture_factory)
+                       RoonCaptureFactory capture_factory, RoonControlFactory control_factory)
     : cfg_{std::move(cfg)}, data_dir_{std::move(data_dir)},
-      capture_factory_{std::move(capture_factory)} {
+      capture_factory_{std::move(capture_factory)}, control_factory_{std::move(control_factory)} {
     if (!capture_factory_) capture_factory_ = make_default_capture;
+    if (!control_factory_) control_factory_ = make_default_control;
 }
 
 RoonSource::~RoonSource() { shutdown(); }
@@ -115,6 +130,10 @@ void RoonSource::update_config(RoonConfig cfg, std::filesystem::path data_dir) {
 void RoonSource::play() {
     log::info("[roon] play requested");
     if (!initialized_.load(std::memory_order_acquire)) return;
+    if (!send_transport("play")) {
+        state_.store(PlaybackState::stopped, std::memory_order_release);
+        return;
+    }
     if (!start_capture()) {
         state_.store(PlaybackState::stopped, std::memory_order_release);
         return;
@@ -125,26 +144,32 @@ void RoonSource::play() {
 void RoonSource::pause() {
     log::info("[roon] pause requested");
     if (!initialized_.load(std::memory_order_acquire)) return;
+    (void)send_transport("pause");
     stop_capture();
     state_.store(PlaybackState::paused, std::memory_order_release);
 }
 
 void RoonSource::stop() {
     log::info("[roon] stop requested");
+    if (initialized_.load(std::memory_order_acquire)) (void)send_transport("stop");
     stop_capture();
     state_.store(PlaybackState::stopped, std::memory_order_release);
 }
 
 void RoonSource::next() {
     log::info("[roon] next requested");
+    if (!initialized_.load(std::memory_order_acquire)) return;
+    (void)send_transport("next");
     clear_capture();
-    play();
+    if (state_.load(std::memory_order_acquire) == PlaybackState::playing) (void)start_capture();
 }
 
 void RoonSource::previous() {
     log::info("[roon] previous requested");
+    if (!initialized_.load(std::memory_order_acquire)) return;
+    (void)send_transport("previous");
     clear_capture();
-    play();
+    if (state_.load(std::memory_order_acquire) == PlaybackState::playing) (void)start_capture();
 }
 
 void RoonSource::pump(RingBuffer& ring) {
@@ -218,6 +243,27 @@ void RoonSource::set_setup_error(std::string message) {
     log::warn("[roon] setup error: {}", message);
     setup_error_ = std::move(message);
     setup_error_present_.store(true, std::memory_order_release);
+}
+
+bool RoonSource::send_transport(std::string_view control) {
+    const auto current = config_snapshot();
+    if (current.selected_zone_id.empty()) {
+        log::warn("[roon] transport {} blocked: no zone selected", control);
+        return false;
+    }
+    if (!control_) control_ = control_factory_();
+    if (!control_) {
+        set_setup_error("Roon control client could not be created.");
+        return false;
+    }
+
+    auto result = control_->transport(control, current.selected_zone_id);
+    if (result.ok) return true;
+
+    auto error = result.error.empty() ? "Roon transport command failed." : result.error;
+    log::warn("[roon] transport {} failed status={}: {}", control, result.http_status, error);
+    set_setup_error(std::move(error));
+    return false;
 }
 
 bool RoonSource::start_capture() {
