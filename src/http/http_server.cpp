@@ -176,15 +176,20 @@ void fail(httplib::Response& res, int status, std::string_view msg) {
 
 } // namespace
 
+struct RawServer : httplib::Server {
+    using httplib::Server::Server;
+    void set_socket(socket_t sock) { svr_sock_ = sock; }
+    bool start() { return listen_after_bind(); }
+};
+
 struct HttpServer::Impl {
     AudioSourceManager& mgr;
     fmod_bridge::DSPBridge& bridge;
     ConfigStore& store;
     std::filesystem::path ui_dist;
-    httplib::Server svr;
+    RawServer svr;
     std::jthread thr;
     std::atomic<bool> stopping{false};
-    SOCKET srv_sock{INVALID_SOCKET};
 
     Impl(AudioSourceManager& m, fmod_bridge::DSPBridge& b, ConfigStore& s, uint16_t port,
          std::filesystem::path dist)
@@ -194,8 +199,8 @@ struct HttpServer::Impl {
             WSADATA wsa;
             WSAStartup(MAKEWORD(2, 2), &wsa);
 
-            srv_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-            if (srv_sock == INVALID_SOCKET) {
+            auto sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+            if (sock == INVALID_SOCKET) {
                 log::error("[http] socket creation failed: {}", WSAGetLastError());
                 return;
             }
@@ -205,21 +210,26 @@ struct HttpServer::Impl {
             addr.sin_port = htons(static_cast<u_short>(port));
             addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-            if (bind(srv_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+            if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
                 log::error("[http] bind failed on 127.0.0.1:{} — {}", port, WSAGetLastError());
-                closesocket(srv_sock);
-                srv_sock = INVALID_SOCKET;
+                closesocket(sock);
+                return;
+            }
+
+            if (::listen(sock, SOMAXCONN) != 0) {
+                log::error("[http] listen failed: {}", WSAGetLastError());
+                closesocket(sock);
                 return;
             }
 
             log::info("[http] listening on http://127.0.0.1:{}", port);
-            svr.listen(srv_sock);
+            svr.set_socket(sock);
+            svr.start();
         });
     }
     ~Impl() {
         stopping.store(true);
         svr.stop();
-        if (srv_sock != INVALID_SOCKET) closesocket(srv_sock);
     }
 
     json build_state() const {
