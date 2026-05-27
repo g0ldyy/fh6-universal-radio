@@ -192,8 +192,9 @@ function field(section, [key, label, type, min, max, step]) {
 
 function renderSettings() {
   $("#settings-form").innerHTML = SCHEMA.map(([sec, title, fields]) =>
-    `<fieldset><legend>${title}</legend>${fields.map(f => field(sec, f)).join("")}</fieldset>`
+    `<fieldset><legend>${title}</legend>${fields.map(f => field(sec, f)).join("")}${sec === "roon" ? '<div id="roon-settings-wizard"></div>' : ""}</fieldset>`
   ).join("");
+  roonPanel.renderPanel();
 }
 
 function collectSettings() {
@@ -271,7 +272,7 @@ function wire() {
     } catch (err) { toast(err.message, true); }
   });
 
-  $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); };
+  $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); void roonPanel.refresh(true); };
   $("#close-settings").onclick = closeDrawer;
   $("#scrim").onclick          = closeDrawer;
   $("#save-config").onclick    = async () => {

@@ -314,6 +314,27 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
   color: var(--text); font-weight: 600;
 }
 
+.roon-step-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 12px;
+}
+
+.roon-step-list li {
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px;
+  background: var(--panel-2);
+}
+
+.roon-step-list span, .roon-step-list strong, .roon-step-list small { display: block; }
+
+.roon-step-list span { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+
+.roon-step-list strong { color: var(--warn); font-size: 13px; }
+
+.roon-step-list .ok strong { color: var(--accent); }
+
+.roon-step-list small { color: var(--muted); font-size: 12px; }
+
 .action-row {
   flex-wrap: wrap;
 }
@@ -343,6 +364,21 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
   color: var(--warn);
   margin-top: 12px;
 }
+
+.roon-dialog {
+  width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+  padding: 0; color: var(--text); background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-2);
+}
+
+.roon-dialog::backdrop { background: rgba(0,0,0,0.62); }
+
+.dialog-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px; border-bottom: 1px solid var(--line);
+}
+
+#roon-dialog-wizard { padding: 18px 22px 22px; overflow-y: auto; }
 
 /* Settings drawer */
 .drawer {

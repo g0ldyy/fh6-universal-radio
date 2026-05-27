@@ -45,73 +45,6 @@
     <div class="sources" id="sources"></div>
   </section>
 
-  <section class="card roon-panel" id="roon-setup-card" hidden>
-    <div class="card-head">
-      <div>
-        <h2>Roon</h2>
-        <p class="muted" id="roon-summary">Waiting for status...</p>
-      </div>
-      <button class="ghost" id="roon-reconnect" type="button">Reconnect</button>
-    </div>
-    <div class="stat-grid roon-stats">
-      <div class="stat">
-        <div class="label">Pairing</div>
-        <div class="value" id="roon-pairing">unknown</div>
-      </div>
-      <div class="stat">
-        <div class="label">Core</div>
-        <div class="value" id="roon-core">unknown</div>
-      </div>
-      <div class="stat">
-        <div class="label">Level</div>
-        <div class="value" id="roon-level">untested</div>
-      </div>
-    </div>
-    <div class="roon-wizard">
-      <div class="roon-step">
-        <div class="step-head">
-          <span>Roon environment</span>
-          <button class="ghost" id="roon-recheck" type="button">Recheck</button>
-        </div>
-        <p id="roon-environment">Waiting for diagnostics</p>
-        <div class="row action-row">
-          <button class="ghost" id="roon-open-download" type="button">Open Roon download</button>
-          <button class="ghost" id="roon-open-vb-download" type="button">Open VB-Audio download</button>
-        </div>
-      </div>
-      <div class="roon-step">
-        <div class="step-head"><span>Recommended endpoint</span></div>
-        <p id="roon-cable-environment">Waiting for endpoint scan</p>
-        <p class="value-line" id="roon-recommended">No recommended endpoint found</p>
-        <button class="primary" id="roon-use-recommended" type="button">Use recommended device</button>
-      </div>
-      <div class="roon-step">
-        <div class="step-head"><span>Routing instructions</span></div>
-        <p id="roon-routing">Select the Roon output and matching loopback endpoint.</p>
-      </div>
-      <div class="roon-step">
-        <div class="step-head"><span>Test audio result</span></div>
-        <p id="roon-test-result">Audio has not been tested.</p>
-      </div>
-      <div class="roon-step">
-        <div class="step-head"><span>Targeted warnings</span></div>
-        <ul class="warning-list" id="roon-warning-list"></ul>
-      </div>
-    </div>
-    <div class="roon-controls">
-      <label class="field">
-        <span>Zone</span>
-        <select id="roon-zone"></select>
-      </label>
-      <label class="field">
-        <span>Roon Output / Loopback Capture Device</span>
-        <select id="roon-capture"></select>
-      </label>
-      <button class="primary" id="roon-test-capture" type="button">Test audio</button>
-    </div>
-    <p class="muted" id="roon-error"></p>
-  </section>
-
   <section class="card" id="yt-cast-card" hidden>
     <h2>Cast to YouTube Music</h2>
     <p class="muted">Paste any YouTube or YouTube Music URL (single video or playlist). The radio will switch sources and start streaming immediately.</p>
@@ -167,6 +100,14 @@
   </div>
 </aside>
 <div class="scrim" id="scrim" hidden></div>
+
+<dialog class="roon-dialog" id="roon-setup-dialog" aria-labelledby="roon-setup-title">
+  <div class="dialog-head">
+    <h2 id="roon-setup-title">Roon setup</h2>
+    <button class="ghost" id="roon-setup-close" data-roon-action="close-dialog" type="button">Close</button>
+  </div>
+  <div id="roon-dialog-wizard"></div>
+</dialog>
 
 <script src="app.js" type="module"></script>
 </body>

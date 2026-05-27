@@ -2,7 +2,7 @@ const ROON_DOWNLOAD_URL = "https://roon.app/en/downloads";
 const VB_AUDIO_URL = "https://vb-audio.com/Cable/";
 
 export function createRoonPanel(deps) {
-  const { api, $, setText, toast, getState, getConfig, setConfig, requestRender } = deps;
+  const { api, $, toast, getState, getConfig, setConfig, requestRender } = deps;
   const roon = {
     status: null,
     setup: null,
@@ -126,23 +126,6 @@ export function createRoonPanel(deps) {
     }
   }
 
-  function syncOptions(select, items, value, emptyLabel) {
-    const sig = items.map(i => `${i.value}\u0000${i.label}`).join("\u0001");
-    if (select.dataset.sig !== sig) {
-      const empty = document.createElement("option");
-      empty.value = "";
-      empty.textContent = emptyLabel;
-      select.replaceChildren(empty, ...items.map(item => {
-        const opt = document.createElement("option");
-        opt.value = item.value;
-        opt.textContent = item.label;
-        return opt;
-      }));
-      select.dataset.sig = sig;
-    }
-    if (select.value !== value) select.value = value || "";
-  }
-
   function labelForEnvironment(value) {
     return ({
       local_server: "Roon Server detected",
@@ -161,71 +144,156 @@ export function createRoonPanel(deps) {
     })[value] || "Waiting for endpoint scan";
   }
 
-  function setButtonState(id, disabled) {
-    const button = $(id);
-    if (button) button.disabled = !!disabled;
+  function esc(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
   }
 
-  function renderIssues() {
-    const list = $("#roon-warning-list");
-    if (!list) return;
+  function issuesMarkup() {
     const issues = roon.setup?.issues || [];
     if (!issues.length) {
-      list.innerHTML = '<li class="ok">No setup warnings detected.</li>';
-      return;
+      return '<li class="ok">No setup warnings detected.</li>';
     }
-    list.innerHTML = issues.map(i =>
-      `<li class="${i.severity === "error" ? "err" : "warn"}">${i.message}</li>`
+    return issues.map(i =>
+      `<li class="${i.severity === "error" ? "err" : "warn"}">${esc(i.message)}</li>`
     ).join("");
   }
 
-  function renderRoonPanel() {
-    const card = $("#roon-setup-card");
-    if (!card) return;
-    const available = roonAvailable();
-    card.hidden = !available;
-    if (!available) return;
+  function roonSetupEnabled() {
+    return !!(getConfig()?.roon?.enabled || roonAvailable());
+  }
 
+  function setupComplete() {
+    const r = getConfig()?.roon || {};
+    const status = roon.status || {};
+    return status.pairing_state === "authorized" &&
+      !!(r.selected_zone_id || status.selected_zone_id) &&
+      !!selectedEndpointId() &&
+      !!roon.captureTest?.ok;
+  }
+
+  function shouldOpenSetupDialog() {
+    return roonAvailable() && roonSetupEnabled() && !setupComplete() &&
+      sessionStorage.getItem("fh6-roon-setup-dismissed") !== "1";
+  }
+
+  function renderStep(label, ok, detail) {
+    return `<li class="${ok ? "ok" : "warn"}">
+      <span>${esc(label)}</span>
+      <strong>${ok ? "Ready" : "Action needed"}</strong>
+      <small>${esc(detail)}</small>
+    </li>`;
+  }
+
+  function renderOptions(items, selected, emptyLabel) {
+    return `<option value="">${esc(emptyLabel)}</option>` + items.map(item =>
+      `<option value="${esc(item.value)}"${item.value === selected ? " selected" : ""}>${esc(item.label)}</option>`
+    ).join("");
+  }
+
+  function renderRoonSetupWizard(mode) {
     const r = getConfig()?.roon || {};
     const status = roon.status || {};
     const source = getState()?.sources?.available?.find(s => s.name === "roon");
     const endpoint = recommendedEndpoint();
-    const selected = selectedEndpointName();
     const setupNote = source?.auth_state === "authenticated" ? "" : source?.auth_instructions || "";
     const pairing = status.pairing_state || "unknown";
-    const level = roon.captureTest?.peak == null
-      ? "untested"
-      : `${Math.round(roon.captureTest.peak * 100)}%`;
-
-    setText($("#roon-summary"), status.selected_zone_name
-      ? `${status.selected_zone_name}${selected ? " - " + selected : ""}`
-      : "No zone selected");
-    setText($("#roon-pairing"), pairing);
-    $("#roon-pairing").className = "value " + (pairing === "authorized" ? "" : "warn");
-    setText($("#roon-core"), status.core?.name || "Core not found");
-    setText($("#roon-level"), level);
-    setText($("#roon-environment"), labelForEnvironment(roon.setup?.roon_environment));
-    setText($("#roon-cable-environment"), labelForCable(roon.setup?.cable_environment));
-    setText($("#roon-recommended"), endpoint?.name || "No recommended endpoint found");
-    setText($("#roon-routing"), endpoint?.name
+    const selectedZone = r.selected_zone_id || status.selected_zone_id;
+    const selectedEndpoint = selectedEndpointId();
+    const testOk = !!roon.captureTest?.ok;
+    const route = endpoint?.name
       ? `Set the Roon zone output to ${endpoint.name}, then select the same endpoint here.`
-      : "Install or enable a VB-Audio render endpoint, then recheck.");
-    setText($("#roon-test-result"), roon.captureTest?.peak == null
+      : "Install or enable a VB-Audio render endpoint, then recheck.";
+    const testResult = roon.captureTest?.peak == null
       ? "Audio has not been tested."
-      : roon.captureTest.message || `Audio level ${Math.round(roon.captureTest.peak * 100)}%.`);
-    setText($("#roon-error"), roon.error || status.error || setupNote);
-    renderIssues();
-
-    syncOptions($("#roon-zone"), roon.zones.map(z => ({
+      : roon.captureTest.message || `Audio level ${Math.round(roon.captureTest.peak * 100)}%.`;
+    const zoneOptions = renderOptions(roon.zones.map(z => ({
       value: z.id || z.zone_id,
       label: `${z.display_name}${z.state ? " (" + z.state + ")" : ""}`,
-    })), r.selected_zone_id || status.selected_zone_id, "Select zone");
-    syncOptions($("#roon-capture"), roon.devices.map(d => ({
+    })), selectedZone, "Select zone");
+    const endpointOptions = renderOptions(roon.devices.map(d => ({
       value: d.id,
       label: `${d.name}${d.is_default ? " (default)" : ""}`,
-    })), selectedEndpointId(), "Select loopback endpoint");
-    setButtonState("#roon-use-recommended", !endpoint?.id);
-    setButtonState("#roon-test-capture", !selectedEndpointId() && !endpoint?.id);
+    })), selectedEndpoint, "Select loopback endpoint");
+    const steps = [
+      renderStep("Node.js", !!roon.setup?.node_available, "Required for the Roon control sidecar."),
+      renderStep("Roon Server", roon.setup?.roon_environment === "local_server",
+                 labelForEnvironment(roon.setup?.roon_environment)),
+      renderStep("Authorize extension", pairing === "authorized",
+                 pairing === "authorized" ? "FH6 Universal Radio is authorized." : setupNote || pairing),
+      renderStep("Select zone", !!selectedZone, status.selected_zone_name || "Choose the Roon zone to control."),
+      renderStep("Select loopback endpoint", !!selectedEndpoint,
+                 selectedEndpointName() || endpoint?.name || "Use the recommended render endpoint."),
+      renderStep("Test audio", testOk, testResult),
+    ].join("");
+    return `<div class="roon-panel roon-setup-surface" data-roon-setup="${esc(mode)}">
+      <div class="card-head">
+        <div>
+          <h2>Roon setup</h2>
+          <p class="muted">${esc(status.selected_zone_name || "Complete each step before using Roon in-game.")}</p>
+        </div>
+        <div class="row action-row">
+          <button class="ghost" data-roon-action="recheck" type="button">Recheck</button>
+          <button class="ghost" data-roon-action="reconnect" type="button">Reconnect</button>
+        </div>
+      </div>
+      <ol class="roon-step-list">${steps}</ol>
+      <div class="roon-wizard">
+        <div class="roon-step">
+          <div class="step-head"><span>Roon environment</span></div>
+          <p>${esc(labelForEnvironment(roon.setup?.roon_environment))}</p>
+          <div class="row action-row">
+            <button class="ghost" data-roon-action="open-roon-download" type="button">Open Roon download</button>
+            <button class="ghost" data-roon-action="open-vb-download" type="button">Open VB-Audio download</button>
+          </div>
+        </div>
+        <div class="roon-step">
+          <div class="step-head"><span>Recommended endpoint</span></div>
+          <p>${esc(labelForCable(roon.setup?.cable_environment))}</p>
+          <p class="value-line">${esc(endpoint?.name || "No recommended endpoint found")}</p>
+          <button class="primary" data-roon-action="use-recommended" type="button"${endpoint?.id ? "" : " disabled"}>Use recommended device</button>
+        </div>
+        <div class="roon-step">
+          <div class="step-head"><span>Routing instructions</span></div>
+          <p>${esc(route)}</p>
+        </div>
+        <div class="roon-step">
+          <div class="step-head"><span>Targeted warnings</span></div>
+          <ul class="warning-list">${issuesMarkup()}</ul>
+        </div>
+      </div>
+      <div class="roon-controls">
+        <label class="field">
+          <span>Zone</span>
+          <select data-roon-zone>${zoneOptions}</select>
+        </label>
+        <label class="field">
+          <span>Roon Output / Loopback Capture Device</span>
+          <select data-roon-endpoint>${endpointOptions}</select>
+        </label>
+        <button class="primary" data-roon-action="test-audio" type="button"${selectedEndpoint || endpoint?.id ? "" : " disabled"}>Test audio</button>
+      </div>
+      <p class="muted">${esc(roon.error || status.error || setupNote)}</p>
+      ${mode === "settings" ? '<button class="ghost" data-roon-action="open-dialog" type="button">Open setup wizard</button>' : ""}
+    </div>`;
+  }
+
+  function renderRoonPanel() {
+    const showSetup = roonSetupEnabled();
+    const settings = $("#roon-settings-wizard");
+    if (settings) {
+      settings.hidden = !showSetup;
+      settings.innerHTML = showSetup ? renderRoonSetupWizard("settings") : "";
+    }
+    const dialogBody = $("#roon-dialog-wizard");
+    if (dialogBody) dialogBody.innerHTML = showSetup ? renderRoonSetupWizard("dialog") : "";
+    const dialog = $("#roon-setup-dialog");
+    if (!showSetup && dialog?.open) dialog.close();
+    if (dialog && shouldOpenSetupDialog() && !dialog.open) dialog.showModal();
   }
 
   function openSetupUrl(key, fallback) {
@@ -251,7 +319,18 @@ export function createRoonPanel(deps) {
   }
 
   function wireRoonPanel() {
-    $("#roon-zone").addEventListener("change", async e => {
+    document.addEventListener("change", async e => {
+      if (!e.target.matches("[data-roon-zone]") && !e.target.matches("[data-roon-endpoint]")) return;
+      if (e.target.matches("[data-roon-endpoint]")) {
+        const id = e.target.value;
+        if (!id) return;
+        const endpoint = roon.devices.find(d => d.id === id) || { id, name: "" };
+        try {
+          await selectEndpoint(endpoint);
+          toast("Loopback endpoint selected");
+        } catch (err) { toast(err.message, true); }
+        return;
+      }
       const zone_id = e.target.value;
       if (!zone_id) return;
       try {
@@ -262,50 +341,41 @@ export function createRoonPanel(deps) {
       } catch (err) { toast(err.message, true); }
     });
 
-    $("#roon-capture").addEventListener("change", async e => {
-      const id = e.target.value;
-      if (!id) return;
-      const endpoint = roon.devices.find(d => d.id === id) || { id, name: "" };
+    document.addEventListener("click", async e => {
+      const button = e.target.closest("[data-roon-action]");
+      const action = button?.dataset.roonAction;
+      if (!action) return;
       try {
-        await selectEndpoint(endpoint);
-        toast("Loopback endpoint selected");
+        if (action === "close-dialog") {
+          sessionStorage.setItem("fh6-roon-setup-dismissed", "1");
+          $("#roon-setup-dialog")?.close();
+        } else if (action === "open-dialog") {
+          $("#roon-setup-dialog")?.showModal();
+        } else if (action === "open-roon-download") {
+          openSetupUrl("roon", ROON_DOWNLOAD_URL);
+        } else if (action === "open-vb-download") {
+          openSetupUrl("vb_hifi_cable", VB_AUDIO_URL);
+        } else if (action === "reconnect") {
+          await api.send("/api/source/roon/reconnect", {});
+          await refreshRoon(true);
+          toast("Roon reconnecting");
+        } else if (action === "recheck") {
+          await refreshRoon(true);
+          toast("Roon setup checked");
+        } else if (action === "use-recommended") {
+          const endpoint = recommendedEndpoint();
+          if (!endpoint?.id) return toast("No recommended endpoint found", true);
+          await selectEndpoint(endpoint);
+          toast("Recommended endpoint selected");
+        } else if (action === "test-audio") {
+          const endpoint = selectedEndpointId() || recommendedEndpoint()?.id;
+          if (!endpoint) return toast("Select a loopback endpoint first", true);
+          roon.captureTest = await api.send("/api/source/roon/test-capture", { device_id: endpoint });
+          requestRender();
+          toast(`Audio level ${Math.round((roon.captureTest.peak || 0) * 100)}%`);
+        }
       } catch (err) { toast(err.message, true); }
     });
-
-    $("#roon-reconnect").onclick = async () => {
-      try {
-        await api.send("/api/source/roon/reconnect", {});
-        await refreshRoon(true);
-        toast("Roon reconnecting");
-      } catch (err) { toast(err.message, true); }
-    };
-
-    $("#roon-recheck").onclick = async () => {
-      await refreshRoon(true);
-      toast("Roon setup checked");
-    };
-
-    $("#roon-use-recommended").onclick = async () => {
-      const endpoint = recommendedEndpoint();
-      if (!endpoint?.id) return toast("No recommended endpoint found", true);
-      try {
-        await selectEndpoint(endpoint);
-        toast("Recommended endpoint selected");
-      } catch (err) { toast(err.message, true); }
-    };
-
-    $("#roon-test-capture").onclick = async () => {
-      const endpoint = selectedEndpointId() || recommendedEndpoint()?.id;
-      if (!endpoint) return toast("Select a loopback endpoint first", true);
-      try {
-        roon.captureTest = await api.send("/api/source/roon/test-capture", { device_id: endpoint });
-        requestRender();
-        toast(`Audio level ${Math.round((roon.captureTest.peak || 0) * 100)}%`);
-      } catch (err) { toast(err.message, true); }
-    };
-
-    $("#roon-open-download").onclick = () => openSetupUrl("roon", ROON_DOWNLOAD_URL);
-    $("#roon-open-vb-download").onclick = () => openSetupUrl("vb_hifi_cable", VB_AUDIO_URL);
   }
 
   return {

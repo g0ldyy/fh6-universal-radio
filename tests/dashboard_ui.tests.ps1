@@ -51,15 +51,15 @@ foreach ($route in @(
 }
 
 foreach ($id in @(
-    'roon-setup-card',
-    'roon-pairing',
-    'roon-zone',
-    'roon-capture',
-    'roon-reconnect',
-    'roon-test-capture',
-    'roon-error'
+    'roon-setup-dialog',
+    'roon-dialog-wizard',
+    'roon-setup-close'
 )) {
     Require-Text $html $id "Dashboard markup should include #$id"
+}
+
+if ($html.Contains('id="roon-setup-card"')) {
+    throw 'Roon setup wizard should not occupy the main dashboard card area'
 }
 
 foreach ($text in @(
@@ -71,6 +71,17 @@ foreach ($text in @(
     'Test audio'
 )) {
     Require-Text $surface $text "Roon setup panel should include '$text'"
+}
+
+foreach ($text in @(
+    'roon-settings-wizard',
+    'renderRoonSetupWizard',
+    'shouldOpenSetupDialog',
+    'sessionStorage',
+    'showModal',
+    'data-roon-action'
+)) {
+    Require-Text $js $text "Roon setup wizard should be settings/dialog driven with $text"
 }
 
 foreach ($forbidden in @(
