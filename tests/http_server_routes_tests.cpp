@@ -127,6 +127,22 @@ int main() {
         require(legacy_body.contains("devices") && legacy_body["devices"].is_array(),
                 "legacy capture devices route should still return devices");
 
+        auto setup_res = wait_get(port, "/api/source/roon/setup");
+        require(setup_res, "Roon setup diagnostics route should respond");
+        require(setup_res->status == 200, "Roon setup diagnostics route should return HTTP 200");
+        auto setup_body = nlohmann::json::parse(setup_res->body);
+        require(setup_body.contains("roon_environment") &&
+                    setup_body["roon_environment"].is_string(),
+                "Roon setup diagnostics should include Roon environment");
+        require(setup_body.contains("cable_environment") &&
+                    setup_body["cable_environment"].is_string(),
+                "Roon setup diagnostics should include cable environment");
+        require(setup_body.contains("recommended_endpoint") &&
+                    setup_body["recommended_endpoint"].is_object(),
+                "Roon setup diagnostics should include recommended endpoint");
+        require(setup_body.contains("actions") && setup_body["actions"].is_array(),
+                "Roon setup diagnostics should include actions");
+
         for (const char* path : {"/api/source/roon/status", "/api/source/roon/zones",
                                  "/api/source/roon/outputs",
                                  "/api/source/roon/artwork/current"}) {

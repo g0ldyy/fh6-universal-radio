@@ -42,6 +42,7 @@ add_library(version SHARED
     src/http/http_server.cpp
     src/http/roon_routes.cpp
     src/roon/roon_control_client.cpp
+    src/roon/setup_diagnostics.cpp
     src/roon/roon_sidecar_process.cpp
     src/sources/local_file_source.cpp
     src/sources/roon_source.cpp
@@ -185,6 +186,19 @@ target_include_directories(roon_sidecar_process_tests PRIVATE
     include
 )
 
+add_executable(roon_setup_diagnostics_tests
+    tests/roon_setup_diagnostics_tests.cpp
+    src/audio/endpoint_classifier.cpp
+    src/audio/wasapi_render_devices.cpp
+    src/roon/setup_diagnostics.cpp
+)
+
+target_include_directories(roon_setup_diagnostics_tests PRIVATE
+    include
+)
+
+target_link_libraries(roon_setup_diagnostics_tests PRIVATE ole32 uuid propsys)
+
 add_executable(wasapi_loopback_capture_tests
     tests/wasapi_loopback_capture_tests.cpp
     src/audio/miniaudio.cpp
@@ -226,6 +240,7 @@ add_executable(http_server_routes_tests
     src/http/http_server.cpp
     src/http/roon_routes.cpp
     src/roon/roon_control_client.cpp
+    src/roon/setup_diagnostics.cpp
     src/log.cpp
     src/ring_buffer.cpp
     src/roon/roon_sidecar_process.cpp

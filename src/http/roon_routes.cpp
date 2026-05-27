@@ -6,6 +6,7 @@
 #include "fh6/config_store.hpp"
 #include "fh6/log.hpp"
 #include "fh6/roon/roon_control_client.hpp"
+#include "fh6/roon/setup_diagnostics.hpp"
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #include <httplib.h>
@@ -104,6 +105,32 @@ json roon_outputs_to_json(const std::vector<roon::RoonOutputInfo>& outputs) {
         out.push_back(std::move(item));
     }
     return json{{"outputs", std::move(out)}};
+}
+
+json setup_diagnostics_to_json(const roon::RoonSetupDiagnostics& d) {
+    json issues = json::array();
+    for (const auto& issue : d.issues) {
+        issues.push_back(
+            json{{"id", issue.id}, {"severity", issue.severity}, {"message", issue.message}});
+    }
+    json actions = json::array();
+    for (const auto& action : d.actions) {
+        actions.push_back(json{{"id", action.id}, {"label", action.label}, {"url", action.url}});
+    }
+    return json{
+        {"roon_environment", d.roon_environment},
+        {"cable_environment", d.cable_environment},
+        {"node_available", d.node_available},
+        {"recommended_endpoint",
+         json{{"id", d.recommended_endpoint_id}, {"name", d.recommended_endpoint_name}}},
+        {"issues", std::move(issues)},
+        {"actions", std::move(actions)},
+        {"official_urls",
+         json{{"roon", "https://roon.app/en/downloads"},
+              {"roon_bridge", "https://help.roonlabs.com/portal/en/kb/articles/roonbridge"},
+              {"vb_hifi_cable", "https://vb-audio.com/Cable/"},
+              {"node", "https://nodejs.org/"}}},
+    };
 }
 
 audio::WasapiLoopbackCaptureStatus wait_for_capture_signal(audio::WasapiLoopbackCapture& capture) {
@@ -225,6 +252,11 @@ bool dispatch_roon_route(std::string_view method, std::string_view path, std::st
     if (is_route(method, path, "GET", "/api/source/roon/loopback-endpoints") ||
         is_route(method, path, "GET", "/api/source/roon/capture-devices")) {
         ok(loopback_devices_to_json());
+        return true;
+    }
+    if (is_route(method, path, "GET", "/api/source/roon/setup")) {
+        ok(setup_diagnostics_to_json(
+            roon::build_setup_diagnostics(roon::collect_setup_probe(store.snapshot().roon))));
         return true;
     }
 
