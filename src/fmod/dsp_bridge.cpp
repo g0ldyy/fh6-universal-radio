@@ -1,4 +1,5 @@
 #include "fh6/fmod/dsp_bridge.hpp"
+#include "fh6/fmod/dsp_retarget_policy.hpp"
 #include "fh6/fmod/sig_scanner.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/log.hpp"
@@ -275,18 +276,22 @@ bool DSPBridge::channel_handle_alive(std::byte* radio_stream) const noexcept {
 
 void DSPBridge::retarget_if_needed() noexcept {
     if (mode() != DSPMode::pcm || !fmod_system_) return;
-    const uint32_t handle = read_live_handle(radio_stream_);
-    if (handle == current_handle_) return;
-    // No live handle on the RadioStreamFmod. If we still think we're installed
-    // on a dead one, release it so we stop querying the stale handle.
-    if (!handle) {
-        if (current_handle_) release_current_dsp_locked();
-        return;
+    const bool current_alive        = current_handle_alive();
+    const uint32_t current_channels = last_out_ch_.load(std::memory_order_relaxed);
+    const uint32_t slot_handle      = read_live_handle(radio_stream_);
+    const auto decision =
+        decide_retarget(current_handle_, current_alive, current_channels, slot_handle);
+
+    switch (decision.action) {
+        case RetargetAction::none:
+        case RetargetAction::keep_current: return;
+        case RetargetAction::release_current: release_current_dsp_locked(); return;
+        case RetargetAction::install_slot: break;
     }
 
-    log::info("[dsp] retargeting -> handle 0x{:X}", handle);
+    log::info("[dsp] retargeting -> handle 0x{:X}", decision.handle);
     release_current_dsp_locked();
-    install_dsp_locked(handle);
+    install_dsp_locked(decision.handle);
 }
 
 // FMOD DSP read callback (mixer thread). Sources write 48 kHz S16 stereo

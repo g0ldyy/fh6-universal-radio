@@ -101,6 +101,7 @@ public:
     }
 
     AudioSourceManager& manager() noexcept { return mgr_; }
+    std::byte* target_radio_stream() const noexcept { return radio_stream_; }
 
     static uint32_t __stdcall read_callback(void* dsp_state, float* in_buf, float* out_buf,
                                             uint32_t length, int32_t in_channels,

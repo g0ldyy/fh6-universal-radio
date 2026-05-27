@@ -118,6 +118,14 @@ target_include_directories(source_registration_tests PRIVATE
 
 target_link_libraries(source_registration_tests PRIVATE ws2_32 ole32 uuid propsys)
 
+add_executable(dsp_retarget_policy_tests
+    tests/dsp_retarget_policy_tests.cpp
+)
+
+target_include_directories(dsp_retarget_policy_tests PRIVATE
+    include
+)
+
 add_executable(youtube_music_runtime_tests
     tests/youtube_music_runtime_tests.cpp
     src/log.cpp
