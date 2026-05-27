@@ -126,6 +126,28 @@ target_include_directories(dsp_retarget_policy_tests PRIVATE
     include
 )
 
+add_executable(dsp_bridge_install_tests
+    tests/dsp_bridge_install_tests.cpp
+    src/audio_source_manager.cpp
+    src/fmod/dsp_bridge.cpp
+    src/fmod/pe_image.cpp
+    src/fmod/sig_scanner.cpp
+    src/log.cpp
+    src/ring_buffer.cpp
+)
+
+target_include_directories(dsp_bridge_install_tests PRIVATE
+    include
+)
+
+add_executable(dsp_render_policy_tests
+    tests/dsp_render_policy_tests.cpp
+)
+
+target_include_directories(dsp_render_policy_tests PRIVATE
+    include
+)
+
 add_executable(youtube_music_runtime_tests
     tests/youtube_music_runtime_tests.cpp
     src/log.cpp

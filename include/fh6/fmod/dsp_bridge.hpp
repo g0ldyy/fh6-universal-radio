@@ -106,6 +106,9 @@ public:
     static uint32_t __stdcall read_callback(void* dsp_state, float* in_buf, float* out_buf,
                                             uint32_t length, int32_t in_channels,
                                             int32_t* out_channels);
+    static uint32_t __stdcall process_callback(void* dsp_state, uint32_t length,
+                                               const void* in_buffer_array, void* out_buffer_array,
+                                               bool inputs_idle, uint32_t op);
 
 private:
     // True if the resolver accepts the handle (the channel is still live).
