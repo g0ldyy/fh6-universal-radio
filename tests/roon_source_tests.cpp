@@ -242,6 +242,21 @@ int run_tests() {
     capture_source.pump(capture_ring);
     require(capture_ring.readable() == sizeof(marker), "pump should drain capture PCM into ring");
 
+    std::vector<std::byte> stale_pcm(98304, std::byte{0x11});
+    fh6::RingBuffer delayed_ring{131072};
+    require(delayed_ring.write(stale_pcm.data(), stale_pcm.size()) == stale_pcm.size(),
+            "test should seed stale downstream Roon PCM");
+    const std::uint32_t fresh_marker = 0x11223344u;
+    fake->pcm.resize(sizeof(fresh_marker));
+    std::memcpy(fake->pcm.data(), &fresh_marker, sizeof(fresh_marker));
+    fake->status_value.queued_bytes = sizeof(fresh_marker);
+    capture_source.pump(delayed_ring);
+    std::uint32_t heard_marker = 0;
+    require(delayed_ring.read(&heard_marker, sizeof(heard_marker)) == sizeof(heard_marker),
+            "Roon pump should leave fresh PCM readable after dropping stale downstream backlog");
+    require(heard_marker == fresh_marker,
+            "Roon pump should drop stale downstream PCM when live backlog exceeds capture latency");
+
     capture_source.pause();
     require(fake->stops == 1, "pause should stop capture");
     require(fake->clears == 1, "pause should clear stale capture PCM");

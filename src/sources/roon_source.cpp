@@ -4,12 +4,27 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 #include <utility>
 
 namespace fh6::sources {
 namespace {
+
+constexpr uint32_t kPcmSampleRate    = 48000;
+constexpr std::size_t kPcmFrameBytes = 4;
+
+uint32_t roon_queue_ms(uint32_t latency_ms) noexcept {
+    const auto requested = std::min<uint64_t>(uint64_t{latency_ms} * 4U, 5000U);
+    return static_cast<uint32_t>(std::clamp<uint64_t>(requested, 250U, 5000U));
+}
+
+std::size_t roon_queue_bytes(uint32_t latency_ms) noexcept {
+    auto bytes  = (uint64_t{kPcmSampleRate} * kPcmFrameBytes * roon_queue_ms(latency_ms)) / 1000U;
+    bytes      -= bytes % kPcmFrameBytes;
+    return std::max<std::size_t>(kPcmFrameBytes, static_cast<std::size_t>(bytes));
+}
 
 class WasapiRoonCapture final : public IRoonCapture {
 public:
@@ -194,10 +209,16 @@ void RoonSource::previous() {
 void RoonSource::pump(RingBuffer& ring) {
     if (state_.load(std::memory_order_acquire) != PlaybackState::playing || !capture_) return;
 
+    const auto current = config_snapshot();
+    const auto status  = capture_->status();
+    if (status.queued_bytes > 0 && ring.readable() >= roon_queue_bytes(current.latency_ms)) {
+        ring.drain();
+    }
+
     std::array<std::byte, 8192> scratch{};
-    while (ring.writable() >= 4) {
+    while (ring.writable() >= kPcmFrameBytes) {
         auto request  = std::min(scratch.size(), ring.writable());
-        request      -= request % 4;
+        request      -= request % kPcmFrameBytes;
         if (request == 0) return;
         const auto got = capture_->read_pcm(scratch.data(), request);
         if (got == 0) return;
@@ -304,7 +325,7 @@ bool RoonSource::start_capture() {
     audio::WasapiLoopbackCaptureConfig cfg;
     cfg.device_id  = current.capture_device_id;
     cfg.latency_ms = current.latency_ms;
-    cfg.queue_ms   = std::clamp<uint32_t>(current.latency_ms * 4U, 250U, 5000U);
+    cfg.queue_ms   = roon_queue_ms(current.latency_ms);
     log::info("[roon] starting capture device_id={} latency_ms={} queue_ms={}", cfg.device_id,
               cfg.latency_ms, cfg.queue_ms);
     if (capture_->start(cfg)) {
