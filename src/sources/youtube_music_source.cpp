@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -324,6 +325,10 @@ void YouTubeMusicSource::resolve_queue_locked() {
         if (!line.empty() && line != "NA") queue_.push_back(watch_url_for_id(line));
         pos = (nl == std::string::npos) ? raw.size() : nl + 1;
     }
+
+    if (cfg_.shuffle && queue_.size() > 1)
+        std::shuffle(queue_.begin(), queue_.end(),
+                     std::mt19937{std::random_device{}()});
 
     queue_built_for_ = target_url_;
     if (queue_.empty() && is_playlist_url(target_url_)) {

@@ -24,6 +24,7 @@ cookies_path       = ''                # optional Netscape cookies.txt
 yt_dlp_path        = ''                # blank = `yt-dlp` on PATH
 ffmpeg_path        = ''                # blank = `ffmpeg`  on PATH
 default_playlist   = ""
+shuffle            = false             # randomise playlist order on each load
 
 [audio]
 output_gain = 1.0

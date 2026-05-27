@@ -134,6 +134,7 @@ const SCHEMA = [
     ["yt_dlp_path",      "yt-dlp path (optional)", "text"],
     ["ffmpeg_path",      "ffmpeg path (optional)", "text"],
     ["default_playlist", "Default playlist URL",   "text"],
+    ["shuffle",          "Shuffle playlist",       "checkbox"],
   ]],
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],
