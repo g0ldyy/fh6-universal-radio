@@ -34,6 +34,7 @@ add_library(version SHARED
     src/fmod/dsp_control_loop.cpp
     src/fmod/metadata_injector.cpp
     src/http/http_server.cpp
+    src/sources/airplay_source.cpp
     src/sources/local_file_source.cpp
     src/sources/youtube_music_source.cpp
 )

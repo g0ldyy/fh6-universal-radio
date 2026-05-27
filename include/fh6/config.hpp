@@ -29,6 +29,17 @@ struct YouTubeMusicConfig {
     std::string default_playlist;
 };
 
+// Turns the PC into an AirPlay receiver: a phone (e.g. running Apple Music)
+// streams audio to it over the LAN and we pump the decoded PCM into the radio.
+// Playback is driven entirely from the phone, so this source has no queue.
+struct AirPlayConfig {
+    bool enabled = false;
+    std::filesystem::path receiver_path;    // empty = `shairport-sync` on PATH
+    std::filesystem::path ffmpeg_path;       // empty = `ffmpeg` on PATH
+    std::string service_name      = "FH6 Radio"; // name shown in the phone's AirPlay picker
+    uint32_t input_sample_rate    = 44100;       // PCM rate the receiver emits
+};
+
 struct AudioConfig {
     float output_gain = 1.0f;
 };
@@ -37,6 +48,7 @@ struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
     YouTubeMusicConfig youtube_music;
+    AirPlayConfig airplay;
     AudioConfig audio;
 };
 

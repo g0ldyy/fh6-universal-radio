@@ -3,6 +3,7 @@
 #include "fh6/config_store.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/log.hpp"
+#include "fh6/sources/airplay_source.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 
@@ -77,6 +78,8 @@ json source_to_json(IAudioSource* s) {
     };
     if (auto* lf = dynamic_cast<sources::LocalFileSource*>(s))
         j["details"]["track_count"] = lf->track_count();
+    if (auto* ap = dynamic_cast<sources::AirPlaySource*>(s))
+        j["details"]["service_name"] = ap->service_name();
     return j;
 }
 
@@ -108,6 +111,14 @@ json config_to_json(const Config& c) {
              {"yt_dlp_path", path_s(c.youtube_music.yt_dlp_path)},
              {"ffmpeg_path", path_s(c.youtube_music.ffmpeg_path)},
              {"default_playlist", c.youtube_music.default_playlist},
+         }},
+        {"airplay",
+         json{
+             {"enabled", c.airplay.enabled},
+             {"receiver_path", path_s(c.airplay.receiver_path)},
+             {"ffmpeg_path", path_s(c.airplay.ffmpeg_path)},
+             {"service_name", c.airplay.service_name},
+             {"input_sample_rate", c.airplay.input_sample_rate},
          }},
         {"audio",
          json{
@@ -153,6 +164,14 @@ void apply_patch(Config& c, const json& j) {
         c.youtube_music.ffmpeg_path  = pull_path(*it, "ffmpeg_path", c.youtube_music.ffmpeg_path);
         c.youtube_music.default_playlist =
             pull(*it, "default_playlist", c.youtube_music.default_playlist);
+    }
+    if (auto it = j.find("airplay"); it != j.end()) {
+        c.airplay.enabled       = pull(*it, "enabled", c.airplay.enabled);
+        c.airplay.receiver_path = pull_path(*it, "receiver_path", c.airplay.receiver_path);
+        c.airplay.ffmpeg_path   = pull_path(*it, "ffmpeg_path", c.airplay.ffmpeg_path);
+        c.airplay.service_name  = pull(*it, "service_name", c.airplay.service_name);
+        c.airplay.input_sample_rate =
+            pull(*it, "input_sample_rate", c.airplay.input_sample_rate);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);

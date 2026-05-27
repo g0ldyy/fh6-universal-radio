@@ -103,6 +103,11 @@ function renderSources() {
 
   // Cast box only makes sense while YT is registered.
   $("#yt-cast-card").hidden = !available.some(s => s.name === "youtube_music");
+
+  // AirPlay instructions only make sense while the receiver source is registered.
+  const airplay = available.find(s => s.name === "airplay");
+  $("#airplay-card").hidden = !airplay;
+  if (airplay?.details?.service_name) setText($("#airplay-name"), airplay.details.service_name);
 }
 
 let volDirty = false;
@@ -134,6 +139,13 @@ const SCHEMA = [
     ["yt_dlp_path",      "yt-dlp path (optional)", "text"],
     ["ffmpeg_path",      "ffmpeg path (optional)", "text"],
     ["default_playlist", "Default playlist URL",   "text"],
+  ]],
+  ["airplay", "Apple Music (AirPlay)", [
+    ["enabled",           "Enabled",                      "checkbox"],
+    ["service_name",      "AirPlay device name",          "text"],
+    ["receiver_path",     "shairport-sync path (optional)","text"],
+    ["ffmpeg_path",       "ffmpeg path (optional)",       "text"],
+    ["input_sample_rate", "Input sample rate",            "number", 8000, 192000, 1],
   ]],
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],

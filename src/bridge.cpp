@@ -9,6 +9,7 @@
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/pe_image.hpp"
 #include "fh6/http/http_server.hpp"
+#include "fh6/sources/airplay_source.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 
@@ -116,6 +117,12 @@ void run_bridge(HMODULE self) noexcept {
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
+        }
+        if (c.airplay.enabled && !mgr.find("airplay")) {
+            auto src = std::make_unique<sources::AirPlaySource>(c.airplay);
+            if (src->initialize()) mgr.register_source(std::move(src));
+        } else if (!c.airplay.enabled && mgr.find("airplay")) {
+            mgr.unregister_source("airplay");
         }
     };
 

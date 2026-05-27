@@ -76,6 +76,14 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.ffmpeg_path      = pick_path(ym, "ffmpeg_path");
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
 
+    const auto& ap               = section(root, "airplay");
+    cfg.airplay.enabled          = pick<bool>(ap, "enabled", cfg.airplay.enabled);
+    cfg.airplay.receiver_path    = pick_path(ap, "receiver_path");
+    cfg.airplay.ffmpeg_path      = pick_path(ap, "ffmpeg_path");
+    cfg.airplay.service_name     = pick<std::string>(ap, "service_name", cfg.airplay.service_name);
+    cfg.airplay.input_sample_rate =
+        static_cast<uint32_t>(pick<int>(ap, "input_sample_rate", cfg.airplay.input_sample_rate));
+
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
@@ -179,6 +187,13 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv_path("yt_dlp_path", cfg.youtube_music.yt_dlp_path);
     e.kv_path("ffmpeg_path", cfg.youtube_music.ffmpeg_path);
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
+
+    e.header("airplay");
+    e.kv("enabled", cfg.airplay.enabled);
+    e.kv_path("receiver_path", cfg.airplay.receiver_path);
+    e.kv_path("ffmpeg_path", cfg.airplay.ffmpeg_path);
+    e.kv("service_name", cfg.airplay.service_name);
+    e.kv("input_sample_rate", (int64_t)cfg.airplay.input_sample_rate);
 
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);

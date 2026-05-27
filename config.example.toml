@@ -8,7 +8,7 @@
 [general]
 port              = 8420
 ring_buffer_mb    = 4
-default_source    = "local_files"     # local_files | youtube_music
+default_source    = "local_files"     # local_files | youtube_music | airplay
 fallback_source   = "local_files"
 
 [local_files]
@@ -24,6 +24,16 @@ cookies_path       = ''                # optional Netscape cookies.txt
 yt_dlp_path        = ''                # blank = `yt-dlp` on PATH
 ffmpeg_path        = ''                # blank = `ffmpeg`  on PATH
 default_playlist   = ""
+
+[airplay]
+# Turns the PC into an AirPlay speaker so a phone (e.g. Apple Music) can stream
+# to it. Needs an external AirPlay receiver: shairport-sync with `-o stdout`,
+# plus Apple Bonjour for network discovery, and ffmpeg to resample its output.
+enabled            = false
+receiver_path      = ''                # blank = `shairport-sync` on PATH
+ffmpeg_path        = ''                # blank = `ffmpeg` on PATH
+service_name       = "FH6 Radio"       # name shown in the phone's AirPlay picker
+input_sample_rate  = 44100             # PCM rate the receiver emits
 
 [audio]
 output_gain = 1.0
