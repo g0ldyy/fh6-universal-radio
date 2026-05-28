@@ -31,21 +31,34 @@ std::string read_text(const std::filesystem::path& path) {
 class FakeCapture final : public fh6::sources::IRoonCapture {
 public:
     bool start(const fh6::audio::WasapiLoopbackCaptureConfig& cfg) override {
+        enter_op();
         ++starts;
         last_cfg = cfg;
+        leave_op();
         return start_ok;
     }
-    void stop() noexcept override { ++stops; }
+    void stop() noexcept override {
+        enter_op();
+        ++stops;
+        leave_op();
+    }
     void clear() noexcept override {
+        enter_op();
         ++clears;
         pcm.clear();
+        leave_op();
     }
     fh6::audio::WasapiLoopbackCaptureStatus status() const override { return status_value; }
     std::size_t read_pcm(void* dst, std::size_t bytes) noexcept override {
-        if (!dst || bytes == 0 || pcm.empty()) return 0;
+        enter_op();
+        if (!dst || bytes == 0 || pcm.empty()) {
+            leave_op();
+            return 0;
+        }
         const auto n = std::min(bytes, pcm.size());
         std::memcpy(dst, pcm.data(), n);
         pcm.erase(pcm.begin(), pcm.begin() + static_cast<std::ptrdiff_t>(n));
+        leave_op();
         return n;
     }
 
@@ -56,6 +69,21 @@ public:
     std::vector<std::byte> pcm;
     fh6::audio::WasapiLoopbackCaptureConfig last_cfg;
     fh6::audio::WasapiLoopbackCaptureStatus status_value{};
+    std::atomic<int>* active_ops       = nullptr;
+    std::atomic<bool>* concurrent_ops  = nullptr;
+    std::chrono::milliseconds op_delay = std::chrono::milliseconds{0};
+
+private:
+    void enter_op() const noexcept {
+        if (active_ops && active_ops->fetch_add(1) != 0 && concurrent_ops) {
+            concurrent_ops->store(true);
+        }
+        if (op_delay.count() > 0) std::this_thread::sleep_for(op_delay);
+    }
+
+    void leave_op() const noexcept {
+        if (active_ops) active_ops->fetch_sub(1);
+    }
 };
 
 class FakeControl final : public fh6::sources::IRoonControl {
@@ -246,6 +274,33 @@ int run_tests() {
             "RoonSource should send the selected zone id with transport controls");
     require(controlled_fake != nullptr && controlled_fake->starts >= 2,
             "controlled play should still start capture");
+
+    std::atomic<int> active_capture_ops{0};
+    std::atomic<bool> concurrent_capture_ops{false};
+    FakeCapture* concurrent_fake = nullptr;
+    fh6::sources::RoonSource concurrent_source{
+        ready_cfg,
+        {},
+        [&] {
+            auto capture           = std::make_unique<FakeCapture>();
+            capture->active_ops    = &active_capture_ops;
+            capture->concurrent_ops = &concurrent_capture_ops;
+            capture->op_delay      = std::chrono::milliseconds{50};
+            concurrent_fake        = capture.get();
+            return capture;
+        },
+        [] { return std::make_unique<FakeControl>(); }};
+    require(concurrent_source.initialize(), "concurrent Roon source should initialize");
+    concurrent_source.play();
+    require(concurrent_fake != nullptr, "concurrency test should create capture");
+    concurrent_capture_ops.store(false);
+    std::thread next_thread{[&] { concurrent_source.next(); }};
+    std::thread play_thread{[&] { concurrent_source.play(); }};
+    next_thread.join();
+    play_thread.join();
+    require(!concurrent_capture_ops.load(),
+            "Roon capture start, stop, clear, and read operations should be serialized");
+    concurrent_source.shutdown();
 
     fh6::RoonConfig metadata_cfg  = ready_cfg;
     metadata_cfg.metadata_poll_ms = 10;

@@ -91,6 +91,7 @@ private:
     RoonCaptureFactory capture_factory_;
     RoonControlFactory control_factory_;
     std::unique_ptr<IRoonCapture> capture_;
+    mutable std::mutex capture_mu_;
     std::mutex control_mu_;
     std::unique_ptr<IRoonControl> control_;
     mutable std::mutex setup_mu_;

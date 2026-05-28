@@ -242,10 +242,11 @@ void RoonSource::previous() {
 }
 
 void RoonSource::pump(RingBuffer& ring) {
-    if (state_.load(std::memory_order_acquire) != PlaybackState::playing || !capture_) return;
-
+    if (state_.load(std::memory_order_acquire) != PlaybackState::playing) return;
     const auto current = config_snapshot();
-    const auto status  = capture_->status();
+    std::scoped_lock lk{capture_mu_};
+    if (!capture_) return;
+    const auto status = capture_->status();
     if (status.queued_bytes > 0 && ring.readable() >= roon_queue_bytes(current.latency_ms)) {
         ring.drain();
     }
@@ -395,6 +396,7 @@ bool RoonSource::start_capture() {
         log::warn("[roon] capture start blocked: no capture device selected");
         return false;
     }
+    std::scoped_lock lk{capture_mu_};
     if (!capture_) capture_ = capture_factory_();
     if (!capture_) {
         set_setup_error("Roon WASAPI capture could not be created.");
@@ -420,6 +422,7 @@ bool RoonSource::start_capture() {
 }
 
 void RoonSource::stop_capture() noexcept {
+    std::scoped_lock lk{capture_mu_};
     if (!capture_) return;
     log::info("[roon] stopping capture");
     capture_->stop();
@@ -427,6 +430,7 @@ void RoonSource::stop_capture() noexcept {
 }
 
 void RoonSource::clear_capture() noexcept {
+    std::scoped_lock lk{capture_mu_};
     if (capture_) {
         log::info("[roon] clearing capture queue");
         capture_->clear();
