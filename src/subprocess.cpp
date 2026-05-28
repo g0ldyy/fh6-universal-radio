@@ -46,10 +46,12 @@ bool refresh_path_from_registry() {
 
     DWORD cur_len = GetEnvironmentVariableW(L"PATH", nullptr, 0);
     if (cur_len > 1) {
-        std::wstring current(cur_len - 1, L'\0');
-        if (GetEnvironmentVariableW(L"PATH", current.data(), cur_len) == cur_len - 1 &&
-            current == merged)
-            return false;
+        std::wstring current(cur_len, L'\0');
+        DWORD written = GetEnvironmentVariableW(L"PATH", current.data(), cur_len);
+        if (written > 0 && written < cur_len) {
+            current.resize(written);
+            if (current == merged) return false;
+        }
     }
     return SetEnvironmentVariableW(L"PATH", merged.c_str()) != 0;
 }
