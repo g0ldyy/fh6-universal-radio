@@ -120,6 +120,13 @@ export function createRoonRuntime(options = {}) {
     },
 
     stop() {
+      state.core = null;
+      state.transport = null;
+      state.image = null;
+      state.pairingState = "stopped";
+      state.selectedZoneId = "";
+      state.zones.clear();
+      state.lastError = "";
       state.svcStatus?.set_status("FH6 Universal Radio sidecar stopped", false);
     },
 
@@ -130,6 +137,7 @@ export function createRoonRuntime(options = {}) {
     async status() {
       const zone = selectedZone();
       return {
+        ok: state.pairingState === "authorized" && !!state.core,
         core: state.core
           ? {
               id: state.core.core_id,
@@ -210,6 +218,7 @@ export function createRoonRuntime(options = {}) {
 
     async reconnect() {
       state.lastError = "";
+      if (state.pairingState === "stopped") state.pairingState = "pending";
       roon.start_discovery();
       return { ok: true };
     },

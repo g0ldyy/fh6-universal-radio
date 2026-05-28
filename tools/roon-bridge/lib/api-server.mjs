@@ -1,7 +1,10 @@
 import http from "node:http";
+import { Buffer } from "node:buffer";
+import { URL } from "node:url";
 
 const TRANSPORT_CONTROLS = new Set(["play", "pause", "playpause", "stop", "previous", "next"]);
 const VOLUME_MODES = new Set(["absolute", "relative", "relative_step"]);
+const MAX_JSON_BYTES = 2 * 1024 * 1024;
 
 function jsonResponse(res, status, body) {
   const data = Buffer.from(JSON.stringify(body));
@@ -19,8 +22,17 @@ function methodNotAllowed(res) {
 
 async function readJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  let totalBytes = 0;
+  for await (const chunk of req) {
+    totalBytes += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
+    if (totalBytes > MAX_JSON_BYTES) {
+      const err = new Error("JSON payload too large");
+      err.statusCode = 413;
+      throw err;
+    }
+    chunks.push(chunk);
+  }
+  const raw = Buffer.concat(chunks, totalBytes).toString("utf8").trim();
   if (!raw) return {};
   try {
     return JSON.parse(raw);
@@ -162,7 +174,7 @@ async function route(req, res, runtime, startedAt) {
   jsonResponse(res, 404, { error: "not found" });
 }
 
-export async function createApiServer({ runtime, host = "127.0.0.1", port = 47821, logger = console.log }) {
+export async function createApiServer({ runtime, host = "127.0.0.1", port = 47821, logger = globalThis.console.log }) {
   const startedAt = Date.now();
   const server = http.createServer((req, res) => {
     route(req, res, runtime, startedAt).catch(err => {

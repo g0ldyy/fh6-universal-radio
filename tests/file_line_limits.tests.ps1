@@ -14,7 +14,7 @@ foreach ($relativePath in $paths | Sort-Object -Unique) {
     $path = Join-Path $root $relativePath
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
 
-    $lineCount = (Get-Content -LiteralPath $path).Count
+    $lineCount = @(Get-Content -LiteralPath $path).Count
     if ($lineCount -gt $maxLines) {
         $violations += "{0}: {1} lines" -f $relativePath, $lineCount
     }

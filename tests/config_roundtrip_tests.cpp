@@ -175,14 +175,13 @@ allow_volume_over_100 = true
                 "config_to_json emits boosted volume setting");
 
         fh6::Config patched;
-        fh6::http::apply_config_patch(patched, nlohmann::json{{"roon",
-                                                               {{"enabled", true},
-                                                                {"selected_zone_id", "zone-2"},
-                                                                {"render_loopback_endpoint_id",
-                                                                 "device-2"},
-                                                                {"render_loopback_endpoint_name",
-                                                                 "Hi-Fi Cable Input"},
-                                                                {"latency_ms", 333}}}});
+        fh6::http::apply_config_patch(
+            patched, nlohmann::json{{"roon",
+                                     {{"enabled", true},
+                                      {"selected_zone_id", "zone-2"},
+                                      {"render_loopback_endpoint_id", "device-2"},
+                                      {"render_loopback_endpoint_name", "Hi-Fi Cable Input"},
+                                      {"latency_ms", 333}}}});
         require(patched.roon.enabled, "apply_config_patch updates roon enabled");
         require(patched.roon.selected_zone_id == "zone-2",
                 "apply_config_patch updates selected zone");
@@ -193,15 +192,14 @@ allow_volume_over_100 = true
         require(patched.roon.latency_ms == 333, "apply_config_patch updates latency");
         require(patched.roon.metadata_poll_ms == 750, "partial roon patch keeps fallback");
 
-        patched.roon.node_path         = "C:\\Program Files\\nodejs\\node.exe";
-        patched.roon.bridge_path       = std::filesystem::path{"tools"} / "roon-bridge" /
-                                   "index.mjs";
+        patched.roon.node_path   = "C:\\Program Files\\nodejs\\node.exe";
+        patched.roon.bridge_path = std::filesystem::path{"tools"} / "roon-bridge" / "index.mjs";
         patched.roon.auto_start_bridge = false;
         fh6::http::apply_config_patch(
             patched, nlohmann::json{{"roon",
-                                      {{"node_path", "C:\\Temp\\not-node.exe"},
-                                       {"bridge_path", "\\\\attacker\\share\\sidecar.mjs"},
-                                       {"auto_start_bridge", true}}}});
+                                     {{"node_path", "C:\\Temp\\not-node.exe"},
+                                      {"bridge_path", "\\\\attacker\\share\\sidecar.mjs"},
+                                      {"auto_start_bridge", true}}}});
         require(patched.roon.node_path == "C:\\Program Files\\nodejs\\node.exe",
                 "api patch must not update Roon node executable path");
         require(patched.roon.bridge_path ==
@@ -211,15 +209,16 @@ allow_volume_over_100 = true
                 "api patch must not update Roon sidecar auto-start");
 
         fh6::http::apply_config_patch(
-            patched, nlohmann::json{{"audio", {{"output_gain", 1.8},
-                                                {"allow_volume_over_100", true}}}});
+            patched,
+            nlohmann::json{{"audio", {{"output_gain", 1.8}, {"allow_volume_over_100", true}}}});
         require(patched.audio.output_gain == 1.8f, "apply_config_patch updates boosted gain");
         require(patched.audio.allow_volume_over_100,
                 "apply_config_patch updates boosted volume setting");
 
         fh6::http::apply_config_patch(
-            patched, nlohmann::json{{"roon", {{"capture_device_id", "legacy-device-2"},
-                                               {"capture_device_name", "Legacy Device 2"}}}});
+            patched, nlohmann::json{{"roon",
+                                     {{"capture_device_id", "legacy-device-2"},
+                                      {"capture_device_name", "Legacy Device 2"}}}});
         require(patched.roon.render_loopback_endpoint_id == "legacy-device-2",
                 "legacy JSON capture_device_id updates render loopback endpoint");
         require(patched.roon.render_loopback_endpoint_name == "Legacy Device 2",
@@ -232,9 +231,14 @@ allow_volume_over_100 = true
                 "invalid patch metadata poll keeps previous value");
 
         std::filesystem::remove_all(root);
+    } catch (const std::exception& e) {
+        std::filesystem::remove_all(root);
+        std::cerr << e.what() << '\n';
+        return 1;
     } catch (...) {
         std::filesystem::remove_all(root);
-        throw;
+        std::cerr << "unknown config_roundtrip_tests failure\n";
+        return 1;
     }
 
     std::cout << "config_roundtrip_tests passed\n";

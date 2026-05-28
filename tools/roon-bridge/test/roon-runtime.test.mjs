@@ -23,4 +23,15 @@ describe("Roon runtime compatibility", () => {
 
     assert.equal(globalThis.WebSocket, wsWebSocket);
   });
+
+  it("clears selected runtime state on stop", async () => {
+    const runtime = createRoonRuntime({ selectedZoneId: "zone-1" });
+    runtime.stop();
+
+    const status = await runtime.status();
+    assert.equal(status.core, null);
+    assert.equal(status.pairing_state, "stopped");
+    assert.equal(status.selected_zone_id, "");
+    assert.deepEqual(await runtime.listZones(), []);
+  });
 });

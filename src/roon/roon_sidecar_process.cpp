@@ -13,7 +13,7 @@ struct RoonSidecarProcess::Handle {
     HANDLE value = nullptr;
     explicit Handle(HANDLE h = nullptr) : value{h} {}
     ~Handle() {
-        if (value) CloseHandle(value);
+        if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value);
     }
 };
 
@@ -45,9 +45,10 @@ HANDLE create_job() {
 
 HANDLE open_log(const std::filesystem::path& path) {
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-    return CreateFileW(path.wstring().c_str(), FILE_APPEND_DATA | SYNCHRONIZE,
-                       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa, OPEN_ALWAYS,
-                       FILE_ATTRIBUTE_NORMAL, nullptr);
+    HANDLE handle = CreateFileW(path.wstring().c_str(), FILE_APPEND_DATA | SYNCHRONIZE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &sa,
+                                OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    return handle == INVALID_HANDLE_VALUE ? nullptr : handle;
 }
 
 std::string wide_to_utf8(const std::wstring& value) {

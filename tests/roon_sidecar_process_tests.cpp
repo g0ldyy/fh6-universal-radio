@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include <chrono>
+#include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -53,8 +54,8 @@ int main() {
 
     try {
         fh6::RoonConfig missing_node;
-        missing_node.enabled = true;
-        missing_node.node_path = root / "missing-node.exe";
+        missing_node.enabled     = true;
+        missing_node.node_path   = root / "missing-node.exe";
         missing_node.bridge_path = root / "missing-bridge.mjs";
 
         fh6::roon::RoonSidecarProcess missing{missing_node, root};
@@ -67,10 +68,22 @@ int main() {
         write_script(script);
 
         fh6::RoonConfig cfg;
-        cfg.enabled = true;
-        cfg.node_path = find_node();
-        cfg.bridge_path = std::filesystem::path{"tools"} / "roon-bridge" / "index.mjs";
+        cfg.enabled          = true;
+        cfg.node_path        = find_node();
+        cfg.bridge_path      = std::filesystem::path{"tools"} / "roon-bridge" / "index.mjs";
         cfg.selected_zone_id = "zone-1";
+
+        const auto bad_log_dir = root / "not-a-directory";
+        {
+            std::ofstream marker{bad_log_dir, std::ios::binary | std::ios::trunc};
+            marker << "not a directory";
+        }
+        fh6::RoonConfig bad_log_cfg = cfg;
+        bad_log_cfg.bridge_path     = script;
+        fh6::roon::RoonSidecarProcess bad_logs{bad_log_cfg, bad_log_dir};
+        require(!bad_logs.start(), "sidecar should fail when log files cannot be opened");
+        require(bad_logs.error().find("log files") != std::string::npos,
+                "log open failures should report log file setup");
 
         fh6::roon::RoonSidecarProcess sidecar{cfg, root};
         require(sidecar.resolved_bridge_path() == script,
@@ -90,9 +103,14 @@ int main() {
         require(!sidecar.running(), "stop should be idempotent");
 
         std::filesystem::remove_all(root);
+    } catch (const std::exception& e) {
+        std::filesystem::remove_all(root);
+        std::cerr << e.what() << '\n';
+        return 1;
     } catch (...) {
         std::filesystem::remove_all(root);
-        throw;
+        std::cerr << "unknown roon_sidecar_process_tests failure\n";
+        return 1;
     }
 
     return 0;

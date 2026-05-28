@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -83,6 +84,7 @@ private:
     struct Impl;
 
     RoonControlClientOptions options_;
+    mutable std::mutex state_mutex_;
     mutable std::optional<RoonStatus> last_status_;
     mutable std::string last_error_;
 };

@@ -4,6 +4,8 @@
 #include "fh6/config.hpp"
 
 #include <cstdint>
+#include <exception>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -41,7 +43,7 @@ private:
 
 fh6::RoonConfig enabled_roon_config() {
     fh6::RoonConfig cfg;
-    cfg.enabled = true;
+    cfg.enabled           = true;
     cfg.auto_start_bridge = false;
     return cfg;
 }
@@ -49,44 +51,59 @@ fh6::RoonConfig enabled_roon_config() {
 } // namespace
 
 int main() {
-    fh6::AudioSourceManager mgr{4096};
+    try {
+        fh6::AudioSourceManager mgr{4096};
 
-    auto roon_cfg = enabled_roon_config();
-    fh6::sync_roon_source(mgr, roon_cfg);
-    auto* roon = mgr.find("roon");
-    require(roon != nullptr, "enabled Roon config should register the roon source");
-    require(roon->name() == "roon", "registered source should use the roon source name");
+        auto roon_cfg = enabled_roon_config();
+        fh6::sync_roon_source(mgr, roon_cfg);
+        auto* roon = mgr.find("roon");
+        require(roon != nullptr, "enabled Roon config should register the roon source");
+        require(roon->name() == "roon", "registered source should use the roon source name");
 
-    fh6::sync_roon_source(mgr, roon_cfg);
-    require(mgr.find("roon") == roon, "syncing an already registered Roon source should not replace it");
-    require(roon->auth_state() == fh6::AuthState::needs_auth,
-            "incomplete Roon config should need setup");
+        fh6::sync_roon_source(mgr, roon_cfg);
+        require(mgr.find("roon") == roon,
+                "syncing an already registered Roon source should not replace it");
+        require(roon->auth_state() == fh6::AuthState::needs_auth,
+                "incomplete Roon config should need setup");
 
-    roon_cfg.selected_zone_id = "zone-1";
-    roon_cfg.render_loopback_endpoint_id = "device-1";
-    fh6::sync_roon_source(mgr, roon_cfg);
-    require(mgr.find("roon") == roon, "updating Roon config should keep the registered source");
-    require(roon->auth_state() == fh6::AuthState::needs_auth,
-            "complete Roon config should still wait for live sidecar status");
+        roon_cfg.selected_zone_id            = "zone-1";
+        roon_cfg.render_loopback_endpoint_id = "device-1";
+        fh6::sync_roon_source(mgr, roon_cfg);
+        require(mgr.find("roon") == roon, "updating Roon config should keep the registered source");
+        require(roon->auth_state() == fh6::AuthState::needs_auth,
+                "complete Roon config should still wait for live sidecar status");
 
-    require(mgr.switch_to("roon"), "default_source roon should be switchable after registration");
-    require(mgr.active() == roon, "switch_to roon should make Roon active");
+        require(mgr.switch_to("roon"),
+                "default_source roon should be switchable after registration");
+        require(mgr.active() == roon, "switch_to roon should make Roon active");
 
-    const std::uint32_t marker = 0x12345678u;
-    require(mgr.ring().write(&marker, sizeof(marker)) == sizeof(marker), "test should seed ring data");
-    require(mgr.ring().readable() == sizeof(marker), "seeded ring data should be readable before unregister");
+        const std::uint32_t marker = 0x12345678u;
+        require(mgr.ring().write(&marker, sizeof(marker)) == sizeof(marker),
+                "test should seed ring data");
+        require(mgr.ring().readable() == sizeof(marker),
+                "seeded ring data should be readable before unregister");
 
-    roon_cfg.enabled = false;
-    fh6::sync_roon_source(mgr, roon_cfg);
-    require(mgr.find("roon") == nullptr, "disabled Roon config should unregister the roon source");
-    require(mgr.active() == nullptr, "unregistering active Roon should clear the active source");
-    require(mgr.ring().readable() == 0, "unregistering active Roon should drain stale PCM");
+        roon_cfg.enabled = false;
+        fh6::sync_roon_source(mgr, roon_cfg);
+        require(mgr.find("roon") == nullptr,
+                "disabled Roon config should unregister the roon source");
+        require(mgr.active() == nullptr,
+                "unregistering active Roon should clear the active source");
+        require(mgr.ring().readable() == 0, "unregistering active Roon should drain stale PCM");
 
-    mgr.register_source(std::make_unique<TestSource>("local_files"));
-    require(!mgr.switch_to("roon"), "switch_to roon should fail when Roon is not registered");
-    require(mgr.switch_to("local_files"), "fallback source should remain switchable without Roon");
-    require(mgr.active() != nullptr && mgr.active()->name() == "local_files",
-            "fallback source should become active when Roon is unavailable");
+        mgr.register_source(std::make_unique<TestSource>("local_files"));
+        require(!mgr.switch_to("roon"), "switch_to roon should fail when Roon is not registered");
+        require(mgr.switch_to("local_files"),
+                "fallback source should remain switchable without Roon");
+        require(mgr.active() != nullptr && mgr.active()->name() == "local_files",
+                "fallback source should become active when Roon is unavailable");
 
-    return 0;
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << '\n';
+        return 1;
+    } catch (...) {
+        std::cerr << "unknown source_registration_tests failure\n";
+        return 1;
+    }
 }

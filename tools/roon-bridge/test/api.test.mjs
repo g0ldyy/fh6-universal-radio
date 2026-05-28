@@ -108,6 +108,13 @@ describe("Roon sidecar local API", () => {
   });
 
   it("validates zone selection payloads", async () => {
+    const oversized = await fetch(`${server.url}/select-zone`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ zone_id: "x".repeat(2 * 1024 * 1024) }),
+    });
+    assert.equal(oversized.status, 413);
+
     const missing = await fetch(`${server.url}/select-zone`, { method: "POST", body: "{}" });
     assert.equal(missing.status, 400);
     assert.match((await readJson(missing)).error, /zone_id/);

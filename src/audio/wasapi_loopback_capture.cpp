@@ -40,6 +40,7 @@ using Microsoft::WRL::ComPtr;
 constexpr uint32_t kTargetSampleRate = 48000;
 constexpr uint32_t kTargetChannels   = 2;
 constexpr uint32_t kTargetFrameBytes = kTargetChannels * sizeof(int16_t);
+constexpr auto kStartReadyTimeout    = std::chrono::seconds{3};
 
 struct ComApartment {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -405,6 +406,12 @@ bool WasapiLoopbackCapture::start(const WasapiLoopbackCaptureConfig& cfg) {
         [this, cfg, queue, ready = std::move(ready)](const std::stop_token& stop) mutable {
             impl_->run(stop, cfg, queue, std::move(ready));
         }};
+    if (started.wait_for(kStartReadyTimeout) != std::future_status::ready) {
+        impl_->set_error("Timed out waiting for WASAPI capture worker startup.");
+        if (impl_->worker.joinable()) impl_->worker.request_stop();
+        impl_->running.store(false, std::memory_order_release);
+        return false;
+    }
     const bool ok = started.get();
     log::info("[wasapi] capture start result={}", ok);
     return ok;

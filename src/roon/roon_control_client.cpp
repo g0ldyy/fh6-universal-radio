@@ -91,10 +91,16 @@ RoonHealth RoonControlClient::health() const {
     if (!res || res->status >= 400 || body.is_discarded()) {
         auto error = error_from_json(body, "sidecar health request failed");
         log::warn("[roon] sidecar health failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return RoonHealth{false, {}, std::move(error)};
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return RoonHealth{body.value("ok", false), get_string(body, "service"), {}};
 }
 
@@ -105,14 +111,17 @@ RoonStatus RoonControlClient::status() {
     if (!res || res->status >= 400 || body.is_discarded()) {
         auto error = error_from_json(body, "sidecar status request failed");
         log::warn("[roon] sidecar status failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         RoonStatus out;
         out.error = std::move(error);
         return out;
     }
 
     RoonStatus out;
-    out.ok            = true;
+    out.ok            = body.value("ok", false);
     out.pairing_state = get_string(body, "pairing_state");
     if (auto core = body.find("core"); core != body.end() && core->is_object()) {
         out.core_id   = get_string(*core, "id");
@@ -122,8 +131,11 @@ RoonStatus RoonControlClient::status() {
     out.selected_zone_name = get_string(body, "selected_zone_name");
     out.error              = get_string(body, "error");
     out.now_playing        = parse_now_playing(body);
-    last_status_           = out;
-    last_error_            = out.error;
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_status_ = out;
+        last_error_  = out.error;
+    }
     return out;
 }
 
@@ -134,7 +146,10 @@ std::vector<RoonZoneInfo> RoonControlClient::zones() const {
     if (!res || res->status >= 400 || body.is_discarded()) {
         auto error = error_from_json(body, "sidecar zones request failed");
         log::warn("[roon] sidecar zones failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return {};
     }
     std::vector<RoonZoneInfo> out;
@@ -145,7 +160,10 @@ std::vector<RoonZoneInfo> RoonControlClient::zones() const {
                            get_string(item, "state")});
         }
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return out;
 }
 
@@ -156,7 +174,10 @@ std::vector<RoonOutputInfo> RoonControlClient::outputs() const {
     if (!res || res->status >= 400 || body.is_discarded()) {
         auto error = error_from_json(body, "sidecar outputs request failed");
         log::warn("[roon] sidecar outputs failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return {};
     }
     std::vector<RoonOutputInfo> out;
@@ -178,7 +199,10 @@ std::vector<RoonOutputInfo> RoonControlClient::outputs() const {
             out.push_back(std::move(info));
         }
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return out;
 }
 
@@ -191,10 +215,16 @@ RoonCommandResult RoonControlClient::select_zone(std::string_view zone_id) const
         auto status = res ? res->status : 0;
         auto error  = error_from_json(body, "sidecar select-zone request failed");
         log::warn("[roon] sidecar select-zone failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return command_error(status, std::move(error));
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return RoonCommandResult{true, res->status, {}};
 }
 
@@ -209,10 +239,16 @@ RoonCommandResult RoonControlClient::transport(std::string_view control,
         auto status = res ? res->status : 0;
         auto error  = error_from_json(body, "sidecar transport request failed");
         log::warn("[roon] sidecar transport failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return command_error(status, std::move(error));
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return RoonCommandResult{true, res->status, {}};
 }
 
@@ -227,10 +263,16 @@ RoonCommandResult RoonControlClient::set_volume(std::string_view output_id, doub
         auto status = res ? res->status : 0;
         auto error  = error_from_json(body, "sidecar volume request failed");
         log::warn("[roon] sidecar volume failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return command_error(status, std::move(error));
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return RoonCommandResult{true, res->status, {}};
 }
 
@@ -242,15 +284,27 @@ RoonCommandResult RoonControlClient::reconnect() const {
         auto status = res ? res->status : 0;
         auto error  = error_from_json(body, "sidecar reconnect request failed");
         log::warn("[roon] sidecar reconnect failed: {}", error);
-        last_error_ = error;
+        {
+            std::scoped_lock lk{state_mutex_};
+            last_error_ = error;
+        }
         return command_error(status, std::move(error));
     }
-    last_error_.clear();
+    {
+        std::scoped_lock lk{state_mutex_};
+        last_error_.clear();
+    }
     return RoonCommandResult{true, res->status, {}};
 }
 
-std::optional<RoonStatus> RoonControlClient::last_status() const { return last_status_; }
+std::optional<RoonStatus> RoonControlClient::last_status() const {
+    std::scoped_lock lk{state_mutex_};
+    return last_status_;
+}
 
-std::string RoonControlClient::last_error() const { return last_error_; }
+std::string RoonControlClient::last_error() const {
+    std::scoped_lock lk{state_mutex_};
+    return last_error_;
+}
 
 } // namespace fh6::roon
