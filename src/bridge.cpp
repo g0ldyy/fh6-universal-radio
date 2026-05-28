@@ -109,7 +109,8 @@ void run_bridge(HMODULE self) noexcept {
     // the dashboard tile live, without a game restart.
     auto sync_sources = [&mgr, data_dir](const Config& c) {
         if (c.local_files.enabled && !mgr.find("local_files")) {
-            auto src = std::make_unique<sources::LocalFileSource>(c.local_files);
+            auto src = std::make_unique<sources::LocalFileSource>(c.local_files,
+                                                                  c.youtube_music.ffmpeg_path);
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.local_files.enabled && mgr.find("local_files")) {
             mgr.unregister_source("local_files");
@@ -137,7 +138,10 @@ void run_bridge(HMODULE self) noexcept {
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
     if (fns.ready())
-        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, clamp_gain(cfg.audio));
+        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.playback,
+                                                          clamp_gain(cfg.audio));
+
+    for (auto* s : mgr.sources_snapshot()) s->set_playback_options(cfg.playback);
 
     store.on_change(
         [&bridge, &mgr, sync_sources, clamp_gain, ctrl_ptr = ctrl.get()](const Config& c) {
@@ -154,6 +158,7 @@ void run_bridge(HMODULE self) noexcept {
             if (ctrl_ptr) ctrl_ptr->set_configured_gain(gain);
             if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
                 local->set_shuffle(c.local_files.shuffle);
+                local->set_ffmpeg_path(c.youtube_music.ffmpeg_path);
                 local->set_directory(c.local_files.music_dir, c.local_files.recursive);
                 if (mgr.active() == local && local->track_count() > 0 &&
                     local->playback_state() != PlaybackState::playing) {
@@ -163,6 +168,9 @@ void run_bridge(HMODULE self) noexcept {
             if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
                 yt->set_shuffle(c.youtube_music.shuffle);
             }
+
+            for (auto* s : mgr.sources_snapshot()) s->set_playback_options(c.playback);
+            if (ctrl_ptr) ctrl_ptr->push_playback_options(c.playback);
         });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};

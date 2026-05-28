@@ -1,5 +1,6 @@
 #include "fh6/http/config_json.hpp"
 
+#include <cstddef>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -103,6 +104,14 @@ json config_to_json(const Config& c) {
              {"output_gain", c.audio.output_gain},
              {"allow_volume_over_100", c.audio.allow_volume_over_100},
          }},
+        {"playback",
+         json{
+             {"race_start_playback", c.playback.race_start_playback},
+             {"quick_station_skip", c.playback.quick_station_skip},
+             {"volume_normalization", c.playback.volume_normalization},
+             {"equalizer_enabled", c.playback.equalizer_enabled},
+             {"equalizer_bands", c.playback.equalizer_bands},
+         }},
     };
 }
 
@@ -156,6 +165,28 @@ void apply_config_patch(Config& c, const json& j) {
         if (c.audio.output_gain < 0.0f) c.audio.output_gain = 0.0f;
         const float max_gain = c.audio.allow_volume_over_100 ? 2.0f : 1.0f;
         if (c.audio.output_gain > max_gain) c.audio.output_gain = max_gain;
+    }
+    if (auto it = j.find("playback"); it != j.end()) {
+        const auto race_start =
+            pull<std::string>(*it, "race_start_playback", c.playback.race_start_playback);
+        if (race_start == "next" || race_start == "restart" || race_start == "ignore")
+            c.playback.race_start_playback = race_start;
+        c.playback.quick_station_skip =
+            pull(*it, "quick_station_skip", c.playback.quick_station_skip);
+        c.playback.volume_normalization =
+            pull(*it, "volume_normalization", c.playback.volume_normalization);
+        c.playback.equalizer_enabled = pull(*it, "equalizer_enabled", c.playback.equalizer_enabled);
+        if (auto bands = it->find("equalizer_bands"); bands != it->end() && bands->is_array()) {
+            for (std::size_t i = 0; i < c.playback.equalizer_bands.size() && i < bands->size();
+                 ++i) {
+                try {
+                    float band = (*bands)[i].get<float>();
+                    if (band < -6.0f) band = -6.0f;
+                    if (band > 6.0f) band = 6.0f;
+                    c.playback.equalizer_bands[i] = band;
+                } catch (...) {}
+            }
+        }
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include "fh6/audio_source.hpp"
 #include "fh6/config.hpp"
+#include "fh6/playback_dsp.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -33,12 +34,15 @@ public:
     void stop() override;
     void next() override;
     void previous() override;
+    bool skip_next() override;
+    bool restart_current() override;
     void pump(RingBuffer& ring) override;
 
     // URL / playlist to play next.
     void set_target(std::string url);
 
     void set_shuffle(bool shuffle);
+    void set_playback_options(const PlaybackConfig& opts) override;
 
     TrackInfo current_track() const override;
     PlaybackState playback_state() const noexcept override {
@@ -71,6 +75,9 @@ private:
     std::string auth_message_;
     std::atomic<AuthState> auth_{AuthState::none_required};
     std::atomic<PlaybackState> state_{PlaybackState::stopped};
+
+    EqualizerStage eq_;
+    std::atomic<bool> volume_norm_{true};
 };
 
 } // namespace fh6::sources

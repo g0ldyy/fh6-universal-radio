@@ -25,8 +25,10 @@ add_library(version SHARED
     src/log.cpp
     src/config.cpp
     src/config_store.cpp
+    src/playback_dsp.cpp
     src/ring_buffer.cpp
     src/source_registration.cpp
+    src/subprocess.cpp
     src/audio/endpoint_classifier.cpp
     src/audio/miniaudio.cpp
     src/audio/wasapi_loopback_capture.cpp
@@ -37,6 +39,7 @@ add_library(version SHARED
     src/fmod/radio_discovery.cpp
     src/fmod/dsp_bridge.cpp
     src/fmod/dsp_control_loop.cpp
+    src/fmod/game_state_probe.cpp
     src/fmod/metadata_injector.cpp
     src/http/config_json.cpp
     src/http/http_server.cpp
@@ -153,7 +156,9 @@ target_include_directories(dsp_render_policy_tests PRIVATE
 add_executable(youtube_music_runtime_tests
     tests/youtube_music_runtime_tests.cpp
     src/log.cpp
+    src/playback_dsp.cpp
     src/ring_buffer.cpp
+    src/subprocess.cpp
     src/sources/youtube_music_support.cpp
     src/sources/youtube_music_source.cpp
 )
@@ -239,11 +244,13 @@ add_executable(http_server_routes_tests
     src/http/config_json.cpp
     src/http/http_server.cpp
     src/http/roon_routes.cpp
+    src/playback_dsp.cpp
     src/roon/roon_control_client.cpp
     src/roon/setup_diagnostics.cpp
     src/log.cpp
     src/ring_buffer.cpp
     src/roon/roon_sidecar_process.cpp
+    src/subprocess.cpp
     src/sources/local_file_source.cpp
     src/sources/roon_source.cpp
     src/sources/youtube_music_support.cpp

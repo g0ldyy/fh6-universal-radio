@@ -1,34 +1,29 @@
 #include "fh6/sources/youtube_music_source.hpp"
 #include "youtube_music_support.hpp"
 #include "fh6/log.hpp"
+#include "fh6/subprocess.hpp"
+
+#include <windows.h>
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <random>
 #include <string>
 #include <vector>
 namespace fh6::sources {
 using namespace youtube_music_detail;
 namespace {
-bool tool_available(const std::filesystem::path& configured_path, const wchar_t* command_name) {
-    if (!configured_path.empty()) {
-        std::error_code ec;
-        return std::filesystem::is_regular_file(configured_path, ec);
-    }
-    wchar_t resolved[MAX_PATH] = {};
-    return SearchPathW(nullptr, command_name, L".exe", MAX_PATH, resolved, nullptr) != 0;
-}
-std::string youtube_tool_setup_message(const YouTubeMusicConfig& cfg) {
-    const bool missing_yt = !tool_available(cfg.yt_dlp_path, L"yt-dlp");
-    const bool missing_ff = !tool_available(cfg.ffmpeg_path, L"ffmpeg");
-    if (!missing_yt && !missing_ff) return {};
-    return "YouTube Music is enabled, but yt-dlp or ffmpeg could not be found. Run "
-           "`winget install yt-dlp.yt-dlp`, `winget install Gyan.FFmpeg`, and "
-           "`winget install DenoLand.Deno`, then keep yt-dlp/ffmpeg on PATH or set "
-           "[youtube_music].yt_dlp_path and ffmpeg_path to the full .exe paths.";
-}
+
+using subprocess::create_kill_on_close_job;
+using subprocess::describe_launch_failure;
+using subprocess::open_nul;
+using subprocess::open_stderr_log;
+using subprocess::quote;
+using subprocess::spawn_in_job;
+using subprocess::stderr_log_path;
+using subprocess::widen;
+
 } // namespace
 YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg) : cfg_{std::move(cfg)} {}
 YouTubeMusicSource::~YouTubeMusicSource() { stop_pipe_locked(); }
@@ -233,8 +228,12 @@ void YouTubeMusicSource::start_pipe_locked() {
         yt_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
     yt_cmd += L"-- " + quote(widen(play_url));
 
-    std::wstring ff_cmd = quote(ff) + L" -loglevel error -i pipe:0 -f s16le "
-                                      L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
+    // EBU R128 loudness normalisation.
+    // Single-pass / dynamic mode: less precise than the two-pass measurement,
+    // but adequate for live playback.
+    std::wstring ff_cmd = quote(ff) + L" -loglevel error -i pipe:0 -f s16le ";
+    if (volume_norm_.load(std::memory_order_acquire)) ff_cmd += L"-af loudnorm=I=-14:TP=-2:LRA=11 ";
+    ff_cmd += L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
 
     std::wstring tl_cmd = quote(yt) + L" --skip-download --no-warnings --no-playlist "
                                       L"--encoding UTF-8 "
@@ -316,6 +315,29 @@ void YouTubeMusicSource::play() {
 
 void YouTubeMusicSource::pause() { state_.store(PlaybackState::paused, std::memory_order_release); }
 
+bool YouTubeMusicSource::restart_current() {
+    std::scoped_lock lk{mu_};
+    if (queue_.empty()) return false;
+    consecutive_failed_ = 0;
+    start_pipe_locked(); // re-pipe from t=0 at the same queue_idx_
+    if (!pipe_) return false;
+    state_.store(PlaybackState::playing, std::memory_order_release);
+    return true;
+}
+
+bool YouTubeMusicSource::skip_next() {
+    std::scoped_lock lk{mu_};
+    if (queue_.empty()) return false;
+    consecutive_failed_ = 0;
+    const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i              = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
+    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
+    start_pipe_locked();
+    if (!pipe_) return false;
+    state_.store(PlaybackState::playing, std::memory_order_release);
+    return true;
+}
+
 void YouTubeMusicSource::stop() {
     std::scoped_lock lk{mu_};
     stop_pipe_locked();
@@ -348,6 +370,15 @@ TrackInfo YouTubeMusicSource::current_track() const {
     TrackInfo t   = info_;
     t.position_ms = position_ms_.load(std::memory_order_acquire);
     return t;
+}
+
+void YouTubeMusicSource::set_playback_options(const PlaybackConfig& opts) {
+    // 48 kHz matches the ffmpeg pipe.
+    eq_.set_options(opts.equalizer_enabled, opts.equalizer_bands, 48000.0f);
+    // loudnorm is in the ffmpeg argv; the new state is picked up on the next
+    // start_pipe_locked() (track change). Same per-track granularity as
+    // local-files ReplayGain -- not re-fetching the current YT track.
+    volume_norm_.store(opts.volume_normalization, std::memory_order_release);
 }
 
 std::string YouTubeMusicSource::auth_instructions() const {
@@ -478,14 +509,20 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
         if (writable < 4) break;
         std::size_t want = std::min<std::size_t>(writable, avail);
         if (want > 4096) want = 4096;
+        // Force whole stereo S16 frames so the EQ never sees half a sample;
+        // the next iteration picks up the byte(s) we left in the pipe.
+        want &= ~std::size_t{3};
+        if (!want) break;
         std::byte buf[4096];
         DWORD got = 0;
         if (!ReadFile(p->read_pipe, buf, (DWORD)want, &got, nullptr) || got == 0) {
             on_eof();
             return;
         }
-        ring.write(buf, got);
-        p->bytes_written += got;
+        const DWORD aligned = (got / 4u) * 4u;
+        if (aligned) eq_.process(reinterpret_cast<int16_t*>(buf), aligned / 4u);
+        ring.write(buf, aligned);
+        p->bytes_written += aligned;
         update_position();
         avail = avail > got ? avail - got : 0;
         if (state_.load(std::memory_order_acquire) == PlaybackState::buffering &&

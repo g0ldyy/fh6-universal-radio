@@ -416,6 +416,25 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
 
 .field.checkbox label { color: var(--text); font-size: 14px; }
 
+.field select,
+.field input[type="text"],
+.field input[type="number"] {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; padding: 8px 10px;
+}
+
+.field.bands { gap: 8px; }
+
+.field.bands .band {
+  display: grid; grid-template-columns: 72px 1fr 64px; align-items: center; gap: 10px;
+}
+
+.field.bands .band-label { color: var(--text-dim); font-size: 12px; }
+
+.field.bands input[type="range"] { width: 100%; }
+
+.field.bands output { color: var(--text-dim); font-size: 12px; text-align: right; }
+
 .scrim {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9;
   animation: fade .25s ease;

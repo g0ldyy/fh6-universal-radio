@@ -1,10 +1,19 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <string>
 #include <vector>
 
 namespace fh6 {
+
+struct PlaybackConfig {
+    std::string race_start_playback = "next"; // "next" | "restart" | "ignore"
+    bool quick_station_skip         = false;
+    bool volume_normalization       = false;
+    bool equalizer_enabled          = false;
+    std::array<float, 5> equalizer_bands{}; // 60 / 250 / 1000 / 4000 / 12000 Hz, [-6, +6] dB
+};
 
 struct GeneralConfig {
     uint16_t port               = 8420;
@@ -18,7 +27,8 @@ struct LocalFilesConfig {
     std::filesystem::path music_dir;
     bool recursive = true;
     bool shuffle   = true;
-    std::vector<std::string> supported_formats{"mp3", "flac", "wav", "ogg", "m4a", "opus"};
+    std::vector<std::string> supported_formats{"mp3",  "flac", "wav", "ogg",  "m4a",
+                                               "opus", "aac",  "wma", "aiff", "aif"};
 };
 
 struct YouTubeMusicConfig {
@@ -58,6 +68,7 @@ struct Config {
     YouTubeMusicConfig youtube_music;
     RoonConfig roon;
     AudioConfig audio;
+    PlaybackConfig playback;
 };
 
 // Missing file is fine, defaults are returned.

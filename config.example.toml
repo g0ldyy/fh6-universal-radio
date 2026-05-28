@@ -16,7 +16,8 @@ enabled            = true
 music_dir          = ''                # blank => set from the dashboard
 recursive          = true
 shuffle            = true
-supported_formats  = ["mp3", "flac", "wav", "ogg", "m4a", "opus"]
+# mp3/flac/wav/ogg decode natively; the rest goes through ffmpeg if available.
+supported_formats  = ["mp3", "flac", "wav", "ogg", "m4a", "opus", "aac", "wma", "aiff", "aif"]
 
 [youtube_music]
 enabled            = false
@@ -44,3 +45,10 @@ metadata_poll_ms    = 750
 [audio]
 output_gain = 1.0
 allow_volume_over_100 = false
+
+[playback]
+race_start_playback  = "next"      # "next" | "restart" | "ignore" -- action when a race begins
+quick_station_skip   = false       # tune the radio away and back within 1s to skip the track
+volume_normalization = false       # apply ReplayGain (local files) / EBU R128 loudnorm (YT) when on
+equalizer_enabled    = false
+equalizer_bands      = [0.0, 0.0, 0.0, 0.0, 0.0]   # 60/250/1000/4000/12000 Hz, [-6, +6] dB

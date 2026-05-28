@@ -6,6 +6,7 @@
 #include <fstream>
 #include <limits>
 #include <optional>
+#include <span>
 #include <system_error>
 
 namespace fh6 {
@@ -136,6 +137,30 @@ Config load_config(const std::filesystem::path& path) {
     cfg.audio.allow_volume_over_100 =
         pick<bool>(au, "allow_volume_over_100", cfg.audio.allow_volume_over_100);
 
+    const auto& pb = section(root, "playback");
+    {
+        auto rs = pick<std::string>(pb, "race_start_playback", cfg.playback.race_start_playback);
+        if (rs == "next" || rs == "restart" || rs == "ignore")
+            cfg.playback.race_start_playback = std::move(rs);
+    }
+    cfg.playback.quick_station_skip =
+        pick<bool>(pb, "quick_station_skip", cfg.playback.quick_station_skip);
+    cfg.playback.volume_normalization =
+        pick<bool>(pb, "volume_normalization", cfg.playback.volume_normalization);
+    cfg.playback.equalizer_enabled =
+        pick<bool>(pb, "equalizer_enabled", cfg.playback.equalizer_enabled);
+    try {
+        if (pb.contains("equalizer_bands")) {
+            auto v = toml::find<std::vector<double>>(pb, "equalizer_bands");
+            for (std::size_t i = 0; i < cfg.playback.equalizer_bands.size() && i < v.size(); ++i) {
+                float b = static_cast<float>(v[i]);
+                if (b < -6.f) b = -6.f;
+                if (b > 6.f) b = 6.f;
+                cfg.playback.equalizer_bands[i] = b;
+            }
+        }
+    } catch (...) {}
+
     return cfg;
 }
 
@@ -210,6 +235,17 @@ struct Emitter {
         }
         out += "]\n";
     }
+    void kv_floats(std::string_view key, std::span<const float> v) {
+        out += key;
+        out += " = [";
+        char buf[32];
+        for (std::size_t i = 0; i < v.size(); ++i) {
+            if (i) out += ", ";
+            std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(v[i]));
+            out += buf;
+        }
+        out += "]\n";
+    }
 };
 
 } // namespace
@@ -255,6 +291,13 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);
     e.kv("allow_volume_over_100", cfg.audio.allow_volume_over_100);
+
+    e.header("playback");
+    e.kv("race_start_playback", cfg.playback.race_start_playback);
+    e.kv("quick_station_skip", cfg.playback.quick_station_skip);
+    e.kv("volume_normalization", cfg.playback.volume_normalization);
+    e.kv("equalizer_enabled", cfg.playback.equalizer_enabled);
+    e.kv_floats("equalizer_bands", std::span<const float>{cfg.playback.equalizer_bands});
 
     auto tmp  = path;
     tmp      += ".tmp";

@@ -58,7 +58,7 @@ bool write_string_slot(std::byte* target, std::string_view src) noexcept {
     };
 
     auto allocate_and_swap = [&]() -> bool {
-        // Round up like the Spotify mod does: (size + 32) & ~15. Gives the
+        // Round up: (size + 32) & ~15. Gives the
         // game a little headroom for in-place follow-up writes.
         const std::uint64_t alloc_cap = (new_size + 32) & ~static_cast<std::uint64_t>(15);
         const auto bytes              = static_cast<SIZE_T>(alloc_cap + 1);
