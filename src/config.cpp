@@ -153,7 +153,7 @@ Config load_config(const std::filesystem::path& path) {
         if (pb.contains("equalizer_bands")) {
             auto v = toml::find<std::vector<double>>(pb, "equalizer_bands");
             for (std::size_t i = 0; i < cfg.playback.equalizer_bands.size() && i < v.size(); ++i) {
-                float b = static_cast<float>(v[i]);
+                auto b = static_cast<float>(v[i]);
                 if (b < -6.f) b = -6.f;
                 if (b > 6.f) b = 6.f;
                 cfg.playback.equalizer_bands[i] = b;

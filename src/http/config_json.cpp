@@ -150,10 +150,10 @@ void apply_config_patch(Config& c, const json& j) {
         c.roon.render_loopback_endpoint_name =
             pull_string_alias(*it, "render_loopback_endpoint_name", "capture_device_name",
                               c.roon.render_loopback_endpoint_name);
-        c.roon.control_volume    = pull(*it, "control_volume", c.roon.control_volume);
-        c.roon.auto_reconnect    = pull(*it, "auto_reconnect", c.roon.auto_reconnect);
-        c.roon.latency_ms        = pull_u32(*it, "latency_ms", c.roon.latency_ms);
-        c.roon.metadata_poll_ms  = pull_u32(*it, "metadata_poll_ms", c.roon.metadata_poll_ms);
+        c.roon.control_volume   = pull(*it, "control_volume", c.roon.control_volume);
+        c.roon.auto_reconnect   = pull(*it, "auto_reconnect", c.roon.auto_reconnect);
+        c.roon.latency_ms       = pull_u32(*it, "latency_ms", c.roon.latency_ms);
+        c.roon.metadata_poll_ms = pull_u32(*it, "metadata_poll_ms", c.roon.metadata_poll_ms);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);

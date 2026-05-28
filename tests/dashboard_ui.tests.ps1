@@ -6,7 +6,9 @@ $js = (Get-ChildItem -LiteralPath (Join-Path $root 'ui/dist') -Filter '*.js' |
     Sort-Object Name |
     ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
 $html = Get-Content -LiteralPath (Join-Path $root 'ui/dist/index.html') -Raw
-$css = Get-Content -LiteralPath (Join-Path $root 'ui/dist/styles.css') -Raw
+$css = (Get-ChildItem -LiteralPath (Join-Path $root 'ui/dist') -Filter '*.css' |
+    Sort-Object Name |
+    ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
 $surface = "$html`n$js"
 
 function Require-Text {

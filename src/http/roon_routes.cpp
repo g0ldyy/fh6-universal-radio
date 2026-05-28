@@ -21,7 +21,7 @@
 namespace fh6::http {
 namespace {
 
-using json = nlohmann::json;
+using json                        = nlohmann::json;
 constexpr auto kCaptureSignalWait = std::chrono::milliseconds{500};
 
 bool is_route(std::string_view method, std::string_view path, std::string_view want_method,

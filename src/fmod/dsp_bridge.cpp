@@ -45,7 +45,7 @@ constexpr const char* kResolverPattern =
     "8B C1 C1 EF 11 49 8B F0 D1 E8 81 E7 FF 0F 00 00 0F B7 E8 4C 8B "
     "F2 4C 8B F9";
 constexpr const char* kUnlockPattern = "48 8B 89 F0 09 01 00 48 85 C9 0F 85 ?? ?? ?? ?? 33 C0 C3";
-DSPBridge* g_bridge = nullptr;
+DSPBridge* g_bridge                  = nullptr;
 
 // FMOD Studio Core API DSP descriptor (216 bytes). Zero-valued fields are
 // treated as "unprovided", so we only fill what we use.

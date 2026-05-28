@@ -3,8 +3,8 @@
 #include "fh6/subprocess.hpp"
 // miniaudio used only as a format-agnostic decoder into S16LE/48k/stereo.
 #include <windows.h>
+#include <charconv>
 #include <cctype>
-#include <cstdio>
 #include <limits>
 #define MA_NO_DEVICE_IO
 #define MA_NO_GENERATION
@@ -46,6 +46,22 @@ bool ieq_str(std::string_view a, std::string_view b) noexcept {
         if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
     return true;
 }
+bool parse_duration(std::string_view text, std::uint64_t& out) noexcept {
+    int h = 0, m = 0;
+    double s          = 0.0;
+    const char* begin = text.data();
+    const char* end   = begin + text.size();
+    auto rh           = std::from_chars(begin, end, h);
+    if (rh.ec != std::errc{} || rh.ptr == end || *rh.ptr != ':') return false;
+    auto rm = std::from_chars(rh.ptr + 1, end, m);
+    if (rm.ec != std::errc{} || rm.ptr == end || *rm.ptr != ':') return false;
+    auto rs = std::from_chars(rm.ptr + 1, end, s);
+    if (rs.ec != std::errc{} || rs.ptr == rm.ptr + 1 || h < 0 || m < 0 || s < 0.0) {
+        return false;
+    }
+    out = static_cast<std::uint64_t>((h * 3600 + m * 60) * 1000.0 + s * 1000.0);
+    return true;
+}
 // `ffmpeg -i <file>` with no output specified exits non-zero but first dumps
 // the input header (Duration + container Metadata block) to stderr.
 ProbedMetadata probe_metadata(const std::wstring& ff_bin, const std::filesystem::path& file) {
@@ -81,10 +97,7 @@ ProbedMetadata probe_metadata(const std::wstring& ff_bin, const std::filesystem:
     if (auto pos = err.find("Duration:"); pos != std::string::npos) {
         pos += 9;
         while (pos < err.size() && err[pos] == ' ') ++pos;
-        int h = 0, m = 0;
-        double s = 0.0;
-        if (std::sscanf(err.c_str() + pos, "%d:%d:%lf", &h, &m, &s) == 3)
-            out.duration_ms = static_cast<std::uint64_t>((h * 3600 + m * 60) * 1000.0 + s * 1000.0);
+        (void)parse_duration(std::string_view{err}.substr(pos), out.duration_ms);
     }
     // First non-empty match wins so the container block (emitted before any
     // per-stream block) beats codec-internal "encoder" tags.
@@ -103,19 +116,20 @@ ProbedMetadata probe_metadata(const std::wstring& ff_bin, const std::filesystem:
         auto val = line.substr(colon + 1);
         while (!val.empty() && val.front() == ' ') val.remove_prefix(1);
         if (val.empty()) continue;
-        if (out.title.empty() && ieq_str(key, "title"))
+        if (out.title.empty() && ieq_str(key, "title")) {
             out.title.assign(val);
-        else if (out.artist.empty() && ieq_str(key, "artist"))
+        } else if (out.artist.empty() && ieq_str(key, "artist")) {
             out.artist.assign(val);
-        else if (out.album.empty() && ieq_str(key, "album"))
+        } else if (out.album.empty() && ieq_str(key, "album")) {
             out.album.assign(val);
+        }
     }
     return out;
 }
 } // namespace
 struct LocalFileSource::Decoder {
     ma_decoder ma{};
-    bool ma_open = false;
+    bool ma_open               = false;
     HANDLE ff_job              = nullptr;
     HANDLE ff_proc             = nullptr;
     HANDLE ff_pipe             = nullptr;
@@ -202,7 +216,7 @@ bool LocalFileSource::open_track(std::size_t index) {
     dec_->info.title       = std::move(meta.title);
     dec_->info.artist      = std::move(meta.artist);
     dec_->info.album       = std::move(meta.album);
-    ma_decoder_config mc = ma_decoder_config_init(ma_format_s16, 2, kSampleRate);
+    ma_decoder_config mc   = ma_decoder_config_init(ma_format_s16, 2, kSampleRate);
     if (ma_decoder_init_file(path.string().c_str(), &mc, &dec_->ma) == MA_SUCCESS) {
         dec_->ma_open = true;
         // Decoded frame count beats ffmpeg's header duration on VBR MP3s.
@@ -227,8 +241,8 @@ bool LocalFileSource::open_track(std::size_t index) {
 }
 bool LocalFileSource::open_track_ffmpeg(const std::filesystem::path& path) {
     const std::wstring ff = ffmpeg_path_.empty() ? L"ffmpeg" : ffmpeg_path_.wstring();
-    auto* d   = dec_.get();
-    d->ff_job = create_kill_on_close_job();
+    auto* d               = dec_.get();
+    d->ff_job             = create_kill_on_close_job();
     if (!d->ff_job) {
         log::warn("[local] ffmpeg fallback: CreateJobObject failed ({})", GetLastError());
         return false;

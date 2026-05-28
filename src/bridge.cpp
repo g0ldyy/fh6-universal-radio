@@ -137,9 +137,10 @@ void run_bridge(HMODULE self) noexcept {
     bridge.set_gain(clamp_gain(cfg.audio));
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
-    if (fns.ready())
+    if (fns.ready()) {
         ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.playback,
                                                           clamp_gain(cfg.audio));
+    }
 
     for (auto* s : mgr.sources_snapshot()) s->set_playback_options(cfg.playback);
 

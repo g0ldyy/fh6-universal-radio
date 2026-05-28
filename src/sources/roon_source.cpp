@@ -290,10 +290,11 @@ std::string RoonSource::auth_instructions() const {
         return "Select the Roon output / loopback capture device that receives the selected Roon "
                "zone audio.";
     }
-    bool seen = false;
+    bool seen         = false;
     const auto status = status_snapshot(&seen);
     if (!seen) {
-        return "Waiting for Roon sidecar status. Use Reconnect if the Roon panel stays unavailable.";
+        return "Waiting for Roon sidecar status. Use Reconnect if the Roon panel stays "
+               "unavailable.";
     }
     if (!status.ok) {
         return status.error.empty() ? "Roon sidecar status is unavailable. Use Reconnect."
@@ -320,7 +321,7 @@ AuthState RoonSource::setup_state() const noexcept {
     if (cfg.bridge_path.empty()) return AuthState::error;
     if (cfg.selected_zone_id.empty() || cfg.render_loopback_endpoint_id.empty())
         return AuthState::needs_auth;
-    bool seen = false;
+    bool seen         = false;
     const auto status = status_snapshot(&seen);
     if (!seen) return AuthState::needs_auth;
     if (!status.ok) return AuthState::error;

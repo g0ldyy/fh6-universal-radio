@@ -103,15 +103,15 @@ void YouTubeMusicSource::resolve_queue_locked() {
         return;
     }
     SetHandleInformation(rd, 0, HANDLE_FLAG_INHERIT);
-    HANDLE nul_in  = open_nul(GENERIC_READ);
-    HANDLE err_log = open_stderr_log();
-    const auto yt  = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
+    HANDLE nul_in    = open_nul(GENERIC_READ);
+    HANDLE err_log   = open_stderr_log();
+    const auto yt    = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
     std::wstring cmd = quote(yt) + L" --no-warnings --flat-playlist --skip-download "
                                    L"--print \"%(id)s\" ";
     if (!cfg_.cookies_path.empty())
         cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
-    cmd += L"-- " + quote(widen(target_url_));
-    HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
+    cmd         += L"-- " + quote(widen(target_url_));
+    HANDLE proc  = spawn_in_job(job, cmd, nul_in, wr, err_log);
     // Capture the error before any other Win32 call clobbers it (CloseHandle resets it).
     const DWORD ec_yt = proc ? 0u : GetLastError();
     CloseHandle(wr);
@@ -156,8 +156,8 @@ void YouTubeMusicSource::start_pipe_locked() {
     if (queue_.empty()) return;
     if (queue_idx_ >= queue_.size()) queue_idx_ = 0;
     const std::string play_url = queue_[queue_idx_];
-    auto pipe = std::make_unique<Pipe>();
-    pipe->job = create_kill_on_close_job();
+    auto pipe                  = std::make_unique<Pipe>();
+    pipe->job                  = create_kill_on_close_job();
     if (!pipe->job) {
         log::warn("[yt] CreateJobObject failed ({})", GetLastError());
         return;
@@ -191,8 +191,8 @@ void YouTubeMusicSource::start_pipe_locked() {
     SetHandleInformation(tl_out_r, 0, HANDLE_FLAG_INHERIT);
     HANDLE nul_in  = open_nul(GENERIC_READ);
     HANDLE err_log = open_stderr_log();
-    const auto yt = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
-    const auto ff = cfg_.ffmpeg_path.empty() ? L"ffmpeg" : cfg_.ffmpeg_path.wstring();
+    const auto yt  = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
+    const auto ff  = cfg_.ffmpeg_path.empty() ? L"ffmpeg" : cfg_.ffmpeg_path.wstring();
     // `--` terminates options so a URL starting with `-` isn't read as a flag.
     // `--no-playlist` keeps yt-dlp on the single video even if the resolved
     // queue item carries a leftover list= param.
@@ -206,17 +206,17 @@ void YouTubeMusicSource::start_pipe_locked() {
     // but adequate for live playback.
     std::wstring ff_cmd = quote(ff) + L" -loglevel error -i pipe:0 -f s16le ";
     if (volume_norm_.load(std::memory_order_acquire)) ff_cmd += L"-af loudnorm=I=-14:TP=-2:LRA=11 ";
-    ff_cmd += L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
-    std::wstring tl_cmd = quote(yt) + L" --skip-download --no-warnings --no-playlist "
+    ff_cmd              += L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
+    std::wstring tl_cmd  = quote(yt) + L" --skip-download --no-warnings --no-playlist "
                                       L"--encoding UTF-8 "
                                       L"--print \"%(title)s\" "
                                       L"--print \"%(uploader)s\" "
                                       L"--print \"%(duration)s\" ";
     if (!cfg_.cookies_path.empty())
         tl_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
-    tl_cmd += L"-- " + quote(widen(play_url));
-    pipe->proc_yt     = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
-    const DWORD ec_yt = pipe->proc_yt ? 0u : GetLastError();
+    tl_cmd            += L"-- " + quote(widen(play_url));
+    pipe->proc_yt      = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
+    const DWORD ec_yt  = pipe->proc_yt ? 0u : GetLastError();
     CloseHandle(yt_out_w);
     yt_out_w = nullptr;
     if (!pipe->proc_yt) {
@@ -255,8 +255,8 @@ void YouTubeMusicSource::start_pipe_locked() {
     }
     if (nul_in) CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
-    pipe->read_pipe = ff_out_r;
-    pipe_           = std::move(pipe);
+    pipe->read_pipe   = ff_out_r;
+    pipe_             = std::move(pipe);
     info_             = TrackInfo{};
     info_.title       = "(loading)";
     info_.artist      = "YouTube Music";
