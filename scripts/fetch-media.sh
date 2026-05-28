@@ -16,7 +16,6 @@ out=${2:-$root/dist/media}
 [ -f "$src" ] || { echo "Source not found: $src" >&2; exit 1; }
 command -v unzip >/dev/null || { echo "unzip is required" >&2; exit 1; }
 
-mkdir -p "$out"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -30,6 +29,14 @@ if [ -z "$inner" ]; then
     [ -n "$radio" ] && inner=$(dirname "$(dirname "$radio")")
 fi
 [ -n "$inner" ] || { echo "No media files found inside $src" >&2; exit 1; }
+
+# Start from a clean $out so leftover files from a different mod don't
+# get mixed in. Guard against an empty or root path before deleting.
+case "$out" in
+    ''|'/') echo "Refusing to clean unsafe out dir: '$out'" >&2; exit 1 ;;
+esac
+rm -rf -- "$out"
+mkdir -p "$out"
 
 cp -rT "$inner" "$out"
 

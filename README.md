@@ -59,7 +59,7 @@ Private/age-restricted content also needs a Netscape `cookies.txt` exported from
 
 ## Build from source
 
-The output is always a Windows `version.dll` You also need the radio-station media overlay from any existing radio mod ZIP. It's mod-agnostic, but the assets are modified copies of game files so we don't ship them.
+The output is always a Windows `version.dll`. You also need the radio-station media overlay from any existing radio mod ZIP. It's mod-agnostic, but the assets are modified copies of game files so we don't ship them.
 
 ### Windows
 

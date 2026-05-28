@@ -21,8 +21,10 @@ mdir=$dist/media
 
 [ -f "$dist/version.dll" ] || { echo "dist/version.dll not found, run scripts/build.sh first." >&2; exit 1; }
 [ -d "$game" ]             || { echo "Game directory not found: $game" >&2; exit 1; }
-[ -f "$game/forzahorizon6.exe" ] || \
+[ -f "$game/forzahorizon6.exe" ] || {
     printf '\033[33mforzahorizon6.exe not found in %s, make sure this is the right folder.\033[0m\n' "$game" >&2
+    exit 1
+}
 
 # Copy $1 to $2, backing up any existing target to *.bak.
 backup_and_copy() {
@@ -30,7 +32,7 @@ backup_and_copy() {
     mkdir -p "$(dirname "$dst")"
     [ -f "$dst" ] && cp -f "$dst" "$dst.bak"
     cp -f "$src" "$dst"
-    printf '  + %s\n' "${dst#$game/}"
+    printf '  + %s\n' "${dst#"$game/"}"
 }
 
 backup_and_copy "$dist/version.dll" "$game/version.dll"
@@ -45,7 +47,7 @@ fi
 if [ "$skip_media" != "--skip-media" ]; then
     if [ -d "$mdir" ]; then
         while IFS= read -r -d '' f; do
-            backup_and_copy "$f" "$game/media/${f#$mdir/}"
+            backup_and_copy "$f" "$game/media/${f#"$mdir/"}"
         done < <(find "$mdir" -type f -print0)
     else
         printf '\033[33mdist/media/ missing, radio station overlay not installed. Run scripts/fetch-media.sh first.\033[0m\n' >&2

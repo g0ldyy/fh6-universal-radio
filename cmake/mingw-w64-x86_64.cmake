@@ -8,8 +8,10 @@
 # no portability shim is needed in the source.
 #
 # The toolchain auto-discovers x86_64-w64-mingw32-clang from PATH or from
-# llvm-mingw's standard install prefix. Override with -DMINGW_CLANG=...
-# if your install lives elsewhere.
+# llvm-mingw's standard install prefix. Override with
+# -DMINGW_CLANG_CXX=/path/to/x86_64-w64-mingw32-clang++ and/or
+# -DMINGW_CLANG_C=/path/to/x86_64-w64-mingw32-clang if your install lives
+# elsewhere.
 
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
