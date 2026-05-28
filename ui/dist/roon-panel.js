@@ -1,6 +1,6 @@
+import { renderStepPanel } from "./roon-step-panel.js";
 const ROON_DOWNLOAD_URL = "https://roon.app/en/downloads";
 const VB_AUDIO_URL = "https://vb-audio.com/Cable/";
-
 export function createRoonPanel(deps) {
   const { api, $, toast, getState, getConfig, setConfig, requestRender } = deps;
   const roon = {
@@ -11,17 +11,20 @@ export function createRoonPanel(deps) {
     devices: [],
     error: "",
     captureTest: null,
+    captureTesting: false,
+    captureTimer: 0,
+    dialogStep: "",
     loading: false,
     fetchedAt: 0,
   };
-
+  const stepOrder = ["environment", "authorize", "zone", "endpoint", "verify"];
+  const requiredStepIds = ["environment", "authorize", "zone", "endpoint"];
   function cfgRoon() {
     const next = getConfig() || {};
     next.roon ??= {};
     if (!getConfig()) setConfig(next);
     return next.roon;
   }
-
   function roonAvailable() {
     return getState()?.sources?.available?.some(s => s.name === "roon");
   }
@@ -39,17 +42,48 @@ export function createRoonPanel(deps) {
       position_ms: np.position_ms || (np.seek_position ? Math.round(np.seek_position * 1000) : 0),
     };
   }
-
   function selectedEndpointId() {
     const r = getConfig()?.roon || {};
     return r.render_loopback_endpoint_id || r.capture_device_id || "";
   }
-
   function selectedEndpointName() {
     const r = getConfig()?.roon || {};
     const id = selectedEndpointId();
     return r.render_loopback_endpoint_name || r.capture_device_name ||
       roon.devices.find(d => d.id === id)?.name || "";
+  }
+  function autoTestTarget() {
+    return selectedEndpointId() || recommendedEndpoint()?.id || "";
+  }
+  async function runAudioTest(showToast = false) {
+    const endpoint = autoTestTarget();
+    if (!endpoint || roon.captureTesting) return null;
+    roon.captureTesting = true;
+    try {
+      roon.captureTest = await api.send("/api/source/roon/test-capture", { device_id: endpoint });
+      if (showToast) toast(`Audio level ${Math.round((roon.captureTest.peak || 0) * 100)}%`);
+      requestRender();
+      return roon.captureTest;
+    } catch (err) {
+      if (showToast) toast(err.message, true);
+      else {
+        roon.captureTest = { ok: false, peak: 0, message: err.message };
+        requestRender();
+      }
+      return null;
+    } finally {
+      roon.captureTesting = false;
+    }
+  }
+  function startAutoAudioTest() {
+    if (roon.captureTimer || !autoTestTarget()) return;
+    void runAudioTest();
+    roon.captureTimer = window.setInterval(() => { void runAudioTest(); }, 3000);
+  }
+  function stopAutoAudioTest() {
+    if (!roon.captureTimer) return;
+    window.clearInterval(roon.captureTimer);
+    roon.captureTimer = 0;
   }
 
   function recommendedEndpoint() {
@@ -202,7 +236,7 @@ export function createRoonPanel(deps) {
     ).join("");
   }
 
-  function renderRoonSetupWizard(mode) {
+  function setupContext() {
     const r = getConfig()?.roon || {};
     const status = roon.status || {};
     const source = getState()?.sources?.available?.find(s => s.name === "roon");
@@ -216,7 +250,7 @@ export function createRoonPanel(deps) {
       ? `Set the Roon zone output to ${endpoint.name}, then select the same endpoint here.`
       : "Install or enable a VB-Audio render endpoint, then recheck.";
     const testResult = roon.captureTest?.peak == null
-      ? "Audio has not been tested."
+      ? "Audio test starts automatically while this panel is open."
       : roon.captureTest.message || `Audio level ${Math.round(roon.captureTest.peak * 100)}%.`;
     const zoneOptions = renderOptions(roon.zones.map(z => ({
       value: z.id || z.zone_id,
@@ -226,66 +260,121 @@ export function createRoonPanel(deps) {
       value: d.id,
       label: `${d.name}${d.is_default ? " (default)" : ""}`,
     })), selectedEndpoint, "Select loopback endpoint");
-    const steps = [
-      renderStep("Node.js", !!roon.setup?.node_available, "Required for the Roon control sidecar."),
-      renderStep("Roon Server", roon.setup?.roon_environment === "local_server",
-                 labelForEnvironment(roon.setup?.roon_environment)),
-      renderStep("Authorize extension", pairing === "authorized",
-                 pairing === "authorized" ? "FH6 Universal Radio is authorized." : setupNote || pairing),
-      renderStep("Select zone", !!selectedZone, status.selected_zone_name || "Choose the Roon zone to control."),
-      renderStep("Select loopback endpoint", !!selectedEndpoint,
-                 selectedEndpointName() || endpoint?.name || "Use the recommended render endpoint."),
-      renderOptionalStep("Test audio", testOk, testResult),
-    ].join("");
-    return `<div class="roon-panel roon-setup-surface" data-roon-setup="${esc(mode)}">
+    return {
+      r, status, source, endpoint, setupNote, pairing, selectedZone, selectedEndpoint,
+      testOk, route, testResult, zoneOptions, endpointOptions,
+    };
+  }
+
+  function stepInfo(id, ctx = setupContext()) {
+    if (id === "environment") {
+      const nodeOk = !!roon.setup?.node_available;
+      const serverOk = roon.setup?.roon_environment === "local_server";
+      return {
+        label: "Environment",
+        ok: nodeOk && serverOk,
+        detail: `${nodeOk ? "Node.js ready." : "Node.js is required."} ${labelForEnvironment(roon.setup?.roon_environment)}`,
+      };
+    }
+    if (id === "authorize") {
+      return {
+        label: "Authorize extension",
+        ok: ctx.pairing === "authorized",
+        detail: ctx.pairing === "authorized" ? "FH6 Universal Radio is authorized." : ctx.setupNote || ctx.pairing,
+      };
+    }
+    if (id === "zone") {
+      return {
+        label: "Select zone",
+        ok: !!ctx.selectedZone,
+        detail: ctx.status.selected_zone_name || "Choose the Roon zone to control.",
+      };
+    }
+    if (id === "endpoint") {
+      return {
+        label: "Select loopback endpoint",
+        ok: !!ctx.selectedEndpoint,
+        detail: selectedEndpointName() || ctx.endpoint?.name || "Use the recommended render endpoint.",
+      };
+    }
+    return {
+      label: "Test audio",
+      ok: ctx.testOk,
+      detail: ctx.testResult,
+      optional: true,
+    };
+  }
+
+  function firstIncompleteStep(ctx = setupContext()) {
+    return requiredStepIds.find(id => !stepInfo(id, ctx).ok) || "verify";
+  }
+
+  function activeDialogStep() {
+    return stepOrder.includes(roon.dialogStep) ? roon.dialogStep : firstIncompleteStep();
+  }
+
+  function renderRoonSettingsSummary() {
+    const ctx = setupContext();
+    const next = stepInfo(firstIncompleteStep(ctx), ctx);
+    const summary = requiredStepIds.map(id => {
+      const item = stepInfo(id, ctx);
+      return renderStep(item.label, item.ok, item.detail);
+    }).join("");
+    const statusText = setupComplete()
+      ? "Roon source is ready. Audio testing is optional."
+      : `Next step: ${next.label}`;
+    return `<div class="roon-panel roon-setup-surface" data-roon-setup="settings">
       <div class="card-head">
         <div>
           <h2>Roon setup</h2>
-          <p class="muted">${esc(status.selected_zone_name || "Complete each step before using Roon in-game.")}</p>
+          <p class="muted">${esc(statusText)}</p>
+        </div>
+        <div class="row action-row">
+          <button class="ghost" data-roon-action="open-dialog" type="button">Open setup wizard</button>
+          <button class="ghost" data-roon-action="recheck" type="button">Recheck</button>
+        </div>
+      </div>
+      <ol class="roon-step-list">${summary}</ol>
+      <p class="muted">${esc(roon.error || ctx.status.error || ctx.setupNote)}</p>
+    </div>`;
+  }
+
+  function renderStepNav(ctx, active) {
+    return stepOrder.map(id => {
+      const item = stepInfo(id, ctx);
+      return `<li class="${item.ok ? "ok" : "warn"}${id === active ? " active" : ""}" data-roon-action="goto-step" data-roon-step="${esc(id)}">
+        <span>${esc(item.label)}</span>
+        <strong>${item.ok ? "Ready" : item.optional ? "Optional validation" : "Action needed"}</strong>
+        <small>${esc(item.detail)}</small>
+      </li>`;
+    }).join("");
+  }
+
+  function renderRoonSetupDialog() {
+    const ctx = setupContext();
+    const active = activeDialogStep();
+    const index = stepOrder.indexOf(active);
+    return `<div class="roon-panel roon-setup-surface" data-roon-setup="dialog">
+      <div class="card-head">
+        <div>
+          <h2>Roon setup</h2>
+          <p class="muted">${esc(ctx.status.selected_zone_name || "Complete each required step before using Roon in-game.")}</p>
         </div>
         <div class="row action-row">
           <button class="ghost" data-roon-action="recheck" type="button">Recheck</button>
           <button class="ghost" data-roon-action="reconnect" type="button">Reconnect</button>
         </div>
       </div>
-      <ol class="roon-step-list">${steps}</ol>
-      <div class="roon-wizard">
-        <div class="roon-step">
-          <div class="step-head"><span>Roon environment</span></div>
-          <p>${esc(labelForEnvironment(roon.setup?.roon_environment))}</p>
-          <div class="row action-row">
-            <button class="ghost" data-roon-action="open-roon-download" type="button">Open Roon download</button>
-            <button class="ghost" data-roon-action="open-vb-download" type="button">Open VB-Audio download</button>
-          </div>
-        </div>
-        <div class="roon-step">
-          <div class="step-head"><span>Recommended endpoint</span></div>
-          <p>${esc(labelForCable(roon.setup?.cable_environment))}</p>
-          <p class="value-line">${esc(endpoint?.name || "No recommended endpoint found")}</p>
-          <button class="primary" data-roon-action="use-recommended" type="button"${endpoint?.id ? "" : " disabled"}>Use recommended device</button>
-        </div>
-        <div class="roon-step">
-          <div class="step-head"><span>Routing instructions</span></div>
-          <p>${esc(route)}</p>
-        </div>
-        <div class="roon-step">
-          <div class="step-head"><span>Targeted warnings</span></div>
-          <ul class="warning-list">${issuesMarkup()}</ul>
-        </div>
-      </div>
+      <ol class="roon-step-list">${renderStepNav(ctx, active)}</ol>
+      <div class="roon-wizard">${renderStepPanel(active, ctx, {
+        esc, renderStep, renderOptionalStep, issuesMarkup,
+        labelForCable, labelForEnvironment, setup: roon.setup,
+      })}</div>
       <div class="roon-controls">
-        <label class="field">
-          <span>Zone</span>
-          <select data-roon-zone>${zoneOptions}</select>
-        </label>
-        <label class="field">
-          <span>Roon Output / Loopback Capture Device</span>
-          <select data-roon-endpoint>${endpointOptions}</select>
-        </label>
-        <button class="primary" data-roon-action="test-audio" type="button"${selectedEndpoint || endpoint?.id ? "" : " disabled"}>Test audio</button>
+        <button class="ghost" data-roon-action="prev-step" type="button"${index <= 0 ? " disabled" : ""}>Previous</button>
+        <button class="primary" data-roon-action="next-step" type="button"${index >= stepOrder.length - 1 ? " disabled" : ""}>Next</button>
       </div>
-      <p class="muted">${esc(roon.error || status.error || setupNote)}</p>
-      ${mode === "settings" ? '<button class="ghost" data-roon-action="open-dialog" type="button">Open setup wizard</button>' : ""}
+      <p class="muted">${esc(roon.error || ctx.status.error || ctx.setupNote)}</p>
     </div>`;
   }
 
@@ -294,13 +383,19 @@ export function createRoonPanel(deps) {
     const settings = $("#roon-settings-wizard");
     if (settings) {
       settings.hidden = !showSetup;
-      settings.innerHTML = showSetup ? renderRoonSetupWizard("settings") : "";
+      settings.innerHTML = showSetup ? renderRoonSettingsSummary() : "";
     }
-    const dialogBody = $("#roon-dialog-wizard");
-    if (dialogBody) dialogBody.innerHTML = showSetup ? renderRoonSetupWizard("dialog") : "";
     const dialog = $("#roon-setup-dialog");
     if (!showSetup && dialog?.open) dialog.close();
-    if (dialog && shouldOpenSetupDialog() && !dialog.open) dialog.showModal();
+    if (dialog && shouldOpenSetupDialog() && !dialog.open) {
+      roon.dialogStep = firstIncompleteStep();
+      dialog.showModal();
+    }
+    const dialogBody = $("#roon-dialog-wizard");
+    if (dialogBody) dialogBody.innerHTML = showSetup ? renderRoonSetupDialog() : "";
+    const drawerOpen = !!$("#drawer")?.classList.contains("open");
+    if (showSetup && (dialog?.open || (drawerOpen && settings && !settings.hidden))) startAutoAudioTest();
+    else stopAutoAudioTest();
   }
 
   function openSetupUrl(key, fallback) {
@@ -356,8 +451,20 @@ export function createRoonPanel(deps) {
         if (action === "close-dialog") {
           sessionStorage.setItem("fh6-roon-setup-dismissed", "1");
           $("#roon-setup-dialog")?.close();
+          stopAutoAudioTest();
         } else if (action === "open-dialog") {
+          sessionStorage.removeItem("fh6-roon-setup-dismissed");
+          roon.dialogStep = firstIncompleteStep();
           $("#roon-setup-dialog")?.showModal();
+          requestRender();
+        } else if (action === "goto-step") {
+          if (button.dataset.roonStep) roon.dialogStep = button.dataset.roonStep;
+          requestRender();
+        } else if (action === "prev-step" || action === "next-step") {
+          const current = stepOrder.indexOf(activeDialogStep());
+          const delta = action === "next-step" ? 1 : -1;
+          roon.dialogStep = stepOrder[Math.max(0, Math.min(stepOrder.length - 1, current + delta))];
+          requestRender();
         } else if (action === "open-roon-download") {
           openSetupUrl("roon", ROON_DOWNLOAD_URL);
         } else if (action === "open-vb-download") {
@@ -375,11 +482,8 @@ export function createRoonPanel(deps) {
           await selectEndpoint(endpoint);
           toast("Recommended endpoint selected");
         } else if (action === "test-audio") {
-          const endpoint = selectedEndpointId() || recommendedEndpoint()?.id;
-          if (!endpoint) return toast("Select a loopback endpoint first", true);
-          roon.captureTest = await api.send("/api/source/roon/test-capture", { device_id: endpoint });
-          requestRender();
-          toast(`Audio level ${Math.round((roon.captureTest.peak || 0) * 100)}%`);
+          if (!autoTestTarget()) return toast("Select a loopback endpoint first", true);
+          await runAudioTest(true);
         }
       } catch (err) { toast(err.message, true); }
     });

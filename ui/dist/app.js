@@ -123,10 +123,14 @@ function renderSources() {
 }
 
 let volDirty = false;
+function volumeSliderMax() {
+  return (cfg?.audio?.allow_volume_over_100 ?? state?.audio?.allow_volume_over_100) ? 2 : 1;
+}
 function renderOutput() {
   const gain = state?.audio?.output_gain ?? 0;
+  const slider = $("#vol");
+  slider.max = String(volumeSliderMax());
   if (!volDirty) {
-    const slider = $("#vol");
     if (Math.abs(parseFloat(slider.value) - gain) > 0.005) slider.value = gain;
     $("#vol-out").value = Math.round(gain * 100) + "%";
   }
@@ -168,7 +172,8 @@ const SCHEMA = [
     ["metadata_poll_ms",    "Metadata poll (ms)",     "number", 250, 5000],
   ]],
   ["audio", "Audio", [
-    ["output_gain", "Output gain", "number", 0, 1, 0.01],
+    ["output_gain", "Output gain", "number", 0, "volumeSliderMax", 0.01],
+    ["allow_volume_over_100", "Allow volume over 100%", "checkbox"],
   ]],
 ];
 
@@ -181,8 +186,9 @@ function field(section, [key, label, type, min, max, step]) {
       <label for="${id}">${label}</label>
     </div>`;
   }
+  const maxValue = max === "volumeSliderMax" ? volumeSliderMax() : max;
   const attrs = type === "number"
-    ? ` min="${min ?? ''}" max="${max ?? ''}" step="${step ?? 1}"`
+    ? ` min="${min ?? ''}" max="${maxValue ?? ''}" step="${step ?? 1}"`
     : "";
   return `<div class="field">
     <label for="${id}">${label}</label>

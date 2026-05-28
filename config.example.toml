@@ -43,3 +43,4 @@ metadata_poll_ms    = 750
 
 [audio]
 output_gain = 1.0
+allow_volume_over_100 = false

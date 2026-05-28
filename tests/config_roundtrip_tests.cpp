@@ -45,6 +45,11 @@ void require_roon_defaults(const fh6::RoonConfig& roon) {
     require(roon.metadata_poll_ms == 750, "metadata_poll_ms defaults 750");
 }
 
+void require_audio_defaults(const fh6::AudioConfig& audio) {
+    require(audio.output_gain == 1.0f, "output_gain defaults 1.0");
+    require(!audio.allow_volume_over_100, "boosted volume defaults disabled");
+}
+
 } // namespace
 
 int main() {
@@ -55,6 +60,7 @@ int main() {
     try {
         fh6::Config defaults;
         require_roon_defaults(defaults.roon);
+        require_audio_defaults(defaults.audio);
 
         const auto old_config_path = root / "old-config.toml";
         write_text(old_config_path, R"toml(
@@ -67,6 +73,7 @@ music_dir = 'C:\Music'
 )toml");
         auto old_cfg = fh6::load_config(old_config_path);
         require_roon_defaults(old_cfg.roon);
+        require_audio_defaults(old_cfg.audio);
 
         const auto roon_config_path = root / "roon-config.toml";
         write_text(roon_config_path, R"toml(
@@ -142,6 +149,20 @@ metadata_poll_ms = 'fast'
         require(saved_cfg.roon.latency_ms == 125, "saved latency round-trips");
         require(saved_cfg.roon.metadata_poll_ms == 900, "saved metadata poll round-trips");
 
+        const auto audio_config_path = root / "audio-config.toml";
+        write_text(audio_config_path, R"toml(
+[audio]
+output_gain = 1.75
+allow_volume_over_100 = true
+)toml");
+        auto audio_cfg = fh6::load_config(audio_config_path);
+        require(audio_cfg.audio.output_gain == 1.75f, "boosted output_gain parses");
+        require(audio_cfg.audio.allow_volume_over_100, "boosted volume setting parses");
+        fh6::save_config(saved_path, audio_cfg);
+        saved_text = read_text(saved_path);
+        require(saved_text.find("allow_volume_over_100 = true") != std::string::npos,
+                "save_config emits boosted volume setting");
+
         auto as_json = fh6::http::config_to_json(roon_cfg);
         require(as_json["roon"]["enabled"] == true, "config_to_json emits roon enabled");
         require(as_json["roon"]["selected_zone_id"] == "zone-1",
@@ -149,6 +170,9 @@ metadata_poll_ms = 'fast'
         require(as_json["roon"]["render_loopback_endpoint_id"] == "new-render-id",
                 "config_to_json emits render loopback endpoint id");
         require(as_json["roon"]["latency_ms"] == 125, "config_to_json emits latency");
+        auto audio_json = fh6::http::config_to_json(audio_cfg);
+        require(audio_json["audio"]["allow_volume_over_100"] == true,
+                "config_to_json emits boosted volume setting");
 
         fh6::Config patched;
         fh6::http::apply_config_patch(patched, nlohmann::json{{"roon",
@@ -168,6 +192,13 @@ metadata_poll_ms = 'fast'
                 "apply_config_patch updates render loopback endpoint name");
         require(patched.roon.latency_ms == 333, "apply_config_patch updates latency");
         require(patched.roon.metadata_poll_ms == 750, "partial roon patch keeps fallback");
+
+        fh6::http::apply_config_patch(
+            patched, nlohmann::json{{"audio", {{"output_gain", 1.8},
+                                                {"allow_volume_over_100", true}}}});
+        require(patched.audio.output_gain == 1.8f, "apply_config_patch updates boosted gain");
+        require(patched.audio.allow_volume_over_100,
+                "apply_config_patch updates boosted volume setting");
 
         fh6::http::apply_config_patch(
             patched, nlohmann::json{{"roon", {{"capture_device_id", "legacy-device-2"},

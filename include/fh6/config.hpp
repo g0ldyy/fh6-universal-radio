@@ -48,7 +48,8 @@ struct RoonConfig {
 };
 
 struct AudioConfig {
-    float output_gain = 1.0f;
+    float output_gain          = 1.0f;
+    bool allow_volume_over_100 = false;
 };
 
 struct Config {

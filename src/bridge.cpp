@@ -15,6 +15,7 @@
 #include "fh6/sources/youtube_music_source.hpp"
 
 #include <windows.h>
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -129,34 +130,40 @@ void run_bridge(HMODULE self) noexcept {
     }
 
     fmod_bridge::DSPBridge bridge{mgr, fns};
-    bridge.set_gain(cfg.audio.output_gain);
+    auto clamp_gain = [](const AudioConfig& audio) {
+        return std::clamp(audio.output_gain, 0.0f, audio.allow_volume_over_100 ? 2.0f : 1.0f);
+    };
+    bridge.set_gain(clamp_gain(cfg.audio));
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
     if (fns.ready())
-        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.audio.output_gain);
+        ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, clamp_gain(cfg.audio));
 
-    store.on_change([&bridge, &mgr, sync_sources, ctrl_ptr = ctrl.get()](const Config& c) {
-        sync_sources(c);
-        if (!mgr.active()) {
-            if (!mgr.switch_to(c.general.default_source)) mgr.switch_to(c.general.fallback_source);
-        }
-
-        // Push the gain to both: the control loop's ramper otherwise snaps
-        // the bridge value back to its own cached target on the next tick.
-        bridge.set_gain(c.audio.output_gain);
-        if (ctrl_ptr) ctrl_ptr->set_configured_gain(c.audio.output_gain);
-        if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
-            local->set_shuffle(c.local_files.shuffle);
-            local->set_directory(c.local_files.music_dir, c.local_files.recursive);
-            if (mgr.active() == local && local->track_count() > 0 &&
-                local->playback_state() != PlaybackState::playing) {
-                local->play();
+    store.on_change(
+        [&bridge, &mgr, sync_sources, clamp_gain, ctrl_ptr = ctrl.get()](const Config& c) {
+            sync_sources(c);
+            if (!mgr.active()) {
+                if (!mgr.switch_to(c.general.default_source))
+                    mgr.switch_to(c.general.fallback_source);
             }
-        }
-        if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
-            yt->set_shuffle(c.youtube_music.shuffle);
-        }
-    });
+
+            // Push the gain to both: the control loop's ramper otherwise snaps
+            // the bridge value back to its own cached target on the next tick.
+            const auto gain = clamp_gain(c.audio);
+            bridge.set_gain(gain);
+            if (ctrl_ptr) ctrl_ptr->set_configured_gain(gain);
+            if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
+                local->set_shuffle(c.local_files.shuffle);
+                local->set_directory(c.local_files.music_dir, c.local_files.recursive);
+                if (mgr.active() == local && local->track_count() > 0 &&
+                    local->playback_state() != PlaybackState::playing) {
+                    local->play();
+                }
+            }
+            if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
+                yt->set_shuffle(c.youtube_music.shuffle);
+            }
+        });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};
     log::info("[bridge] running on port {}", cfg.general.port);

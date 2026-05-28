@@ -101,6 +101,7 @@ json config_to_json(const Config& c) {
         {"audio",
          json{
              {"output_gain", c.audio.output_gain},
+             {"allow_volume_over_100", c.audio.allow_volume_over_100},
          }},
     };
 }
@@ -150,6 +151,11 @@ void apply_config_patch(Config& c, const json& j) {
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
+        c.audio.allow_volume_over_100 =
+            pull(*it, "allow_volume_over_100", c.audio.allow_volume_over_100);
+        if (c.audio.output_gain < 0.0f) c.audio.output_gain = 0.0f;
+        const float max_gain = c.audio.allow_volume_over_100 ? 2.0f : 1.0f;
+        if (c.audio.output_gain > max_gain) c.audio.output_gain = max_gain;
     }
 }
 

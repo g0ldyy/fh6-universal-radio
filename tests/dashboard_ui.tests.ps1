@@ -36,6 +36,15 @@ foreach ($field in @(
     Require-Text $js $field "Roon settings should include $field"
 }
 
+foreach ($text in @(
+    'allow_volume_over_100',
+    'Allow volume over 100%',
+    'volumeSliderMax',
+    'slider.max = String(volumeSliderMax())'
+)) {
+    Require-Text $js $text "Audio settings should support boosted volume with $text"
+}
+
 foreach ($route in @(
     '/api/source/roon/setup',
     '/api/source/roon/status',
@@ -76,7 +85,18 @@ foreach ($text in @(
 
 foreach ($text in @(
     'roon-settings-wizard',
-    'renderRoonSetupWizard',
+    'renderRoonSettingsSummary',
+    'renderRoonSetupDialog',
+    'firstIncompleteStep',
+    'requiredStepIds',
+    'startAutoAudioTest',
+    'stopAutoAudioTest',
+    'runAudioTest',
+    '3000',
+    'roon-step-panel',
+    'data-roon-step',
+    'data-roon-action="prev-step"',
+    'data-roon-action="next-step"',
     'shouldOpenSetupDialog',
     'sessionStorage',
     'showModal',
@@ -101,4 +121,17 @@ Require-Text $js 'roonNowPlaying' 'app should prefer Roon metadata when Roon is 
 
 if ($js.Contains('renderStep("Test audio", testOk')) {
     throw 'Test audio should be optional validation, not a required setup step'
+}
+
+if ($js.Contains('renderRoonSetupWizard("settings")') -or $js.Contains('mode === "settings"')) {
+    throw 'Settings should render a compact Roon summary, not the full setup wizard'
+}
+
+$setupComplete = [regex]::Match($js, 'function setupComplete\(\) \{(?<body>[\s\S]*?)\n  \}')
+if (-not $setupComplete.Success) {
+    throw 'Dashboard should define setupComplete()'
+}
+
+if ($setupComplete.Groups['body'].Value.Contains('captureTest')) {
+    throw 'Test audio should not affect initial Roon setup completion detection'
 }

@@ -98,6 +98,17 @@ int main() {
         const auto port = find_free_port();
         fh6::http::HttpServer server{mgr, bridge, store, port, {}};
 
+        auto gain_res = wait_post(port, "/api/options", R"({"output_gain":1.6})");
+        require(gain_res, "default volume option should respond");
+        require(gain_res->status == 200, "default volume option should accept request");
+        require(bridge.gain() == 1.0f, "default volume option should clamp gain to 100%");
+
+        store.patch([](fh6::Config& c) { c.audio.allow_volume_over_100 = true; });
+        gain_res = wait_post(port, "/api/options", R"({"output_gain":1.6})");
+        require(gain_res, "boosted volume option should respond");
+        require(gain_res->status == 200, "boosted volume option should accept request");
+        require(bridge.gain() == 1.6f, "boosted volume option should allow gain over 100%");
+
         auto res = wait_get(port, "/api/source/roon/loopback-endpoints");
         require(res, "loopback endpoints route should respond");
         require(res->status == 200, "loopback endpoints route should return HTTP 200");

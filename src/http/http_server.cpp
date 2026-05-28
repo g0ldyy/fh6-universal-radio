@@ -244,6 +244,7 @@ struct HttpServer::Impl {
                  {"active", bridge.mode() == fmod_bridge::DSPMode::pcm},
                  {"native_dsp_mode", mode_string(bridge.mode())},
                  {"output_gain", bridge.gain()},
+                 {"allow_volume_over_100", store.snapshot().audio.allow_volume_over_100},
                  {"underruns", bridge.underruns()},
                  {"calls", bridge.call_count()},
                  {"buffer_len", bridge.last_buffer_len()},
@@ -429,13 +430,14 @@ struct HttpServer::Impl {
         if (m == "POST" && p == "/api/options") {
             auto j = json::parse(req.body);
             if (auto it = j.find("output_gain"); it != j.end()) {
-                float g = std::clamp(it->get<float>(), 0.0f, 1.0f);
+                const auto audio = store.snapshot().audio;
+                float g =
+                    std::clamp(it->get<float>(), 0.0f, audio.allow_volume_over_100 ? 2.0f : 1.0f);
                 bridge.set_gain(g);
                 store.patch([&](Config& c) { c.audio.output_gain = g; });
             }
             return ok();
         }
-
         constexpr std::string_view prefix = "/api/source/";
         if (m == "POST" && route_starts_with(p, prefix)) {
             const auto rest  = std::string_view{p}.substr(prefix.size());
@@ -490,11 +492,9 @@ struct HttpServer::Impl {
         send_all(client, evt);
     }
 };
-
 HttpServer::HttpServer(AudioSourceManager& mgr, fmod_bridge::DSPBridge& bridge, ConfigStore& cfg,
                        uint16_t port, std::filesystem::path ui_dist)
     : impl_{std::make_unique<Impl>(mgr, bridge, cfg, port, std::move(ui_dist))} {}
 
 HttpServer::~HttpServer() = default;
-
 } // namespace fh6::http

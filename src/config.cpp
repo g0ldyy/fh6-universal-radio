@@ -133,6 +133,8 @@ Config load_config(const std::filesystem::path& path) {
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
+    cfg.audio.allow_volume_over_100 =
+        pick<bool>(au, "allow_volume_over_100", cfg.audio.allow_volume_over_100);
 
     return cfg;
 }
@@ -252,6 +254,7 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
 
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);
+    e.kv("allow_volume_over_100", cfg.audio.allow_volume_over_100);
 
     auto tmp  = path;
     tmp      += ".tmp";
