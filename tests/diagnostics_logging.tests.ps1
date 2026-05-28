@@ -26,9 +26,14 @@ foreach ($needle in @(
     "selected zone",
     "selected loopback endpoint",
     "reconnect requested",
-    "capture device is silent"
+    "capture device is silent",
+    "kCaptureSignalWait"
 )) {
     Require-Text $routes $needle "Roon HTTP diagnostics should log $needle"
+}
+
+if ($routes.Contains("milliseconds{1500}")) {
+    throw "Roon test-capture should not block the single-threaded dashboard for 1500ms"
 }
 
 Require-Text $sidecar "command=" "Sidecar diagnostics should log the sanitized start command"

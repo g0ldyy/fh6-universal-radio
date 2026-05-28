@@ -22,6 +22,7 @@ namespace fh6::http {
 namespace {
 
 using json = nlohmann::json;
+constexpr auto kCaptureSignalWait = std::chrono::milliseconds{500};
 
 bool is_route(std::string_view method, std::string_view path, std::string_view want_method,
               std::string_view want_path) {
@@ -137,7 +138,7 @@ json setup_diagnostics_to_json(const roon::RoonSetupDiagnostics& d) {
 
 audio::WasapiLoopbackCaptureStatus wait_for_capture_signal(audio::WasapiLoopbackCapture& capture) {
     audio::WasapiLoopbackCaptureStatus status;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds{1500};
+    const auto deadline = std::chrono::steady_clock::now() + kCaptureSignalWait;
     do {
         status = capture.status();
         if (status.peak >= 0.01f || !status.running) return status;
