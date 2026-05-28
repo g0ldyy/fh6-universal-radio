@@ -42,7 +42,10 @@ std::size_t find_ci(std::string_view hay, std::string_view needle, std::size_t p
     for (std::size_t i = pos; i + needle.size() <= hay.size(); ++i) {
         bool match = true;
         for (std::size_t k = 0; k < needle.size(); ++k) {
-            if (!ieq(hay[i + k], needle[k])) { match = false; break; }
+            if (!ieq(hay[i + k], needle[k])) {
+                match = false;
+                break;
+            }
         }
         if (match) return i;
     }

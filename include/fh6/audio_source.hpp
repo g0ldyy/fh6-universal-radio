@@ -39,9 +39,9 @@ public:
     virtual bool initialize()        = 0;
     virtual void shutdown() noexcept = 0;
 
-    virtual void play()      = 0;
-    virtual void pause()     = 0;
-    virtual void stop()      = 0;
+    virtual void play()  = 0;
+    virtual void pause() = 0;
+    virtual void stop()  = 0;
     virtual void next() {}
     virtual void previous() {}
     virtual void seek(uint64_t /*ms*/) {}
@@ -49,7 +49,10 @@ public:
     // ControlLoop's quickStationSkip / raceStartPlayback="next" entry.
     // Returns true iff the queue actually advanced. Default delegates to
     // next() and assumes success.
-    virtual bool skip_next() { next(); return true; }
+    virtual bool skip_next() {
+        next();
+        return true;
+    }
 
     // ControlLoop's raceStartPlayback="restart" entry. Returns true iff
     // playback actually rewound to t=0. Default is "unsupported".

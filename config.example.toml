@@ -8,7 +8,7 @@
 [general]
 port              = 8420
 ring_buffer_mb    = 4
-default_source    = "local_files"     # local_files | youtube_music
+default_source    = "local_files"     # local_files | youtube_music | roon
 fallback_source   = "local_files"
 
 [local_files]
@@ -27,8 +27,24 @@ ffmpeg_path        = ''                # blank = `ffmpeg`  on PATH
 default_playlist   = ""
 shuffle            = true
 
+[roon]
+enabled             = false
+node_path           = ''                # blank = node on PATH
+bridge_path         = 'tools\roon-bridge\index.mjs'
+selected_core_id    = ''                # set by Web Control after pairing
+selected_zone_id    = ''                # selected Roon playback zone ID
+selected_output_id  = ''                # optional selected Roon output ID
+render_loopback_endpoint_id   = ''      # selected Windows render endpoint ID
+render_loopback_endpoint_name = ''      # normally Hi-Fi Cable Input or CABLE Input; not Hi-Fi Cable Output
+control_volume      = true
+auto_start_bridge   = true
+auto_reconnect      = true
+latency_ms          = 250
+metadata_poll_ms    = 750
+
 [audio]
 output_gain = 1.0
+allow_volume_over_100 = false
 
 [playback]
 race_start_playback  = "next"      # "next" | "restart" | "ignore" -- action when a race begins

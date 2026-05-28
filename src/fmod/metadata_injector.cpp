@@ -35,40 +35,35 @@ bool write_string_slot(std::byte* target, std::string_view src) noexcept {
     if (hdr.cap < kSsoCap) return false; // implausible -- not an std::string
     if (hdr.size > hdr.cap) return false;
 
-    const std::uint64_t new_size = static_cast<std::uint64_t>(src.size());
+    const auto new_size = static_cast<std::uint64_t>(src.size());
 
     auto inplace_overwrite_heap = [&]() -> bool {
         std::byte* heap = nullptr;
         std::memcpy(&heap, hdr.sso_buf, sizeof(heap));
         if (!heap) return false;
-        if (!seh_call([&] {
-                std::memcpy(heap, src.data(), src.size());
-                heap[src.size()] = std::byte{0};
-                std::memcpy(target + 16, &new_size, sizeof(new_size));
-            }))
-            return false;
-        return true;
+        return seh_call([&] {
+            std::memcpy(heap, src.data(), src.size());
+            heap[src.size()] = std::byte{0};
+            std::memcpy(target + 16, &new_size, sizeof(new_size));
+        });
     };
 
     auto inplace_overwrite_sso = [&]() -> bool {
-        if (!seh_call([&] {
-                std::memcpy(target, src.data(), src.size());
-                target[src.size()] = std::byte{0};
-                std::memcpy(target + 16, &new_size, sizeof(new_size));
-                // Cap stays at 15 (SSO) -- we don't touch it.
-            }))
-            return false;
-        return true;
+        return seh_call([&] {
+            std::memcpy(target, src.data(), src.size());
+            target[src.size()] = std::byte{0};
+            std::memcpy(target + 16, &new_size, sizeof(new_size));
+            // Cap stays at 15 (SSO) -- we don't touch it.
+        });
     };
 
     auto allocate_and_swap = [&]() -> bool {
         // Round up: (size + 32) & ~15. Gives the
         // game a little headroom for in-place follow-up writes.
         const std::uint64_t alloc_cap = (new_size + 32) & ~static_cast<std::uint64_t>(15);
-        const SIZE_T bytes            = static_cast<SIZE_T>(alloc_cap + 1);
-        auto* fresh =
-            static_cast<std::byte*>(VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE,
-                                                 PAGE_READWRITE));
+        const auto bytes              = static_cast<SIZE_T>(alloc_cap + 1);
+        void* allocated = VirtualAlloc(nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        auto* fresh     = static_cast<std::byte*>(allocated);
         if (!fresh) {
             log::warn("[meta] VirtualAlloc failed for {} bytes", bytes);
             return false;

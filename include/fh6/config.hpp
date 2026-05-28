@@ -8,7 +8,7 @@
 namespace fh6 {
 
 struct PlaybackConfig {
-    std::string race_start_playback = "next";   // "next" | "restart" | "ignore"
+    std::string race_start_playback = "next"; // "next" | "restart" | "ignore"
     bool quick_station_skip         = false;
     bool volume_normalization       = false;
     bool equalizer_enabled          = false;
@@ -27,8 +27,8 @@ struct LocalFilesConfig {
     std::filesystem::path music_dir;
     bool recursive = true;
     bool shuffle   = true;
-    std::vector<std::string> supported_formats{"mp3",  "flac", "wav", "ogg", "m4a",
-                                                "opus", "aac",  "wma", "aiff", "aif"};
+    std::vector<std::string> supported_formats{"mp3",  "flac", "wav", "ogg",  "m4a",
+                                               "opus", "aac",  "wma", "aiff", "aif"};
 };
 
 struct YouTubeMusicConfig {
@@ -40,14 +40,33 @@ struct YouTubeMusicConfig {
     bool shuffle = true;
 };
 
+struct RoonConfig {
+    bool enabled = false;
+    std::filesystem::path node_path;
+    std::filesystem::path bridge_path =
+        std::filesystem::path{"tools"} / "roon-bridge" / "index.mjs";
+    std::string selected_core_id;
+    std::string selected_zone_id;
+    std::string selected_output_id;
+    std::string render_loopback_endpoint_id;
+    std::string render_loopback_endpoint_name;
+    bool control_volume       = true;
+    bool auto_start_bridge    = true;
+    bool auto_reconnect       = true;
+    uint32_t latency_ms       = 250;
+    uint32_t metadata_poll_ms = 750;
+};
+
 struct AudioConfig {
-    float output_gain = 1.0f;
+    float output_gain          = 1.0f;
+    bool allow_volume_over_100 = false;
 };
 
 struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
     YouTubeMusicConfig youtube_music;
+    RoonConfig roon;
     AudioConfig audio;
     PlaybackConfig playback;
 };

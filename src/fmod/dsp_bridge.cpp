@@ -1,16 +1,14 @@
 #include "fh6/fmod/dsp_bridge.hpp"
+#include "fh6/fmod/dsp_render_policy.hpp"
+#include "fh6/fmod/dsp_retarget_policy.hpp"
 #include "fh6/fmod/sig_scanner.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/log.hpp"
 #include "fh6/safe_mem.hpp"
-
 #include <algorithm>
 #include <cstring>
-
 namespace fh6::fmod_bridge {
-
 namespace {
-
 struct FMODSig {
     const char* anchor;
     const char* pattern;
@@ -36,12 +34,10 @@ constexpr FMODSig kAnchored[] = {
                                 "40 53 48 83 EC 20|"
                                 "48 89 5C 24 08 57 48 83 EC 20"},
 };
-
 // FMOD_LOOP_NORMAL: makes the channel loop forever on its source sample.
 // Set once at install time so the placeholder sample doesn't end and
 // drop the channel out from under our DSP.
 constexpr uint32_t kFmodLoopNormal = 0x2;
-
 // FMOD's `Handle::open` / `Handle::unlock` have no .rdata anchor; we match
 // their (unique) prologues directly.
 constexpr const char* kResolverPattern =
@@ -49,8 +45,7 @@ constexpr const char* kResolverPattern =
     "8B C1 C1 EF 11 49 8B F0 D1 E8 81 E7 FF 0F 00 00 0F B7 E8 4C 8B "
     "F2 4C 8B F9";
 constexpr const char* kUnlockPattern = "48 8B 89 F0 09 01 00 48 85 C9 0F 85 ?? ?? ?? ?? 33 C0 C3";
-
-DSPBridge* g_bridge = nullptr;
+DSPBridge* g_bridge                  = nullptr;
 
 // FMOD Studio Core API DSP descriptor (216 bytes). Zero-valued fields are
 // treated as "unprovided", so we only fill what we use.
@@ -83,6 +78,59 @@ struct FMOD_DSP_DESCRIPTION {
     void* sys_mix;             // 208
 };
 static_assert(sizeof(FMOD_DSP_DESCRIPTION) == 216);
+
+struct FMOD_DSP_BUFFER_ARRAY {
+    int32_t numbuffers;
+    int32_t* buffernumchannels;
+    uint32_t* bufferchannelmask;
+    float** buffers;
+    int32_t speakermode;
+};
+static_assert(sizeof(FMOD_DSP_BUFFER_ARRAY) == 40);
+
+void force_stereo_buffer_array(FMOD_DSP_BUFFER_ARRAY* array) noexcept {
+    if (!array || array->numbuffers <= 0) return;
+
+    DspOutputFormat format{};
+    force_stereo_output_format(format);
+    if (array->buffernumchannels) array->buffernumchannels[0] = format.channels;
+    if (array->bufferchannelmask) array->bufferchannelmask[0] = format.channel_mask;
+    array->speakermode = format.speaker_mode;
+}
+
+int32_t first_buffer_channels(const FMOD_DSP_BUFFER_ARRAY* array, int32_t fallback) noexcept {
+    if (!array || array->numbuffers <= 0 || !array->buffernumchannels ||
+        array->buffernumchannels[0] <= 0) {
+        return fallback;
+    }
+    return array->buffernumchannels[0];
+}
+
+void copy_passthrough_to_output(const FMOD_DSP_BUFFER_ARRAY* in_array, float* out_buf,
+                                uint32_t length, int32_t out_ch) noexcept {
+    if (!out_buf || out_ch <= 0) return;
+
+    const std::size_t total = static_cast<std::size_t>(length) * out_ch;
+    if (!in_array || in_array->numbuffers <= 0 || !in_array->buffers || !in_array->buffers[0]) {
+        std::memset(out_buf, 0, total * sizeof(float));
+        return;
+    }
+
+    const float* in_buf = in_array->buffers[0];
+    const int32_t in_ch = first_buffer_channels(in_array, out_ch);
+    for (uint32_t f = 0; f < length; ++f) {
+        const float* in = in_buf + static_cast<std::size_t>(f) * in_ch;
+        float* out      = out_buf + static_cast<std::size_t>(f) * out_ch;
+        if (out_ch == 1) {
+            out[0] = in_ch == 1 ? in[0] : (in[0] + in[1]) * 0.5f;
+            continue;
+        }
+        out[0]           = in[0];
+        out[1]           = in_ch == 1 ? in[0] : in[1];
+        const float mono = (out[0] + out[1]) * 0.5f;
+        for (int32_t c = 2; c < out_ch; ++c) out[c] = mono;
+    }
+}
 
 // The `System::createDSP` LEA is sometimes not yet resident in the host
 // process when our scanner runs at DllMain. Pulled out so install_dsp_locked
@@ -191,8 +239,7 @@ void DSPBridge::install_dsp_locked(uint32_t handle) noexcept {
     if (!fns_.system_create_dsp && fns_.host_base) {
         fns_.system_create_dsp = resolve_create_dsp(parse(fns_.host_base));
         if (fns_.system_create_dsp) {
-            log::info("[dsp] resolved System::createDSP late at {}",
-                      (void*)fns_.system_create_dsp);
+            log::info("[dsp] resolved System::createDSP late at {}", (void*)fns_.system_create_dsp);
         } else {
             log::warn("[dsp] System::createDSP still unresolved -- install aborted");
             return;
@@ -209,6 +256,7 @@ void DSPBridge::install_dsp_locked(uint32_t handle) noexcept {
     desc.numinputbuffers  = 1;
     desc.numoutputbuffers = 1;
     desc.read             = reinterpret_cast<void*>(&DSPBridge::read_callback);
+    desc.process          = reinterpret_cast<void*>(&DSPBridge::process_callback);
     desc.userdata         = this;
 
     void* dsp   = nullptr;
@@ -226,6 +274,12 @@ void DSPBridge::install_dsp_locked(uint32_t handle) noexcept {
     if (!dsp) {
         log::warn("[dsp] createDSP failed r={}", rc);
         return;
+    }
+
+    const std::size_t stale_bytes = mgr_.ring().readable();
+    if (stale_bytes != 0) {
+        mgr_.ring().drain();
+        log::info("[dsp] drained {} stale PCM bytes before installing DSP", stale_bytes);
     }
 
     // addDSP wants the packed handle zero-extended to 64 bits.
@@ -276,18 +330,22 @@ bool DSPBridge::channel_handle_alive(std::byte* radio_stream) const noexcept {
 
 void DSPBridge::retarget_if_needed() noexcept {
     if (mode() != DSPMode::pcm || !fmod_system_) return;
-    const uint32_t handle = read_live_handle(radio_stream_);
-    if (handle == current_handle_) return;
-    // No live handle on the RadioStreamFmod. If we still think we're installed
-    // on a dead one, release it so we stop querying the stale handle.
-    if (!handle) {
-        if (current_handle_) release_current_dsp_locked();
-        return;
+    const bool current_alive        = current_handle_alive();
+    const uint32_t current_channels = last_out_ch_.load(std::memory_order_relaxed);
+    const uint32_t slot_handle      = read_live_handle(radio_stream_);
+    const auto decision =
+        decide_retarget(current_handle_, current_alive, current_channels, slot_handle);
+
+    switch (decision.action) {
+        case RetargetAction::none:
+        case RetargetAction::keep_current: return;
+        case RetargetAction::release_current: release_current_dsp_locked(); return;
+        case RetargetAction::install_slot: break;
     }
 
-    log::info("[dsp] retargeting -> handle 0x{:X}", handle);
+    log::info("[dsp] retargeting -> handle 0x{:X}", decision.handle);
     release_current_dsp_locked();
-    install_dsp_locked(handle);
+    install_dsp_locked(decision.handle);
 }
 
 // FMOD DSP read callback (mixer thread). Sources write 48 kHz S16 stereo
@@ -320,8 +378,11 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
         return 0;
     }
     if (m == DSPMode::passthrough) {
-        if (in_buf) std::memcpy(out_buf, in_buf, total * sizeof(float));
-        else        std::memset(out_buf, 0, total * sizeof(float));
+        if (in_buf) {
+            std::memcpy(out_buf, in_buf, total * sizeof(float));
+        } else {
+            std::memset(out_buf, 0, total * sizeof(float));
+        }
         stats();
         return 0;
     }
@@ -336,11 +397,6 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
         return 0;
     }
 
-    // gain<=1.0 + S16 input keeps the float strictly within [-1, 1], but a
-    // misconfigured config.toml could push gain above 1 -- clamp defensively.
-    constexpr float kAmp = 1.0f / 32768.0f;
-    const float scale    = gain * kAmp;
-
     // Pull the ring in chunks: one ring.read() per chunk amortises the
     // ring's two atomic loads over many frames. 1024 frames = 4 KiB stack,
     // well under any sane FMOD callback budget.
@@ -351,23 +407,11 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
     for (uint32_t produced = 0; produced < length;) {
         const uint32_t want_frames = std::min(length - produced, kChunkFrames);
         const std::size_t got      = ring.read(scratch, want_frames * 4);
-        const uint32_t got_frames  = static_cast<uint32_t>(got / 4);
+        const auto got_frames      = static_cast<uint32_t>(got / 4);
 
         for (uint32_t f = 0; f < got_frames; ++f) {
-            const float fl = scratch[f * 2 + 0] * scale;
-            const float fr = scratch[f * 2 + 1] * scale;
-            const float L  = fl > 1.0f ? 1.0f : (fl < -1.0f ? -1.0f : fl);
-            const float R  = fr > 1.0f ? 1.0f : (fr < -1.0f ? -1.0f : fr);
-
             float* o = out_buf + static_cast<std::size_t>(produced + f) * out_ch;
-            if (out_ch == 1) {
-                o[0] = (L + R) * 0.5f;
-            } else {
-                o[0]           = L;
-                o[1]           = R;
-                const float dn = (L + R) * 0.5f;
-                for (int32_t c = 2; c < out_ch; ++c) o[c] = dn;
-            }
+            render_s16_stereo_frame(scratch[f * 2 + 0], scratch[f * 2 + 1], gain, o, out_ch);
         }
 
         produced += got_frames;
@@ -378,6 +422,78 @@ uint32_t __stdcall DSPBridge::read_callback(void* /*dsp_state*/, float* in_buf, 
     }
 
     stats();
+    return 0;
+}
+
+uint32_t __stdcall DSPBridge::process_callback(void* /*dsp_state*/, uint32_t length,
+                                               const void* in_buffer_array, void* out_buffer_array,
+                                               bool /*inputs_idle*/, uint32_t op) {
+    auto* b         = g_bridge;
+    auto* out_array = static_cast<FMOD_DSP_BUFFER_ARRAY*>(out_buffer_array);
+    if (!b || !out_array) return 0;
+
+    force_stereo_buffer_array(out_array);
+    if (op == kFmodDspProcessQuery) {
+        b->last_len_.store(length, std::memory_order_relaxed);
+        b->last_out_ch_.store(2, std::memory_order_relaxed);
+        return 0;
+    }
+    if (op != kFmodDspProcessPerform || out_array->numbuffers <= 0 || !out_array->buffers) {
+        return 0;
+    }
+
+    float* out_buf = out_array->buffers[0];
+    if (!out_buf) return 0;
+    int32_t out_ch          = first_buffer_channels(out_array, 2);
+    const std::size_t total = static_cast<std::size_t>(length) * out_ch;
+
+    const DSPMode m = b->mode();
+    if (m == DSPMode::silence || m == DSPMode::off) {
+        std::memset(out_buf, 0, total * sizeof(float));
+        b->calls_.fetch_add(1, std::memory_order_relaxed);
+        b->last_len_.store(length, std::memory_order_relaxed);
+        b->last_out_ch_.store(out_ch, std::memory_order_relaxed);
+        return 0;
+    }
+    if (m == DSPMode::passthrough) {
+        copy_passthrough_to_output(static_cast<const FMOD_DSP_BUFFER_ARRAY*>(in_buffer_array),
+                                   out_buf, length, out_ch);
+        b->calls_.fetch_add(1, std::memory_order_relaxed);
+        b->last_len_.store(length, std::memory_order_relaxed);
+        b->last_out_ch_.store(out_ch, std::memory_order_relaxed);
+        return 0;
+    }
+
+    std::memset(out_buf, 0, total * sizeof(float));
+    const float gain = b->gain();
+    if (gain <= 0.0f) {
+        b->calls_.fetch_add(1, std::memory_order_relaxed);
+        b->last_len_.store(length, std::memory_order_relaxed);
+        b->last_out_ch_.store(out_ch, std::memory_order_relaxed);
+        return 0;
+    }
+
+    constexpr uint32_t kChunkFrames = 1024;
+    int16_t scratch[kChunkFrames * 2];
+    auto& ring = b->mgr_.ring();
+    for (uint32_t produced = 0; produced < length;) {
+        const uint32_t want_frames = std::min(length - produced, kChunkFrames);
+        const std::size_t got      = ring.read(scratch, want_frames * 4);
+        const auto got_frames      = static_cast<uint32_t>(got / 4);
+        for (uint32_t f = 0; f < got_frames; ++f) {
+            float* o = out_buf + static_cast<std::size_t>(produced + f) * out_ch;
+            render_s16_stereo_frame(scratch[f * 2 + 0], scratch[f * 2 + 1], gain, o, out_ch);
+        }
+        produced += got_frames;
+        if (got_frames < want_frames) {
+            b->underruns_.fetch_add(1, std::memory_order_relaxed);
+            break;
+        }
+    }
+
+    b->calls_.fetch_add(1, std::memory_order_relaxed);
+    b->last_len_.store(length, std::memory_order_relaxed);
+    b->last_out_ch_.store(out_ch, std::memory_order_relaxed);
     return 0;
 }
 

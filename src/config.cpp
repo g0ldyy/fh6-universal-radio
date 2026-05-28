@@ -4,6 +4,8 @@
 #include <toml.hpp>
 
 #include <fstream>
+#include <limits>
+#include <optional>
 #include <span>
 #include <system_error>
 
@@ -20,9 +22,38 @@ template <class T> T pick(const toml::value& tbl, const char* key, T fallback) {
     }
 }
 
-std::filesystem::path pick_path(const toml::value& tbl, const char* key) {
-    auto s = pick<std::string>(tbl, key, "");
+std::filesystem::path pick_path(const toml::value& tbl, const char* key,
+                                const std::filesystem::path& fallback = {}) {
+    auto s = pick<std::string>(tbl, key, fallback.empty() ? std::string{} : fallback.string());
     return s.empty() ? std::filesystem::path{} : std::filesystem::path{s};
+}
+
+uint32_t pick_u32(const toml::value& tbl, const char* key, uint32_t fallback) {
+    try {
+        if (!tbl.contains(key)) return fallback;
+        const auto v              = toml::find<int64_t>(tbl, key);
+        constexpr auto kMaxUint32 = static_cast<int64_t>(std::numeric_limits<uint32_t>::max());
+        if (v < 0 || v > kMaxUint32) return fallback;
+        return static_cast<uint32_t>(v);
+    } catch (...) {
+        return fallback;
+    }
+}
+
+std::optional<std::string> pick_string_present(const toml::value& tbl, const char* key) {
+    try {
+        if (!tbl.contains(key)) return std::nullopt;
+        return toml::find<std::string>(tbl, key);
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+std::string pick_string_alias(const toml::value& tbl, const char* canonical_key,
+                              const char* legacy_key, const std::string& fallback) {
+    if (auto canonical = pick_string_present(tbl, canonical_key)) return *canonical;
+    if (auto legacy = pick_string_present(tbl, legacy_key)) return *legacy;
+    return fallback;
 }
 
 const toml::value& section(const toml::value& root, const char* key) {
@@ -78,9 +109,33 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
     cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
 
+    const auto& ro       = section(root, "roon");
+    cfg.roon.enabled     = pick<bool>(ro, "enabled", cfg.roon.enabled);
+    cfg.roon.node_path   = pick_path(ro, "node_path", cfg.roon.node_path);
+    cfg.roon.bridge_path = pick_path(ro, "bridge_path", cfg.roon.bridge_path);
+    cfg.roon.selected_core_id =
+        pick<std::string>(ro, "selected_core_id", cfg.roon.selected_core_id);
+    cfg.roon.selected_zone_id =
+        pick<std::string>(ro, "selected_zone_id", cfg.roon.selected_zone_id);
+    cfg.roon.selected_output_id =
+        pick<std::string>(ro, "selected_output_id", cfg.roon.selected_output_id);
+    cfg.roon.render_loopback_endpoint_id =
+        pick_string_alias(ro, "render_loopback_endpoint_id", "capture_device_id",
+                          cfg.roon.render_loopback_endpoint_id);
+    cfg.roon.render_loopback_endpoint_name =
+        pick_string_alias(ro, "render_loopback_endpoint_name", "capture_device_name",
+                          cfg.roon.render_loopback_endpoint_name);
+    cfg.roon.control_volume    = pick<bool>(ro, "control_volume", cfg.roon.control_volume);
+    cfg.roon.auto_start_bridge = pick<bool>(ro, "auto_start_bridge", cfg.roon.auto_start_bridge);
+    cfg.roon.auto_reconnect    = pick<bool>(ro, "auto_reconnect", cfg.roon.auto_reconnect);
+    cfg.roon.latency_ms        = pick_u32(ro, "latency_ms", cfg.roon.latency_ms);
+    cfg.roon.metadata_poll_ms  = pick_u32(ro, "metadata_poll_ms", cfg.roon.metadata_poll_ms);
+
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
+    cfg.audio.allow_volume_over_100 =
+        pick<bool>(au, "allow_volume_over_100", cfg.audio.allow_volume_over_100);
 
     const auto& pb = section(root, "playback");
     {
@@ -97,11 +152,10 @@ Config load_config(const std::filesystem::path& path) {
     try {
         if (pb.contains("equalizer_bands")) {
             auto v = toml::find<std::vector<double>>(pb, "equalizer_bands");
-            for (std::size_t i = 0; i < cfg.playback.equalizer_bands.size() && i < v.size();
-                 ++i) {
-                float b = static_cast<float>(v[i]);
+            for (std::size_t i = 0; i < cfg.playback.equalizer_bands.size() && i < v.size(); ++i) {
+                auto b = static_cast<float>(v[i]);
                 if (b < -6.f) b = -6.f;
-                if (b > 6.f)  b =  6.f;
+                if (b > 6.f) b = 6.f;
                 cfg.playback.equalizer_bands[i] = b;
             }
         }
@@ -219,8 +273,24 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
     e.kv("shuffle", cfg.youtube_music.shuffle);
 
+    e.header("roon");
+    e.kv("enabled", cfg.roon.enabled);
+    e.kv_path("node_path", cfg.roon.node_path);
+    e.kv_path("bridge_path", cfg.roon.bridge_path);
+    e.kv("selected_core_id", cfg.roon.selected_core_id);
+    e.kv("selected_zone_id", cfg.roon.selected_zone_id);
+    e.kv("selected_output_id", cfg.roon.selected_output_id);
+    e.kv("render_loopback_endpoint_id", cfg.roon.render_loopback_endpoint_id);
+    e.kv("render_loopback_endpoint_name", cfg.roon.render_loopback_endpoint_name);
+    e.kv("control_volume", cfg.roon.control_volume);
+    e.kv("auto_start_bridge", cfg.roon.auto_start_bridge);
+    e.kv("auto_reconnect", cfg.roon.auto_reconnect);
+    e.kv("latency_ms", (int64_t)cfg.roon.latency_ms);
+    e.kv("metadata_poll_ms", (int64_t)cfg.roon.metadata_poll_ms);
+
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);
+    e.kv("allow_volume_over_100", cfg.audio.allow_volume_over_100);
 
     e.header("playback");
     e.kv("race_start_playback", cfg.playback.race_start_playback);

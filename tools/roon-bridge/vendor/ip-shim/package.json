@@ -1,0 +1,8 @@
+{
+  "name": "fh6-ip-shim",
+  "version": "1.1.9",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.cjs",
+  "license": "GPL-3.0-only"
+}

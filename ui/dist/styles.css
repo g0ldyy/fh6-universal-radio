@@ -1,5 +1,4 @@
 /* FH6 Universal Radio dashboard styles. No framework, no preprocessor. */
-
 :root {
   color-scheme: dark;
   --bg:           #0b0c10;
@@ -35,7 +34,7 @@ body {
 
 button { font: inherit; color: inherit; }
 
-input, output { font: inherit; color: inherit; }
+input, output, select { font: inherit; color: inherit; }
 
 h1, h2 { margin: 0; font-weight: 600; letter-spacing: .2px; }
 
@@ -108,6 +107,13 @@ main {
   background: radial-gradient(circle, #2a2d38 35%, #15171f 36%, #15171f 60%, #2a2d38 61%);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.04);
 }
+
+.art.has-artwork {
+  background-position: center;
+  background-size: cover;
+}
+
+.art.has-artwork::after { display: none; }
 
 .meta { min-width: 0; }
 
@@ -200,13 +206,15 @@ main {
   display: flex; gap: 8px; align-items: center;
 }
 
-input[type="text"], input[type="number"] {
+input[type="text"], input[type="number"], select {
   flex: 1; min-width: 0;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; color: var(--text);
 }
 
-input[type="text"]:focus, input[type="number"]:focus {
+select { width: 100%; }
+
+input[type="text"]:focus, input[type="number"]:focus, select:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(182,255,60,0.15);
 }
 
@@ -224,6 +232,11 @@ button.ghost {
 }
 
 button.ghost:hover { color: var(--text); background: var(--panel-2); }
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
 
 .slider { display: grid; grid-template-columns: 80px 1fr 56px; align-items: center; gap: 14px; padding: 10px 0; }
 
@@ -308,11 +321,15 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
 }
 
 .field.bands { gap: 8px; }
+
 .field.bands .band {
   display: grid; grid-template-columns: 72px 1fr 64px; align-items: center; gap: 10px;
 }
+
 .field.bands .band-label { color: var(--text-dim); font-size: 12px; }
+
 .field.bands input[type="range"] { width: 100%; }
+
 .field.bands output { color: var(--text-dim); font-size: 12px; text-align: right; }
 
 .scrim {
@@ -388,6 +405,12 @@ output { text-align: right; color: var(--text-dim); font-variant-numeric: tabula
   .art { margin: 0 auto; }
 
   .transport { justify-content: center; }
+
+  .roon-controls { grid-template-columns: 1fr; }
+
+  .roon-wizard { grid-template-columns: 1fr; }
+
+  .card-head { align-items: stretch; flex-direction: column; }
 
   .credits { padding: 24px 20px 32px; }
 }

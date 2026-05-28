@@ -4,15 +4,18 @@
 #include "fh6/log.hpp"
 #include "fh6/config.hpp"
 #include "fh6/config_store.hpp"
+#include "fh6/source_registration.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/pe_image.hpp"
 #include "fh6/http/http_server.hpp"
 #include "fh6/sources/local_file_source.hpp"
+#include "fh6/sources/roon_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 
 #include <windows.h>
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -104,7 +107,7 @@ void run_bridge(HMODULE self) noexcept {
     // Register/unregister sources to match the enabled flags. Called at
     // startup and on every config change so toggling enabled adds/removes
     // the dashboard tile live, without a game restart.
-    auto sync_sources = [&mgr](const Config& c) {
+    auto sync_sources = [&mgr, data_dir](const Config& c) {
         if (c.local_files.enabled && !mgr.find("local_files")) {
             auto src = std::make_unique<sources::LocalFileSource>(c.local_files,
                                                                   c.youtube_music.ffmpeg_path);
@@ -118,6 +121,7 @@ void run_bridge(HMODULE self) noexcept {
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
+        sync_roon_source(mgr, c.roon, data_dir);
     };
 
     sync_sources(cfg);
@@ -127,41 +131,48 @@ void run_bridge(HMODULE self) noexcept {
     }
 
     fmod_bridge::DSPBridge bridge{mgr, fns};
-    bridge.set_gain(cfg.audio.output_gain);
+    auto clamp_gain = [](const AudioConfig& audio) {
+        return std::clamp(audio.output_gain, 0.0f, audio.allow_volume_over_100 ? 2.0f : 1.0f);
+    };
+    bridge.set_gain(clamp_gain(cfg.audio));
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
-    if (fns.ready())
+    if (fns.ready()) {
         ctrl = std::make_unique<fmod_bridge::ControlLoop>(bridge, img, cfg.playback,
-                                                          cfg.audio.output_gain);
+                                                          clamp_gain(cfg.audio));
+    }
 
     for (auto* s : mgr.sources_snapshot()) s->set_playback_options(cfg.playback);
 
-    store.on_change([&bridge, &mgr, sync_sources, ctrl_ptr = ctrl.get()](const Config& c) {
-        sync_sources(c);
-        if (!mgr.active()) {
-            if (!mgr.switch_to(c.general.default_source)) mgr.switch_to(c.general.fallback_source);
-        }
-
-        // Push the gain to both: the control loop's ramper otherwise snaps
-        // the bridge value back to its own cached target on the next tick.
-        bridge.set_gain(c.audio.output_gain);
-        if (ctrl_ptr) ctrl_ptr->set_configured_gain(c.audio.output_gain);
-        if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
-            local->set_shuffle(c.local_files.shuffle);
-            local->set_ffmpeg_path(c.youtube_music.ffmpeg_path);
-            local->set_directory(c.local_files.music_dir, c.local_files.recursive);
-            if (mgr.active() == local && local->track_count() > 0 &&
-                local->playback_state() != PlaybackState::playing) {
-                local->play();
+    store.on_change(
+        [&bridge, &mgr, sync_sources, clamp_gain, ctrl_ptr = ctrl.get()](const Config& c) {
+            sync_sources(c);
+            if (!mgr.active()) {
+                if (!mgr.switch_to(c.general.default_source))
+                    mgr.switch_to(c.general.fallback_source);
             }
-        }
-        if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
-            yt->set_shuffle(c.youtube_music.shuffle);
-        }
 
-        for (auto* s : mgr.sources_snapshot()) s->set_playback_options(c.playback);
-        if (ctrl_ptr) ctrl_ptr->push_playback_options(c.playback);
-    });
+            // Push the gain to both: the control loop's ramper otherwise snaps
+            // the bridge value back to its own cached target on the next tick.
+            const auto gain = clamp_gain(c.audio);
+            bridge.set_gain(gain);
+            if (ctrl_ptr) ctrl_ptr->set_configured_gain(gain);
+            if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
+                local->set_shuffle(c.local_files.shuffle);
+                local->set_ffmpeg_path(c.youtube_music.ffmpeg_path);
+                local->set_directory(c.local_files.music_dir, c.local_files.recursive);
+                if (mgr.active() == local && local->track_count() > 0 &&
+                    local->playback_state() != PlaybackState::playing) {
+                    local->play();
+                }
+            }
+            if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
+                yt->set_shuffle(c.youtube_music.shuffle);
+            }
+
+            for (auto* s : mgr.sources_snapshot()) s->set_playback_options(c.playback);
+            if (ctrl_ptr) ctrl_ptr->push_playback_options(c.playback);
+        });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};
     log::info("[bridge] running on port {}", cfg.general.port);

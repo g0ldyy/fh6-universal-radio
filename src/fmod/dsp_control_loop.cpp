@@ -1,5 +1,7 @@
 #include "fh6/fmod/dsp_control_loop.hpp"
+#include "fh6/fmod/dsp_retarget_policy.hpp"
 #include "fh6/fmod/radio_discovery.hpp"
+#include "fh6/fmod/radio_target_policy.hpp"
 #include "fh6/audio_source.hpp"
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/log.hpp"
@@ -20,9 +22,9 @@ constexpr int kDiscoveryTries  = 120; // 10-minute budget; the radio system
 // before we conclude the DSP is attached to a dead channel. 1s @ 20ms.
 constexpr int kStaleTickThreshold = 50;
 
-// SoundName of the placeholder sample our DSP overwrites. Matches the carrier
-// shipped by the radio-mod media overlay; if absent, we fall back to the
-// first chain-valid instance so a stale overlay doesn't silently break audio.
+// SoundName of the placeholder sample our DSP overwrites. The documented
+// setup enables FH6 Streamer Mode, which leaves a single station whose
+// playlist can rotate through many SoundNames, so fallback is allowed there.
 constexpr const char* kTargetSoundName = "HZ6_R9_PeterBroderick_EyesClosedandTraveling";
 } // namespace
 
@@ -48,25 +50,17 @@ void ControlLoop::run(const std::stop_token& tok) {
     DiscoveryResult disc;
     for (int attempt = 0; attempt < kDiscoveryTries && !tok.stop_requested(); ++attempt) {
         disc = discover_radio_instances(img_);
-        if (!disc.instances.empty()) break;
+        if (select_instance(disc, /*require_live=*/false, nullptr)) break;
         for (auto t = std::chrono::steady_clock::now() + kDiscoveryRetry;
              std::chrono::steady_clock::now() < t && !tok.stop_requested();)
             std::this_thread::sleep_for(kTick);
     }
 
-    if (disc.instances.empty()) {
-        log::warn("[ctrl] discovery timed out; control loop exiting");
-        return;
-    }
-
-    const RadioInstance* chosen = select_instance(disc, /*require_live=*/false);
+    const RadioInstance* chosen = select_instance(disc, /*require_live=*/false, nullptr);
     if (!chosen) {
-        log::warn("[ctrl] discovery returned no usable instance; control loop exiting");
+        log::warn(R"([ctrl] target "{}" not found; media overlay or station is not active)",
+                  kTargetSoundName);
         return;
-    }
-    if (chosen->sound_name != kTargetSoundName) {
-        log::warn(R"([ctrl] no instance matches target "{}"; falling back to "{}")",
-                  kTargetSoundName, chosen->sound_name);
     }
 
     void* fmod_system = resolve_fmod_system(img_, chosen->radio_stream);
@@ -104,7 +98,7 @@ void ControlLoop::run(const std::stop_token& tok) {
         // sample ended). Re-discover and switch to a live channel.
         auto* active          = bridge_.manager().active();
         const bool busy       = active && (active->playback_state() == PlaybackState::playing ||
-                                           active->playback_state() == PlaybackState::buffering);
+                                     active->playback_state() == PlaybackState::buffering);
         const std::uint64_t c = bridge_.call_count();
         if (busy && c == prev_calls_) {
             if (++stale_ticks_ >= kStaleTickThreshold) {
@@ -138,22 +132,21 @@ void ControlLoop::run(const std::stop_token& tok) {
     log::info("[ctrl] control loop exiting");
 }
 
-const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc,
-                                                  bool require_live) const noexcept {
-    const RadioInstance* fallback = nullptr;
-    for (auto& i : disc.instances) {
-        if (require_live && !bridge_.channel_handle_alive(i.radio_stream)) continue;
-        if (i.sound_name == kTargetSoundName) return &i;
-        if (!fallback) fallback = &i;
-    }
-    return fallback;
+const RadioInstance* ControlLoop::select_instance(const DiscoveryResult& disc, bool require_live,
+                                                  std::byte* avoid_radio_stream) const noexcept {
+    return select_target_radio_instance(
+        disc, kTargetSoundName, /*allow_fallback=*/true, require_live, avoid_radio_stream,
+        [this](std::byte* radio_stream) { return bridge_.channel_handle_alive(radio_stream); });
 }
 
 void ControlLoop::recover_stale_dsp() noexcept {
-    if (bridge_.current_handle_alive()) return;  // false alarm; channel still live
+    const bool current_alive        = bridge_.current_handle_alive();
+    const uint32_t current_channels = bridge_.last_out_channels();
+    if (is_stale_recovery_false_alarm(current_alive, current_channels)) return;
 
-    auto disc = discover_radio_instances(img_);
-    const RadioInstance* chosen = select_instance(disc, /*require_live=*/true);
+    auto disc                   = discover_radio_instances(img_);
+    const RadioInstance* chosen = select_instance(
+        disc, /*require_live=*/true, current_alive ? bridge_.target_radio_stream() : nullptr);
     if (!chosen) return;
 
     void* fmod_system = resolve_fmod_system(img_, chosen->radio_stream);
@@ -181,7 +174,7 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     auto* active = bridge_.manager().active();
     if (!active) {
         prev_r10_ = prev_race_ = prev_race_restart_ = false;
-        quick_skip_armed_ = false;
+        quick_skip_armed_                           = false;
         return;
     }
 
@@ -254,10 +247,10 @@ void ControlLoop::push_metadata() noexcept {
     std::string artist = info.artist;
     if (artist.empty()) {
         switch (a->playback_state()) {
-            case PlaybackState::playing:   artist = "Playing"; break;
+            case PlaybackState::playing: artist = "Playing"; break;
             case PlaybackState::buffering: artist = "Buffering"; break;
-            case PlaybackState::paused:    artist = "Paused"; break;
-            case PlaybackState::stopped:   artist = "Stopped"; break;
+            case PlaybackState::paused: artist = "Paused"; break;
+            case PlaybackState::stopped: artist = "Stopped"; break;
         }
     }
     meta_.update(title, artist);

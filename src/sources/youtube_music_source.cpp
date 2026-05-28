@@ -1,7 +1,7 @@
 #include "fh6/sources/youtube_music_source.hpp"
+#include "youtube_music_support.hpp"
 #include "fh6/log.hpp"
 #include "fh6/subprocess.hpp"
-
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
@@ -10,11 +10,9 @@
 #include <random>
 #include <string>
 #include <vector>
-
 namespace fh6::sources {
-
+using namespace youtube_music_detail;
 namespace {
-
 using subprocess::create_kill_on_close_job;
 using subprocess::describe_launch_failure;
 using subprocess::open_nul;
@@ -23,75 +21,30 @@ using subprocess::quote;
 using subprocess::spawn_in_job;
 using subprocess::stderr_log_path;
 using subprocess::widen;
-
-// PCM contract written by ffmpeg: 48000 Hz * 2 ch * 2 bytes.
-constexpr std::uint64_t kPcmBytesPerSec = 48000ull * 2ull * 2ull;
-
-// Block until the child closes its stdout. Used by the playlist enumerator,
-// which is small (one id per line) and runs once per cast.
-std::string drain_to_eof(HANDLE pipe) {
-    std::string out;
-    char buf[4096];
-    DWORD got = 0;
-    while (ReadFile(pipe, buf, sizeof(buf), &got, nullptr) && got > 0) out.append(buf, got);
-    return out;
-}
-
-bool is_playlist_url(std::string_view url) {
-    return url.find("playlist?") != std::string_view::npos;
-}
-
-std::string watch_url_for_id(std::string_view id) {
-    std::string s = "https://www.youtube.com/watch?v=";
-    s.append(id);
-    return s;
-}
-
 } // namespace
-
-struct YouTubeMusicSource::Pipe {
-    HANDLE job        = nullptr;
-    HANDLE proc_yt    = nullptr;
-    HANDLE proc_ff    = nullptr;
-    HANDLE proc_title = nullptr;
-    HANDLE read_pipe  = nullptr;
-    HANDLE title_pipe = nullptr;
-    std::string title_buf;
-    std::uint64_t bytes_written = 0;
-    bool ended = false;
-
-    ~Pipe() {
-        // Close pipes first so any blocked ReadFile in the children unblocks
-        // with broken-pipe, then drop the job handle -- KILL_ON_JOB_CLOSE
-        // reaps the entire tree (yt-dlp + deno + ffmpeg + title resolver).
-        if (read_pipe)  CloseHandle(read_pipe);
-        if (title_pipe) CloseHandle(title_pipe);
-        if (job)        CloseHandle(job);
-        if (proc_yt)    CloseHandle(proc_yt);
-        if (proc_ff)    CloseHandle(proc_ff);
-        if (proc_title) CloseHandle(proc_title);
-    }
-};
-
 YouTubeMusicSource::YouTubeMusicSource(YouTubeMusicConfig cfg) : cfg_{std::move(cfg)} {}
-
 YouTubeMusicSource::~YouTubeMusicSource() { stop_pipe_locked(); }
-
 bool YouTubeMusicSource::initialize() {
     if (!cfg_.enabled) return false;
+    const auto setup_message = youtube_tool_setup_message(cfg_);
     if (!cfg_.default_playlist.empty()) {
         std::scoped_lock lk{mu_};
         target_url_ = cfg_.default_playlist;
     }
-    auth_ = cfg_.cookies_path.empty() ? AuthState::none_required : AuthState::authenticated;
+    {
+        std::scoped_lock lk{mu_};
+        auth_message_ = setup_message;
+    }
+    auth_.store(setup_message.empty() ? (cfg_.cookies_path.empty() ? AuthState::none_required
+                                                                   : AuthState::authenticated)
+                                      : AuthState::error,
+                std::memory_order_release);
     return true;
 }
-
 void YouTubeMusicSource::shutdown() noexcept {
     std::scoped_lock lk{mu_};
     stop_pipe_locked();
 }
-
 void YouTubeMusicSource::set_target(std::string url) {
     std::scoped_lock lk{mu_};
     target_url_ = std::move(url);
@@ -100,7 +53,6 @@ void YouTubeMusicSource::set_target(std::string url) {
     queue_idx_ = 0;
     queue_built_for_.clear();
 }
-
 void YouTubeMusicSource::set_shuffle(bool shuffle) {
     std::scoped_lock lk{mu_};
     cfg_.shuffle = shuffle;
@@ -121,7 +73,6 @@ void YouTubeMusicSource::set_shuffle(bool shuffle) {
         }
     }
 }
-
 void YouTubeMusicSource::resolve_queue_locked() {
     if (target_url_.empty()) {
         queue_.clear();
@@ -130,16 +81,13 @@ void YouTubeMusicSource::resolve_queue_locked() {
         return;
     }
     if (queue_built_for_ == target_url_ && !queue_.empty()) return;
-
     queue_.clear();
     queue_idx_ = 0;
-
     if (!is_playlist_url(target_url_)) {
         queue_.push_back(target_url_);
         queue_built_for_ = target_url_;
         return;
     }
-
     // Playlist URL: enumerate IDs via --flat-playlist. Synchronous because the
     // HTTP cast handler can afford a few seconds; the alternative is a worker
     // thread + a longer-lived state machine for a marginal UX win.
@@ -148,7 +96,6 @@ void YouTubeMusicSource::resolve_queue_locked() {
         log::warn("[yt] resolve_queue: CreateJobObject failed ({})", GetLastError());
         return;
     }
-
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
     HANDLE rd = nullptr, wr = nullptr;
     if (!CreatePipe(&rd, &wr, &sa, 1 << 16)) {
@@ -156,22 +103,19 @@ void YouTubeMusicSource::resolve_queue_locked() {
         return;
     }
     SetHandleInformation(rd, 0, HANDLE_FLAG_INHERIT);
-
-    HANDLE nul_in  = open_nul(GENERIC_READ);
-    HANDLE err_log = open_stderr_log();
-    const auto yt  = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
-
+    HANDLE nul_in    = open_nul(GENERIC_READ);
+    HANDLE err_log   = open_stderr_log();
+    const auto yt    = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
     std::wstring cmd = quote(yt) + L" --no-warnings --flat-playlist --skip-download "
                                    L"--print \"%(id)s\" ";
     if (!cfg_.cookies_path.empty())
         cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
-    cmd += L"-- " + quote(widen(target_url_));
-
-    HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
+    cmd         += L"-- " + quote(widen(target_url_));
+    HANDLE proc  = spawn_in_job(job, cmd, nul_in, wr, err_log);
     // Capture the error before any other Win32 call clobbers it (CloseHandle resets it).
     const DWORD ec_yt = proc ? 0u : GetLastError();
     CloseHandle(wr);
-    if (nul_in)  CloseHandle(nul_in);
+    if (nul_in) CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
     if (!proc) {
         CloseHandle(rd);
@@ -180,12 +124,10 @@ void YouTubeMusicSource::resolve_queue_locked() {
                   describe_launch_failure(std::wstring{yt}, ec_yt, !cfg_.yt_dlp_path.empty()));
         return;
     }
-
     std::string raw = drain_to_eof(rd);
     CloseHandle(rd);
     CloseHandle(proc);
-    CloseHandle(job);  // KILL_ON_JOB_CLOSE -- ensures any straggling deno child dies
-
+    CloseHandle(job); // KILL_ON_JOB_CLOSE -- ensures any straggling deno child dies
     for (std::size_t pos = 0; pos < raw.size();) {
         auto nl   = raw.find('\n', pos);
         auto end  = (nl == std::string::npos) ? raw.size() : nl;
@@ -195,12 +137,10 @@ void YouTubeMusicSource::resolve_queue_locked() {
         if (!line.empty() && line != "NA") queue_.push_back(watch_url_for_id(line));
         pos = (nl == std::string::npos) ? raw.size() : nl + 1;
     }
-
     if (cfg_.shuffle && queue_.size() > 1) {
         static thread_local std::mt19937 rng{std::random_device{}()};
         std::shuffle(queue_.begin(), queue_.end(), rng);
     }
-
     queue_built_for_ = target_url_;
     if (queue_.empty() && is_playlist_url(target_url_)) {
         log::warn("[yt] resolved 0 tracks from {} -- check {} for yt-dlp errors "
@@ -210,27 +150,22 @@ void YouTubeMusicSource::resolve_queue_locked() {
         log::info("[yt] resolved {} track(s) from {}", queue_.size(), target_url_);
     }
 }
-
 void YouTubeMusicSource::start_pipe_locked() {
     stop_pipe_locked();
     resolve_queue_locked();
     if (queue_.empty()) return;
     if (queue_idx_ >= queue_.size()) queue_idx_ = 0;
-
     const std::string play_url = queue_[queue_idx_];
-
-    auto pipe = std::make_unique<Pipe>();
-    pipe->job = create_kill_on_close_job();
+    auto pipe                  = std::make_unique<Pipe>();
+    pipe->job                  = create_kill_on_close_job();
     if (!pipe->job) {
         log::warn("[yt] CreateJobObject failed ({})", GetLastError());
         return;
     }
-
     SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
     HANDLE yt_out_r = nullptr, yt_out_w = nullptr;
     HANDLE ff_out_r = nullptr, ff_out_w = nullptr;
     HANDLE tl_out_r = nullptr, tl_out_w = nullptr;
-
     auto bail = [&] {
         if (yt_out_r) CloseHandle(yt_out_r);
         if (yt_out_w) CloseHandle(yt_out_w);
@@ -239,20 +174,25 @@ void YouTubeMusicSource::start_pipe_locked() {
         if (tl_out_r) CloseHandle(tl_out_r);
         if (tl_out_w) CloseHandle(tl_out_w);
     };
-
-    if (!CreatePipe(&yt_out_r, &yt_out_w, &sa, 1 << 20)) { bail(); return; }
+    if (!CreatePipe(&yt_out_r, &yt_out_w, &sa, 1 << 20)) {
+        bail();
+        return;
+    }
     SetHandleInformation(yt_out_r, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-    if (!CreatePipe(&ff_out_r, &ff_out_w, &sa, 1 << 20)) { bail(); return; }
+    if (!CreatePipe(&ff_out_r, &ff_out_w, &sa, 1 << 20)) {
+        bail();
+        return;
+    }
     SetHandleInformation(ff_out_r, 0, HANDLE_FLAG_INHERIT);
-    if (!CreatePipe(&tl_out_r, &tl_out_w, &sa, 1 << 16)) { bail(); return; }
+    if (!CreatePipe(&tl_out_r, &tl_out_w, &sa, 1 << 16)) {
+        bail();
+        return;
+    }
     SetHandleInformation(tl_out_r, 0, HANDLE_FLAG_INHERIT);
-
     HANDLE nul_in  = open_nul(GENERIC_READ);
     HANDLE err_log = open_stderr_log();
-
-    const auto yt = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
-    const auto ff = cfg_.ffmpeg_path.empty() ? L"ffmpeg" : cfg_.ffmpeg_path.wstring();
-
+    const auto yt  = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
+    const auto ff  = cfg_.ffmpeg_path.empty() ? L"ffmpeg" : cfg_.ffmpeg_path.wstring();
     // `--` terminates options so a URL starting with `-` isn't read as a flag.
     // `--no-playlist` keeps yt-dlp on the single video even if the resolved
     // queue item carries a leftover list= param.
@@ -261,52 +201,48 @@ void YouTubeMusicSource::start_pipe_locked() {
     if (!cfg_.cookies_path.empty())
         yt_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
     yt_cmd += L"-- " + quote(widen(play_url));
-
     // EBU R128 loudness normalisation.
     // Single-pass / dynamic mode: less precise than the two-pass measurement,
     // but adequate for live playback.
     std::wstring ff_cmd = quote(ff) + L" -loglevel error -i pipe:0 -f s16le ";
-    if (volume_norm_.load(std::memory_order_acquire))
-        ff_cmd += L"-af loudnorm=I=-14:TP=-2:LRA=11 ";
-    ff_cmd += L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
-
-    std::wstring tl_cmd = quote(yt) + L" --skip-download --no-warnings --no-playlist "
+    if (volume_norm_.load(std::memory_order_acquire)) ff_cmd += L"-af loudnorm=I=-14:TP=-2:LRA=11 ";
+    ff_cmd              += L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
+    std::wstring tl_cmd  = quote(yt) + L" --skip-download --no-warnings --no-playlist "
                                       L"--encoding UTF-8 "
                                       L"--print \"%(title)s\" "
                                       L"--print \"%(uploader)s\" "
                                       L"--print \"%(duration)s\" ";
     if (!cfg_.cookies_path.empty())
         tl_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
-    tl_cmd += L"-- " + quote(widen(play_url));
-
-    pipe->proc_yt = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
-    const DWORD ec_yt = pipe->proc_yt ? 0u : GetLastError();
+    tl_cmd            += L"-- " + quote(widen(play_url));
+    pipe->proc_yt      = spawn_in_job(pipe->job, yt_cmd, nul_in, yt_out_w, err_log);
+    const DWORD ec_yt  = pipe->proc_yt ? 0u : GetLastError();
     CloseHandle(yt_out_w);
     yt_out_w = nullptr;
     if (!pipe->proc_yt) {
         log::warn("[yt] failed to launch yt-dlp -- {}",
                   describe_launch_failure(std::wstring{yt}, ec_yt, !cfg_.yt_dlp_path.empty()));
         bail();
-        if (nul_in)  CloseHandle(nul_in);
+        if (nul_in) CloseHandle(nul_in);
         if (err_log) CloseHandle(err_log);
         return;
     }
-
-    pipe->proc_ff = spawn_in_job(pipe->job, ff_cmd, yt_out_r, ff_out_w, err_log);
+    pipe->proc_ff     = spawn_in_job(pipe->job, ff_cmd, yt_out_r, ff_out_w, err_log);
     const DWORD ec_ff = pipe->proc_ff ? 0u : GetLastError();
-    CloseHandle(yt_out_r); yt_out_r = nullptr;
-    CloseHandle(ff_out_w); ff_out_w = nullptr;
+    CloseHandle(yt_out_r);
+    yt_out_r = nullptr;
+    CloseHandle(ff_out_w);
+    ff_out_w = nullptr;
     if (!pipe->proc_ff) {
         log::warn("[yt] failed to launch ffmpeg -- {}",
                   describe_launch_failure(std::wstring{ff}, ec_ff, !cfg_.ffmpeg_path.empty()));
         if (ff_out_r) CloseHandle(ff_out_r);
         if (tl_out_r) CloseHandle(tl_out_r);
         if (tl_out_w) CloseHandle(tl_out_w);
-        if (nul_in)   CloseHandle(nul_in);
-        if (err_log)  CloseHandle(err_log);
-        return;  // ~Pipe closes the job, which kills the orphan yt-dlp
+        if (nul_in) CloseHandle(nul_in);
+        if (err_log) CloseHandle(err_log);
+        return; // ~Pipe closes the job, which kills the orphan yt-dlp
     }
-
     pipe->proc_title = spawn_in_job(pipe->job, tl_cmd, nul_in, tl_out_w, err_log);
     CloseHandle(tl_out_w);
     tl_out_w = nullptr;
@@ -317,96 +253,80 @@ void YouTubeMusicSource::start_pipe_locked() {
         CloseHandle(tl_out_r);
         tl_out_r = nullptr;
     }
-
-    if (nul_in)  CloseHandle(nul_in);
+    if (nul_in) CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
-
-    pipe->read_pipe = ff_out_r;
-    pipe_           = std::move(pipe);
-
-    info_              = TrackInfo{};
-    info_.title        = "(loading)";
-    info_.artist       = "YouTube Music";
-    info_.duration_ms  = 0;
+    pipe->read_pipe   = ff_out_r;
+    pipe_             = std::move(pipe);
+    info_             = TrackInfo{};
+    info_.title       = "(loading)";
+    info_.artist      = "YouTube Music";
+    info_.duration_ms = 0;
     position_ms_.store(0, std::memory_order_release);
     state_.store(PlaybackState::buffering, std::memory_order_release);
-
     log::info("[yt] pipe started for {} (track {}/{}; child stderr -> {})", play_url,
               queue_idx_ + 1, queue_.size(), stderr_log_path().string());
 }
-
 void YouTubeMusicSource::stop_pipe_locked() {
     pipe_.reset();
     state_.store(PlaybackState::stopped, std::memory_order_release);
 }
-
 void YouTubeMusicSource::play() {
     std::scoped_lock lk{mu_};
     if (!pipe_) start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
-
-void YouTubeMusicSource::pause() {
-    state_.store(PlaybackState::paused, std::memory_order_release);
-}
-
+void YouTubeMusicSource::pause() { state_.store(PlaybackState::paused, std::memory_order_release); }
 bool YouTubeMusicSource::restart_current() {
     std::scoped_lock lk{mu_};
     if (queue_.empty()) return false;
     consecutive_failed_ = 0;
-    start_pipe_locked();   // re-pipe from t=0 at the same queue_idx_
+    start_pipe_locked(); // re-pipe from t=0 at the same queue_idx_
     if (!pipe_) return false;
     state_.store(PlaybackState::playing, std::memory_order_release);
     return true;
 }
-
 bool YouTubeMusicSource::skip_next() {
     std::scoped_lock lk{mu_};
     if (queue_.empty()) return false;
     consecutive_failed_ = 0;
-    const auto n = static_cast<std::ptrdiff_t>(queue_.size());
-    auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
-    queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
+    const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i              = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
+    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
     start_pipe_locked();
     if (!pipe_) return false;
     state_.store(PlaybackState::playing, std::memory_order_release);
     return true;
 }
-
 void YouTubeMusicSource::stop() {
     std::scoped_lock lk{mu_};
     stop_pipe_locked();
 }
-
 void YouTubeMusicSource::next() {
     std::scoped_lock lk{mu_};
     if (queue_.empty()) return;
-    consecutive_failed_ = 0;   // user override clears the give-up state
-    const auto n = static_cast<std::ptrdiff_t>(queue_.size());
-    auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
-    queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
+    consecutive_failed_ = 0; // user override clears the give-up state
+    const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i              = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
+    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
     start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
-
 void YouTubeMusicSource::previous() {
     std::scoped_lock lk{mu_};
     if (queue_.empty()) return;
     consecutive_failed_ = 0;
-    const auto n = static_cast<std::ptrdiff_t>(queue_.size());
-    auto i       = static_cast<std::ptrdiff_t>(queue_idx_) - 1;
-    queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
+    const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
+    auto i              = static_cast<std::ptrdiff_t>(queue_idx_) - 1;
+    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
     start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
-
 TrackInfo YouTubeMusicSource::current_track() const {
     std::scoped_lock lk{mu_};
     TrackInfo t   = info_;
     t.position_ms = position_ms_.load(std::memory_order_acquire);
     return t;
 }
-
 void YouTubeMusicSource::set_playback_options(const PlaybackConfig& opts) {
     // 48 kHz matches the ffmpeg pipe.
     eq_.set_options(opts.equalizer_enabled, opts.equalizer_bands, 48000.0f);
@@ -415,23 +335,23 @@ void YouTubeMusicSource::set_playback_options(const PlaybackConfig& opts) {
     // local-files ReplayGain -- not re-fetching the current YT track.
     volume_norm_.store(opts.volume_normalization, std::memory_order_release);
 }
-
 std::string YouTubeMusicSource::auth_instructions() const {
+    {
+        std::scoped_lock lk{mu_};
+        if (!auth_message_.empty()) return auth_message_;
+    }
     return "Export your YouTube cookies to a Netscape cookies.txt and set "
            "[youtube_music].cookies_path in config.toml. Public content works "
            "without cookies.";
 }
-
 void YouTubeMusicSource::pump(RingBuffer& ring) {
     {
         auto st = state_.load(std::memory_order_acquire);
         if (st != PlaybackState::playing && st != PlaybackState::buffering) return;
     }
-
     std::scoped_lock lk{mu_};
     Pipe* p = pipe_.get();
     if (!p) return;
-
     // ---- Title resolver drain & parse ----
     // The earlier version only parsed when the child had exited AND tavail==0
     // in the same tick. In practice yt-dlp --print closes its stdout last; the
@@ -442,7 +362,10 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
         for (int safety = 0; safety < 8; ++safety) {
             DWORD tavail = 0;
             BOOL ok      = PeekNamedPipe(p->title_pipe, nullptr, 0, nullptr, &tavail, nullptr);
-            if (!ok) { finalise = true; break; }
+            if (!ok) {
+                finalise = true;
+                break;
+            }
             if (tavail == 0) {
                 DWORD ec = STILL_ACTIVE;
                 if (p->proc_title && GetExitCodeProcess(p->proc_title, &ec) && ec != STILL_ACTIVE)
@@ -480,45 +403,39 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
             p->title_pipe = nullptr;
         }
     }
-
     // ---- PCM drain ----
     auto advance_to_next = [&] {
-        if (queue_.empty()) { stop_pipe_locked(); return; }
+        if (queue_.empty()) {
+            stop_pipe_locked();
+            return;
+        }
         const auto n = static_cast<std::ptrdiff_t>(queue_.size());
         auto i       = static_cast<std::ptrdiff_t>(queue_idx_) + 1;
         queue_idx_   = static_cast<std::size_t>(((i % n) + n) % n);
         start_pipe_locked();
         if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
     };
-
     auto update_position = [&] {
-        const std::size_t r   = ring.readable();
-        const std::uint64_t played =
-            p->bytes_written > r ? p->bytes_written - r : 0;
-        position_ms_.store(played * 1000ull / kPcmBytesPerSec,
-                           std::memory_order_release);
+        const std::size_t r        = ring.readable();
+        const std::uint64_t played = p->bytes_written > r ? p->bytes_written - r : 0;
+        position_ms_.store(played * 1000ull / kPcmBytesPerSec, std::memory_order_release);
     };
-
     if (p->ended) {
         update_position();
         if (ring.readable() == 0) advance_to_next();
         return;
     }
-
     if (!p->read_pipe) return;
-
     auto on_eof = [&] {
         if (p->bytes_written == 0) {
             if (++consecutive_failed_ >= 3) {
-                log::warn("[yt] giving up after {} consecutive empty tracks",
-                          consecutive_failed_);
+                log::warn("[yt] giving up after {} consecutive empty tracks", consecutive_failed_);
                 stop_pipe_locked();
                 return;
             }
             advance_to_next();
             return;
         }
-
         consecutive_failed_ = 0;
         p->ended            = true;
         if (p->read_pipe) {
@@ -526,7 +443,6 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
             p->read_pipe = nullptr;
         }
     };
-
     DWORD avail = 0;
     if (!PeekNamedPipe(p->read_pipe, nullptr, 0, nullptr, &avail, nullptr)) {
         on_eof();
@@ -561,5 +477,4 @@ void YouTubeMusicSource::pump(RingBuffer& ring) {
     // moving as the mixer drains the ring.
     update_position();
 }
-
 } // namespace fh6::sources

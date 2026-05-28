@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FH6 Universal Radio</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="roon.css">
 </head>
 <body>
 <header>
@@ -100,6 +101,14 @@
   </div>
 </aside>
 <div class="scrim" id="scrim" hidden></div>
+
+<dialog class="roon-dialog" id="roon-setup-dialog" aria-labelledby="roon-setup-title">
+  <div class="dialog-head">
+    <h2 id="roon-setup-title">Roon setup</h2>
+    <button class="ghost" id="roon-setup-close" data-roon-action="close-dialog" type="button">Close</button>
+  </div>
+  <div id="roon-dialog-wizard"></div>
+</dialog>
 
 <script src="app.js" type="module"></script>
 </body>

@@ -2,67 +2,59 @@
 #include "fh6/audio_source_manager.hpp"
 #include "fh6/config_store.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
+#include "fh6/http/config_json.hpp"
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
-
+#include "roon_routes.hpp"
 #include <nlohmann/json.hpp>
-
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
-
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
-
+#include <utility>
 namespace fh6::http {
 
 using json = nlohmann::json;
-
 namespace {
-
 constexpr const char* state_string(PlaybackState s) noexcept {
     switch (s) {
-        case PlaybackState::stopped:   return "stopped";
-        case PlaybackState::playing:   return "playing";
-        case PlaybackState::paused:    return "paused";
+        case PlaybackState::stopped: return "stopped";
+        case PlaybackState::playing: return "playing";
+        case PlaybackState::paused: return "paused";
         case PlaybackState::buffering: return "buffering";
     }
     return "unknown";
 }
 constexpr const char* auth_string(AuthState s) noexcept {
     switch (s) {
-        case AuthState::none_required:  return "none_required";
-        case AuthState::authenticated:  return "authenticated";
-        case AuthState::needs_auth:     return "needs_auth";
-        case AuthState::error:          return "error";
+        case AuthState::none_required: return "none_required";
+        case AuthState::authenticated: return "authenticated";
+        case AuthState::needs_auth: return "needs_auth";
+        case AuthState::error: return "error";
     }
     return "unknown";
 }
 constexpr const char* mode_string(fmod_bridge::DSPMode m) noexcept {
     switch (m) {
-        case fmod_bridge::DSPMode::off:         return "off";
+        case fmod_bridge::DSPMode::off: return "off";
         case fmod_bridge::DSPMode::passthrough: return "passthrough";
-        case fmod_bridge::DSPMode::silence:     return "silence";
-        case fmod_bridge::DSPMode::pcm:         return "pcm";
+        case fmod_bridge::DSPMode::silence: return "silence";
+        case fmod_bridge::DSPMode::pcm: return "pcm";
     }
     return "unknown";
-}
-
-// Force UTF-8 so non-ASCII paths (music_dir, cookies_path...) survive the
-// JSON round-trip on Windows regardless of the active code page.
-std::string path_s(const std::filesystem::path& p) {
-    if (p.empty()) return {};
-    auto u8 = p.u8string();
-    return std::string{u8.begin(), u8.end()};
 }
 
 json track_to_json(const TrackInfo& t) {
@@ -99,110 +91,6 @@ json source_to_json(IAudioSource* s) {
     return j;
 }
 
-json config_to_json(const Config& c) {
-    return json{
-        {"general",
-         json{
-             {"port", c.general.port},
-             {"ring_buffer_mb", c.general.ring_buffer_mb},
-             {"default_source", c.general.default_source},
-             {"fallback_source", c.general.fallback_source},
-         }},
-        {"local_files",
-         json{
-             {"enabled", c.local_files.enabled},
-             {"music_dir", path_s(c.local_files.music_dir)},
-             {"recursive", c.local_files.recursive},
-             {"shuffle", c.local_files.shuffle},
-             {"supported_formats", c.local_files.supported_formats},
-         }},
-        {"youtube_music",
-         json{
-             {"enabled", c.youtube_music.enabled},
-             {"cookies_path", path_s(c.youtube_music.cookies_path)},
-             {"yt_dlp_path", path_s(c.youtube_music.yt_dlp_path)},
-             {"ffmpeg_path", path_s(c.youtube_music.ffmpeg_path)},
-             {"default_playlist", c.youtube_music.default_playlist},
-             {"shuffle", c.youtube_music.shuffle},
-         }},
-        {"audio",
-         json{
-             {"output_gain", c.audio.output_gain},
-         }},
-        {"playback",
-         json{
-             {"race_start_playback", c.playback.race_start_playback},
-             {"quick_station_skip", c.playback.quick_station_skip},
-             {"volume_normalization", c.playback.volume_normalization},
-             {"equalizer_enabled", c.playback.equalizer_enabled},
-             {"equalizer_bands", c.playback.equalizer_bands},
-         }},
-    };
-}
-
-template <class T> T pull(const json& tbl, const char* k, T fallback) {
-    if (auto it = tbl.find(k); it != tbl.end() && !it->is_null()) {
-        try { return it->get<T>(); } catch (...) {}
-    }
-    return fallback;
-}
-std::filesystem::path pull_path(const json& tbl, const char* k,
-                                const std::filesystem::path& fallback) {
-    auto s = pull<std::string>(tbl, k, path_s(fallback));
-    return s.empty() ? std::filesystem::path{} : std::filesystem::path{s};
-}
-
-// Deep-merge a partial JSON patch into Config. Absent keys keep their value.
-void apply_patch(Config& c, const json& j) {
-    if (auto it = j.find("general"); it != j.end()) {
-        c.general.port            = pull(*it, "port", c.general.port);
-        c.general.ring_buffer_mb  = pull(*it, "ring_buffer_mb", c.general.ring_buffer_mb);
-        c.general.default_source  = pull(*it, "default_source", c.general.default_source);
-        c.general.fallback_source = pull(*it, "fallback_source", c.general.fallback_source);
-    }
-    if (auto it = j.find("local_files"); it != j.end()) {
-        c.local_files.enabled   = pull(*it, "enabled", c.local_files.enabled);
-        c.local_files.music_dir = pull_path(*it, "music_dir", c.local_files.music_dir);
-        c.local_files.recursive = pull(*it, "recursive", c.local_files.recursive);
-        c.local_files.shuffle   = pull(*it, "shuffle", c.local_files.shuffle);
-        if (auto fmts = it->find("supported_formats"); fmts != it->end() && fmts->is_array())
-            c.local_files.supported_formats = fmts->get<std::vector<std::string>>();
-    }
-    if (auto it = j.find("youtube_music"); it != j.end()) {
-        c.youtube_music.enabled      = pull(*it, "enabled", c.youtube_music.enabled);
-        c.youtube_music.cookies_path = pull_path(*it, "cookies_path", c.youtube_music.cookies_path);
-        c.youtube_music.yt_dlp_path  = pull_path(*it, "yt_dlp_path", c.youtube_music.yt_dlp_path);
-        c.youtube_music.ffmpeg_path  = pull_path(*it, "ffmpeg_path", c.youtube_music.ffmpeg_path);
-        c.youtube_music.default_playlist =
-            pull(*it, "default_playlist", c.youtube_music.default_playlist);
-        c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
-    }
-    if (auto it = j.find("audio"); it != j.end()) {
-        c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
-    }
-    if (auto it = j.find("playback"); it != j.end()) {
-        auto rs = pull<std::string>(*it, "race_start_playback", c.playback.race_start_playback);
-        if (rs == "next" || rs == "restart" || rs == "ignore")
-            c.playback.race_start_playback = std::move(rs);
-        c.playback.quick_station_skip =
-            pull(*it, "quick_station_skip", c.playback.quick_station_skip);
-        c.playback.volume_normalization =
-            pull(*it, "volume_normalization", c.playback.volume_normalization);
-        c.playback.equalizer_enabled =
-            pull(*it, "equalizer_enabled", c.playback.equalizer_enabled);
-        if (auto bands = it->find("equalizer_bands");
-            bands != it->end() && bands->is_array()) {
-            for (std::size_t i = 0; i < c.playback.equalizer_bands.size() && i < bands->size();
-                 ++i) {
-                float b = (*bands)[i].get<float>();
-                if (b < -6.f) b = -6.f;
-                if (b > 6.f)  b =  6.f;
-                c.playback.equalizer_bands[i] = b;
-            }
-        }
-    }
-}
-
 struct Request {
     std::string method;
     std::string path;
@@ -214,20 +102,19 @@ constexpr std::string_view status_text(int code) noexcept {
         case 200: return "OK";
         case 400: return "Bad Request";
         case 404: return "Not Found";
-        default:  return "Internal Server Error";
+        case 409: return "Conflict";
+        case 502: return "Bad Gateway";
+        default: return "Internal Server Error";
     }
 }
 
 constexpr std::string_view mime_for(std::string_view path) noexcept {
-    auto ends = [&](std::string_view ext) {
-        return path.size() >= ext.size() &&
-               path.compare(path.size() - ext.size(), ext.size(), ext) == 0;
-    };
+    auto ends = [&](std::string_view ext) { return path.ends_with(ext); };
     if (ends(".html")) return "text/html";
-    if (ends(".css"))  return "text/css";
-    if (ends(".js"))   return "application/javascript";
-    if (ends(".svg"))  return "image/svg+xml";
-    if (ends(".png"))  return "image/png";
+    if (ends(".css")) return "text/css";
+    if (ends(".js")) return "application/javascript";
+    if (ends(".svg")) return "image/svg+xml";
+    if (ends(".png")) return "image/png";
     if (ends(".json")) return "application/json";
     return "text/plain";
 }
@@ -235,12 +122,17 @@ constexpr std::string_view mime_for(std::string_view path) noexcept {
 size_t header_size_t(std::string_view headers, std::string_view name_lower) {
     for (size_t i = 0; i + name_lower.size() < headers.size(); ++i) {
         bool match = true;
-        for (size_t k = 0; k < name_lower.size(); ++k)
-            if (static_cast<char>(std::tolower(static_cast<unsigned char>(headers[i + k])))
-                != name_lower[k]) { match = false; break; }
+        for (size_t k = 0; k < name_lower.size(); ++k) {
+            auto ch = static_cast<unsigned char>(headers[i + k]);
+            if (static_cast<char>(std::tolower(ch)) != name_lower[k]) {
+                match = false;
+                break;
+            }
+        }
         if (!match) continue;
         size_t p = i + name_lower.size();
-        while (p < headers.size() && (headers[p] == ':' || headers[p] == ' ' || headers[p] == '\t')) ++p;
+        while (p < headers.size() && (headers[p] == ':' || headers[p] == ' ' || headers[p] == '\t'))
+            ++p;
         size_t v = 0;
         while (p < headers.size() && std::isdigit(static_cast<unsigned char>(headers[p])))
             v = v * 10 + static_cast<size_t>(headers[p++] - '0');
@@ -260,7 +152,7 @@ bool read_request(SOCKET client, Request& req) {
         if (r <= 0) return false;
         raw.append(buf.data(), static_cast<size_t>(r));
         header_end = raw.find("\r\n\r\n");
-        if (raw.size() > 64 * 1024) return false; // header bomb guard
+        if (raw.size() > 64 * 1024) return false;
     }
 
     std::istringstream first{raw.substr(0, raw.find("\r\n"))};
@@ -272,7 +164,7 @@ bool read_request(SOCKET client, Request& req) {
     req.body.assign(raw, header_end + 4, std::string::npos);
     while (req.body.size() < content_length) {
         const size_t need = std::min<size_t>(buf.size(), content_length - req.body.size());
-        int r = recv(client, buf.data(), static_cast<int>(need), 0);
+        int r             = recv(client, buf.data(), static_cast<int>(need), 0);
         if (r <= 0) break;
         req.body.append(buf.data(), static_cast<size_t>(r));
     }
@@ -311,6 +203,14 @@ bool serve_file(SOCKET client, const std::filesystem::path& file) {
     return true;
 }
 
+constexpr SOCKET invalid_socket() noexcept {
+    return static_cast<SOCKET>(~static_cast<UINT_PTR>(0));
+}
+
+bool route_starts_with(std::string_view value, std::string_view prefix) {
+    return value.starts_with(prefix);
+}
+
 } // namespace
 
 struct HttpServer::Impl {
@@ -319,7 +219,7 @@ struct HttpServer::Impl {
     ConfigStore& store;
     std::filesystem::path ui_dist;
     std::atomic<bool> stopping{false};
-    SOCKET srv_sock = INVALID_SOCKET;
+    SOCKET srv_sock = invalid_socket();
     std::thread thr;
 
     Impl(AudioSourceManager& m, fmod_bridge::DSPBridge& b, ConfigStore& s, uint16_t port,
@@ -329,7 +229,7 @@ struct HttpServer::Impl {
     }
     ~Impl() {
         stopping.store(true, std::memory_order_release);
-        if (srv_sock != INVALID_SOCKET) closesocket(srv_sock);
+        if (srv_sock != invalid_socket()) closesocket(srv_sock);
         if (thr.joinable()) thr.join();
     }
 
@@ -344,6 +244,7 @@ struct HttpServer::Impl {
                  {"active", bridge.mode() == fmod_bridge::DSPMode::pcm},
                  {"native_dsp_mode", mode_string(bridge.mode())},
                  {"output_gain", bridge.gain()},
+                 {"allow_volume_over_100", store.snapshot().audio.allow_volume_over_100},
                  {"underruns", bridge.underruns()},
                  {"calls", bridge.call_count()},
                  {"buffer_len", bridge.last_buffer_len()},
@@ -378,14 +279,14 @@ struct HttpServer::Impl {
         }
 
         srv_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (srv_sock == INVALID_SOCKET) {
+        if (srv_sock == invalid_socket()) {
             log::error("[http] socket() failed");
             WSACleanup();
             return;
         }
         BOOL yes = TRUE;
-        setsockopt(srv_sock, SOL_SOCKET, SO_REUSEADDR,
-                   reinterpret_cast<const char*>(&yes), sizeof(yes));
+        setsockopt(srv_sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&yes),
+                   sizeof(yes));
 
         sockaddr_in addr{};
         addr.sin_family      = AF_INET;
@@ -399,7 +300,7 @@ struct HttpServer::Impl {
             if (bind(srv_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
                 log::error("[http] could not bind port {} or {}", port, bound);
                 closesocket(srv_sock);
-                srv_sock = INVALID_SOCKET;
+                srv_sock = invalid_socket();
                 WSACleanup();
                 return;
             }
@@ -408,7 +309,7 @@ struct HttpServer::Impl {
         if (listen(srv_sock, 16) != 0) {
             log::error("[http] listen() failed");
             closesocket(srv_sock);
-            srv_sock = INVALID_SOCKET;
+            srv_sock = invalid_socket();
             WSACleanup();
             return;
         }
@@ -422,7 +323,7 @@ struct HttpServer::Impl {
             if (select(0, &rfds, nullptr, nullptr, &tv) <= 0) continue;
 
             SOCKET client = accept(srv_sock, nullptr, nullptr);
-            if (client == INVALID_SOCKET) continue;
+            if (client == invalid_socket()) continue;
             handle(client);
             closesocket(client);
         }
@@ -435,39 +336,48 @@ struct HttpServer::Impl {
         if (!read_request(client, req)) return;
 
         auto ok = [&](const json& j = json::object()) {
-            std::string body = j.empty()
-                                   ? std::string{R"({"ok":true})"}
-                                   : j.dump(-1, ' ', false, json::error_handler_t::replace);
+            std::string body = j.empty() ? std::string{R"({"ok":true})"}
+                                         : j.dump(-1, ' ', false, json::error_handler_t::replace);
             send_response(client, 200, body);
         };
         auto fail = [&](int code, std::string_view msg) {
             send_response(client, code, json{{"error", std::string{msg}}}.dump());
         };
+        auto send_body = [&](int code, std::string_view body, std::string_view type) {
+            send_response(client, code, body, type);
+        };
 
-        try { dispatch(client, req, ok, fail); }
-        catch (...) { fail(400, "bad request body"); }
+        try {
+            dispatch(client, req, ok, fail, send_body);
+        } catch (...) {
+            fail(400, "bad request body");
+        }
     }
 
-    template <class Ok, class Fail>
-    void dispatch(SOCKET client, const Request& req, Ok&& ok, Fail&& fail) {
+    template <class Ok, class Fail, class Body>
+    void dispatch(SOCKET client, const Request& req, Ok&& ok, Fail&& fail, Body&& send_body) {
         const auto& m = req.method;
         const auto& p = req.path;
 
-        if (m == "OPTIONS")                          return send_response(client, 200, "", "text/plain");
+        if (m == "OPTIONS") return send_response(client, 200, "", "text/plain");
 
-        if (m == "GET" && p == "/api/state")         return ok(build_state());
-        if (m == "GET" && p == "/api/events")        return send_event_snapshot(client);
-        if (m == "GET" && p == "/api/sources")       return ok(build_state()["sources"]);
-        if (m == "GET" && p == "/api/config")        return ok(config_to_json(store.snapshot()));
+        if (m == "GET" && p == "/api/state") return ok(build_state());
+        if (m == "GET" && p == "/api/events") return send_event_snapshot(client);
+        if (m == "GET" && p == "/api/sources") return ok(build_state()["sources"]);
+        if (m == "GET" && p == "/api/config") return ok(config_to_json(store.snapshot()));
         if (m == "GET" && p == "/api/source/local_files/playlist") {
             auto* lf = find_typed<sources::LocalFileSource>("local_files");
             return lf ? ok(json{{"tracks", lf->playlist_snapshot()}})
                       : fail(404, "local_files not registered");
         }
 
+        if (route_starts_with(p, "/api/source/roon/") &&
+            dispatch_roon_route(m, p, req.body, mgr, store, ok, fail, send_body))
+            return;
+
         if (m == "PUT" && p == "/api/config") {
             auto patch = json::parse(req.body);
-            store.patch([&](Config& c) { apply_patch(c, patch); });
+            store.patch([&](Config& c) { apply_config_patch(c, patch); });
             return ok(config_to_json(store.snapshot()));
         }
 
@@ -520,43 +430,54 @@ struct HttpServer::Impl {
         if (m == "POST" && p == "/api/options") {
             auto j = json::parse(req.body);
             if (auto it = j.find("output_gain"); it != j.end()) {
-                float g = std::clamp(it->get<float>(), 0.0f, 1.0f);
+                const auto audio = store.snapshot().audio;
+                float g =
+                    std::clamp(it->get<float>(), 0.0f, audio.allow_volume_over_100 ? 2.0f : 1.0f);
                 bridge.set_gain(g);
                 store.patch([&](Config& c) { c.audio.output_gain = g; });
             }
             return ok();
         }
-
-        // Generic transport: POST /api/source/<name>/{play|pause|stop|next|previous}
         constexpr std::string_view prefix = "/api/source/";
-        if (m == "POST" && p.starts_with(prefix)) {
-            const std::string_view rest{p.data() + prefix.size(), p.size() - prefix.size()};
+        if (m == "POST" && route_starts_with(p, prefix)) {
+            const auto rest  = std::string_view{p}.substr(prefix.size());
             const auto slash = rest.find('/');
             if (slash == std::string_view::npos) return fail(400, "invalid route");
-            const std::string_view name{rest.data(), slash};
-            const std::string_view act {rest.data() + slash + 1, rest.size() - slash - 1};
-            auto* s = find(name);
+            const auto name = rest.substr(0, slash);
+            const auto act  = rest.substr(slash + 1);
+            auto* s         = find(name);
             if (!s) return fail(404, "unknown source");
             const bool is_active = (s == mgr.active());
-            if      (act == "play")     s->play();
-            else if (act == "pause")    s->pause();
-            else if (act == "stop")     { s->stop();     if (is_active) mgr.ring().drain(); }
-            else if (act == "next")     { s->next();     if (is_active) mgr.ring().drain(); }
-            else if (act == "previous") { s->previous(); if (is_active) mgr.ring().drain(); }
-            else return fail(404, "unknown action");
+            if (act == "play") {
+                s->play();
+            } else if (act == "pause") {
+                s->pause();
+            } else if (act == "stop") {
+                s->stop();
+                if (is_active) mgr.ring().drain();
+            } else if (act == "next") {
+                s->next();
+                if (is_active) mgr.ring().drain();
+            } else if (act == "previous") {
+                s->previous();
+                if (is_active) mgr.ring().drain();
+            } else {
+                return fail(404, "unknown action");
+            }
             return ok();
         }
 
-        // SPA static-file fallback.
         if (m == "GET" && !ui_dist.empty()) {
             const std::string rel = (p == "/") ? "index.html" : p.substr(1);
             if (serve_file(client, ui_dist / rel)) return;
-            if (p.find('.') == std::string::npos && serve_file(client, ui_dist / "index.html")) return;
+            if (p.find('.') == std::string::npos && serve_file(client, ui_dist / "index.html")) {
+                return;
+            }
         }
         fail(404, "not found");
     }
 
-    void send_event_snapshot(SOCKET client) {
+    void send_event_snapshot(SOCKET client) const {
         auto body = build_state().dump(-1, ' ', false, json::error_handler_t::replace);
         std::string evt;
         evt.reserve(body.size() + 256);
@@ -571,11 +492,9 @@ struct HttpServer::Impl {
         send_all(client, evt);
     }
 };
-
 HttpServer::HttpServer(AudioSourceManager& mgr, fmod_bridge::DSPBridge& bridge, ConfigStore& cfg,
                        uint16_t port, std::filesystem::path ui_dist)
     : impl_{std::make_unique<Impl>(mgr, bridge, cfg, port, std::move(ui_dist))} {}
 
 HttpServer::~HttpServer() = default;
-
 } // namespace fh6::http

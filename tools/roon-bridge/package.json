@@ -1,0 +1,24 @@
+{
+  "name": "fh6-roon-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Roon control sidecar for FH6 Universal Radio.",
+  "license": "GPL-3.0-only",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs",
+    "test": "node --test",
+    "check": "node --test"
+  },
+  "dependencies": {
+    "ip": "file:vendor/ip-shim",
+    "node-roon-api": "https://github.com/roonlabs/node-roon-api/archive/eec355dd7c1aa66cc3f9c0e710d37fc35f7d0112.tar.gz",
+    "node-roon-api-image": "https://github.com/roonlabs/node-roon-api-image/archive/a5f0efaf2dfb5457e91abe326c3a40d865131d32.tar.gz",
+    "node-roon-api-status": "https://github.com/roonlabs/node-roon-api-status/archive/504c918d6da267e03fbb4337befa71ca3d3c7526.tar.gz",
+    "node-roon-api-transport": "https://github.com/roonlabs/node-roon-api-transport/archive/2ee60008a4cdb90c34ff3de58bb4b949067f1d20.tar.gz"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

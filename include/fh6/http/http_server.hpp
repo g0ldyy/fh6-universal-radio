@@ -25,8 +25,19 @@ namespace fh6::http {
 //   POST /api/source/<name>/{play,pause,stop,next,previous}
 //
 //   POST /api/source/youtube_music/cast   body {"url":"..."}
+//   POST /api/source/youtube_music/shuffle body {"shuffle":bool}
 //   POST /api/source/local_files/rescan   body {"music_dir":"...","recursive":bool}
 //   GET  /api/source/local_files/playlist
+//   GET  /api/source/roon/capture-devices
+//   GET  /api/source/roon/status
+//   GET  /api/source/roon/zones
+//   GET  /api/source/roon/outputs
+//   POST /api/source/roon/select-zone
+//   POST /api/source/roon/select-capture-device
+//   POST /api/source/roon/test-capture
+//   POST /api/source/roon/volume
+//   POST /api/source/roon/reconnect
+//   GET  /api/source/roon/artwork/current
 //
 //   GET  /api/config                      full config.toml as JSON
 //   PUT  /api/config                      deep-patch config; writes file + notifies

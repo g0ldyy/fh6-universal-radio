@@ -15,6 +15,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $dist = Join-Path $root "dist"
 $mdir = Join-Path $dist "media"
 
+. (Join-Path $PSScriptRoot "package-tools.ps1")
+
 if (-not (Test-Path (Join-Path $dist "version.dll"))) {
     throw "dist\version.dll not found -- run scripts\build.ps1 first."
 }
@@ -42,6 +44,15 @@ $cfg = Join-Path $dataDir "config.toml"
 if (-not (Test-Path $cfg)) {
     Copy-Item (Join-Path $dist "fh6-radio\config.toml") $cfg
     Write-Host "  + fh6-radio\config.toml  (seeded from example)" -ForegroundColor Yellow
+}
+
+$roonBridgeDist = Join-Path $dist "fh6-radio\tools\roon-bridge"
+if (Test-Path $roonBridgeDist) {
+    Copy-RoonBridgePackage `
+        -SourceDir $roonBridgeDist `
+        -DestinationDir (Join-Path $dataDir "tools\roon-bridge") `
+        -IncludeNodeModules
+    Write-Host "  + fh6-radio\tools\roon-bridge"
 }
 
 if (-not $SkipMedia -and (Test-Path $mdir)) {

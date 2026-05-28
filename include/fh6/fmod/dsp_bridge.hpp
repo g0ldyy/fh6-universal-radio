@@ -47,8 +47,8 @@ struct FMODFns {
     // channel can die when the placeholder sample's natural duration elapses
     // (Forza won't always allocate a new one).
     bool ready() const noexcept {
-        return host_base && dsp_release && channel_control_add_dsp &&
-               channel_control_rem_dsp && handle_resolver;
+        return host_base && dsp_release && channel_control_add_dsp && channel_control_rem_dsp &&
+               handle_resolver;
     }
 };
 
@@ -96,10 +96,14 @@ public:
     }
 
     AudioSourceManager& manager() noexcept { return mgr_; }
+    std::byte* target_radio_stream() const noexcept { return radio_stream_; }
 
     static uint32_t __stdcall read_callback(void* dsp_state, float* in_buf, float* out_buf,
                                             uint32_t length, int32_t in_channels,
                                             int32_t* out_channels);
+    static uint32_t __stdcall process_callback(void* dsp_state, uint32_t length,
+                                               const void* in_buffer_array, void* out_buffer_array,
+                                               bool inputs_idle, uint32_t op);
 
 private:
     // True if the resolver accepts the handle (the channel is still live).
@@ -117,7 +121,8 @@ private:
     void* fmod_system_       = nullptr;
     void* current_dsp_       = nullptr;
     uint32_t current_handle_ = 0;
-    mutable uint32_t last_bad_handle_ = 0;  // suppress repeated rc=3 / SEH warnings for the same handle
+    mutable uint32_t last_bad_handle_ =
+        0; // suppress repeated rc=3 / SEH warnings for the same handle
     std::byte* radio_stream_ = nullptr;
 
     std::atomic<DSPMode> mode_{DSPMode::pcm};

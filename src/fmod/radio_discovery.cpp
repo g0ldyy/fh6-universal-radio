@@ -146,10 +146,9 @@ std::vector<std::byte*> scan_heap(const PEImage& img, const std::byte* vtable) n
 // say which side of the chain is stuck. `out_body` receives the
 // SampleProperties body pointer so the caller can later overwrite the
 // DisplayName/Artist slots.
-std::string read_sound_name(std::byte* radio_stream, int* step,
-                            std::byte** out_body) noexcept {
+std::string read_sound_name(std::byte* radio_stream, int* step, std::byte** out_body) noexcept {
     std::string out;
-    *step        = 0;
+    *step = 0;
     if (out_body) *out_body = nullptr;
     std::byte* a = nullptr;
     if (!safe_read(radio_stream + 0x48, a) || !a) return {};
@@ -173,7 +172,7 @@ struct Cache {
     const std::byte* col      = nullptr;
     std::byte* vtable         = nullptr;
     std::vector<std::byte*> candidates;
-    int empty_streak          = 0;  // chain-invalid retries since last hit
+    int empty_streak = 0; // chain-invalid retries since last hit
 };
 std::mutex g_cache_mu;
 Cache g_cache;
@@ -292,7 +291,7 @@ DiscoveryResult discover_radio_instances(const PEImage& img) noexcept {
         {
             std::scoped_lock lk{g_cache_mu};
             if (invalidate) {
-                g_cache = Cache{};  // force a full heap rescan next call
+                g_cache = Cache{}; // force a full heap rescan next call
             } else {
                 g_cache.empty_streak = local.empty_streak;
             }

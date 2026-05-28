@@ -18,8 +18,7 @@ namespace fh6 {
 // Returns the multiplier to apply per sample. coef==1.0f means identity.
 inline float compute_loudness_correction(float gain_db, float peak_lin,
                                          float pre_gain = 1.0f) noexcept {
-    if (!std::isfinite(gain_db) || !std::isfinite(peak_lin) || peak_lin <= 0.0f ||
-        pre_gain < 1.0f)
+    if (!std::isfinite(gain_db) || !std::isfinite(peak_lin) || peak_lin <= 0.0f || pre_gain < 1.0f)
         return 1.0f;
     const float lin      = std::pow(10.0f, gain_db / 20.0f);
     const float headroom = 0.88f / (peak_lin * lin);
@@ -39,8 +38,7 @@ class EqualizerStage {
 public:
     static constexpr std::size_t kBands = 5;
 
-    void set_options(bool enabled, const std::array<float, kBands>& bands,
-                     float sample_rate_hz) {
+    void set_options(bool enabled, const std::array<float, kBands>& bands, float sample_rate_hz) {
         std::scoped_lock lk{mu_};
         pending_.enabled = enabled;
         pending_.bands   = bands;
@@ -49,13 +47,13 @@ public:
     }
 
     void process(int16_t* samples, std::size_t frames) noexcept {
-        static constexpr std::array<float, kBands> kCentres = {60.0f, 250.0f, 1000.0f,
-                                                               4000.0f, 12000.0f};
+        static constexpr std::array<float, kBands> kCentres = {60.0f, 250.0f, 1000.0f, 4000.0f,
+                                                               12000.0f};
 
         if (version_.load(std::memory_order_acquire) != applied_version_) {
             std::scoped_lock lk{mu_};
-            active_           = pending_;
-            applied_version_  = version_.load(std::memory_order_relaxed);
+            active_          = pending_;
+            applied_version_ = version_.load(std::memory_order_relaxed);
             for (std::size_t i = 0; i < kBands; ++i) {
                 set_peaking(filters_[i], active_.fs, kCentres[i], active_.bands[i]);
                 filters_[i].z1l = filters_[i].z2l = 0.0f;
@@ -95,11 +93,11 @@ private:
         const float sw    = std::sin(w0);
         const float alpha = sw / (2.0f * Q);
         const float a0    = 1.0f + alpha / A;
-        f.b0              = (1.0f + alpha * A)   / a0;
-        f.b1              = (-2.0f * cw)         / a0;
-        f.b2              = (1.0f - alpha * A)   / a0;
-        f.a1              = (-2.0f * cw)         / a0;
-        f.a2              = (1.0f - alpha / A)   / a0;
+        f.b0              = (1.0f + alpha * A) / a0;
+        f.b1              = (-2.0f * cw) / a0;
+        f.b2              = (1.0f - alpha * A) / a0;
+        f.a1              = (-2.0f * cw) / a0;
+        f.a2              = (1.0f - alpha / A) / a0;
     }
     static float process_one(const Biquad& f, float x, float& z1, float& z2) noexcept {
         const float y = f.b0 * x + z1;
@@ -109,7 +107,7 @@ private:
     }
     static int16_t clamp16(float v) noexcept {
         v *= 32768.0f;
-        if (v >  32767.0f) return  32767;
+        if (v > 32767.0f) return 32767;
         if (v < -32768.0f) return -32768;
         return static_cast<int16_t>(v);
     }

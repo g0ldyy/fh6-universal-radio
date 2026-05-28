@@ -6,6 +6,7 @@
 # Output:
 #   dist\version.dll            the proxy DLL (drops next to forzahorizon6.exe)
 #   dist\fh6-radio\ui\          dashboard (mounted at http://localhost:<port>)
+#   dist\fh6-radio\tools\       optional source sidecars
 #   dist\fh6-radio\config.toml  seeded from config.example.toml
 
 $ErrorActionPreference = "Stop"
@@ -13,36 +14,13 @@ $root  = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root "build"
 $dist  = Join-Path $root "dist"
 
-# Locate cmake.exe. Prefer the one on PATH; otherwise look inside any VS
-# install (which always ships CMake when the C++ workload is selected),
-# then fall back to the standalone CMake installer's default location.
-function Find-CMake {
-    $cmd = Get-Command cmake -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
+. (Join-Path $PSScriptRoot "build-tools.ps1")
+. (Join-Path $PSScriptRoot "package-tools.ps1")
 
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (Test-Path $vswhere) {
-        $vsRoots = & $vswhere -all -products * -property installationPath
-        foreach ($vs in $vsRoots) {
-            $p = Join-Path $vs "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
-            if (Test-Path $p) { return $p }
-        }
-    }
-    foreach ($p in @(
-        "${env:ProgramFiles}\CMake\bin\cmake.exe",
-        "${env:ProgramFiles(x86)}\CMake\bin\cmake.exe"
-    )) { if (Test-Path $p) { return $p } }
-
-    throw @"
-cmake.exe not found. Either:
-  - install Visual Studio 2022/2026 with the "Desktop development with C++"
-    workload (CMake is bundled), or
-  - install CMake from https://cmake.org/download/ (tick "Add CMake to PATH").
-"@
-}
-
-$cmake = Find-CMake
+$cmakeInfo = Find-CMakeForBuild
+$cmake = $cmakeInfo.CMakePath
 Write-Host "Using cmake: $cmake" -ForegroundColor DarkGray
+Write-Host "Using generator: $($cmakeInfo.Generator)" -ForegroundColor DarkGray
 
 if (-not (Test-Path (Join-Path $root "third_party\nlohmann\nlohmann\json.hpp"))) {
     Write-Host "third_party/ is empty -- running get-deps.ps1 first." -ForegroundColor Yellow
@@ -50,7 +28,11 @@ if (-not (Test-Path (Join-Path $root "third_party\nlohmann\nlohmann\json.hpp")))
 }
 
 Write-Host "-> cmake configure" -ForegroundColor Cyan
-& $cmake -S $root -B $build -A x64 | Out-Host
+$configureArgs = New-CMakeConfigureArguments `
+    -SourceDir $root `
+    -BuildDir $build `
+    -Generator $cmakeInfo.Generator
+& $cmake @configureArgs | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
 
 Write-Host "-> cmake build (Release)" -ForegroundColor Cyan
@@ -65,6 +47,14 @@ Copy-Item (Join-Path $build "Release\version.dll") $dist
 Copy-Item -Recurse (Join-Path $root "ui\dist") (Join-Path $dist "fh6-radio\ui")
 Copy-Item (Join-Path $root "config.example.toml") (Join-Path $dist "fh6-radio\config.toml")
 
+$roonBridgeSrc = Join-Path $root "tools\roon-bridge"
+$roonBridgeDst = Join-Path $dist "fh6-radio\tools\roon-bridge"
+if (Test-Path $roonBridgeSrc) {
+    Write-Host "-> stage Roon sidecar" -ForegroundColor Cyan
+    Copy-RoonBridgePackage -SourceDir $roonBridgeSrc -DestinationDir $roonBridgeDst
+    Install-RoonBridgeRuntimeDependencies -BridgeDir $roonBridgeDst
+}
+
 $readme = @'
 FH6 Universal Radio
 -------------------
@@ -72,9 +62,10 @@ FH6 Universal Radio
 Thanks for grabbing this. It's a free, open-source mod that drops a
 brand new station into Forza Horizon 6's radio dial. You feed it audio
 either from a folder of music files on your PC, or from any YouTube /
-YouTube Music link, and the game treats the result like every other
-station -- it ducks for menus, follows your in-game volume slider, and
-fades on the loading screen.
+YouTube Music link, or from a Roon zone captured through Windows
+loopback audio. The game treats the result like every other station --
+it ducks for menus, follows your in-game volume slider, and fades on
+the loading screen.
 
 
 Getting it running
@@ -132,6 +123,20 @@ From there:
     For age-gated or private content, export your browser's cookies
     as a Netscape cookies.txt and load that from the same panel.
 
+  * Roon Source -- enable Roon in Settings > Roon, then authorize
+    "FH6 Universal Radio" in Roon Settings > Extensions. Pick the Roon
+    zone to control, then pick the Windows capture device that receives
+    that zone's audio and run Test capture. A dedicated output or
+    virtual audio cable is recommended when you want FH6 isolated from
+    your normal speakers. This is not Roon Ready and does not implement
+    RAAT; the sidecar only handles Roon control, metadata, and artwork.
+
+    Roon needs Node.js 20 or newer on PATH, or node_path set in
+    fh6-radio/config.toml. Sidecar logs are written to:
+
+      fh6-radio\roon-sidecar.out.log
+      fh6-radio\roon-sidecar.err.log
+
 Edits save the moment you change them -- no need to bounce the game.
 
 
@@ -161,6 +166,11 @@ as-is, no warranty, use at your own risk.
 Set-Content -Path (Join-Path $dist "README.txt") -Value $readme -Encoding utf8
 
 Write-Host "`nBuilt + staged in $dist" -ForegroundColor Green
-Get-ChildItem -Recurse -File $dist | ForEach-Object {
-    "  $($_.FullName.Substring($dist.Length + 1))"
+$stagedFiles = @(Get-ChildItem -Recurse -File $dist)
+$runtimeFiles = @($stagedFiles | Where-Object { $_.FullName -match "\\node_modules\\" })
+$stagedFiles |
+    Where-Object { $_.FullName -notmatch "\\node_modules\\" } |
+    ForEach-Object { "  $($_.FullName.Substring($dist.Length + 1))" }
+if ($runtimeFiles.Count -gt 0) {
+    "  fh6-radio\tools\roon-bridge\node_modules\  ($($runtimeFiles.Count) runtime dependency files)"
 }

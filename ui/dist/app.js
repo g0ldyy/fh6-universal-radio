@@ -1,10 +1,10 @@
+import { createRoonPanel } from "./roon-panel.js";
+
 // FH6 Universal Radio dashboard. Vanilla JS, no build step. `state` holds
 // the latest /api/state; `cfg` holds the latest /api/config. Render functions
 // are idempotent and only touch nodes whose displayed value changed.
-
 const $  = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-
 const api = {
   async get(path)        { return (await fetch(path)).json(); },
   async send(path, body, method = "POST") {
@@ -17,16 +17,21 @@ const api = {
     return r.json().catch(() => ({}));
   },
 };
-
 let state = null;
 let cfg   = null;
-
 const fmt = ms => {
   if (!ms || ms < 0) return "0:00";
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
-
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 const toast = (msg, isErr = false) => {
   const el = document.createElement("div");
   el.className = "toast" + (isErr ? " err" : "");
@@ -34,9 +39,18 @@ const toast = (msg, isErr = false) => {
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2400);
 };
-
 // Only write when the displayed value changes, to avoid cursor jumps in inputs.
 const setText = (el, v) => { if (el && el.textContent !== String(v)) el.textContent = v; };
+const roonPanel = createRoonPanel({
+  api,
+  $,
+  setText,
+  toast,
+  getState: () => state,
+  getConfig: () => cfg,
+  setConfig: next => { cfg = next; },
+  requestRender: () => render(),
+});
 
 function renderStatus() {
   const ok = state?.game?.attached;
@@ -46,7 +60,7 @@ function renderStatus() {
 }
 
 function renderNowPlaying() {
-  const t = state?.track || {};
+  const t = roonPanel.nowPlaying() || state?.track || {};
   const a = state?.sources?.active;
   setText($("#np-title"),  t.title  || "Nothing playing");
   setText($("#np-artist"), t.artist ? `${t.artist}${t.album ? " · " + t.album : ""}` : "");
@@ -60,6 +74,15 @@ function renderNowPlaying() {
   const src = state?.sources?.available?.find(s => s.name === a);
   const playing = src?.playback_state === "playing";
   $("#t-play").textContent = playing ? "⏸" : "▶";
+
+  const art = $("#np-art");
+  if (t.artwork_url) {
+    art.classList.add("has-artwork");
+    art.style.backgroundImage = `url("${t.artwork_url}")`;
+  } else {
+    art.classList.remove("has-artwork");
+    art.style.backgroundImage = "";
+  }
 }
 
 function sourceDetailLine(s) {
@@ -67,6 +90,7 @@ function sourceDetailLine(s) {
     const n = s.details.track_count;
     return `${n} track${n === 1 ? "" : "s"} indexed`;
   }
+  if (s.name === "roon") return roonPanel.sourceDetailLine();
   return null;
 }
 
@@ -74,9 +98,10 @@ function renderSources() {
   const wrap = $("#sources");
   const available = state?.sources?.available || [];
   const active = state?.sources?.active;
+  const roonSig = roonPanel.signature();
   const sig = available.map(s =>
     `${s.name}:${s.playback_state}:${s.auth_state}:${s.details?.track_count ?? ""}:${s.name===active}`
-  ).join("|");
+  ).join("|") + "|" + roonSig;
   if (wrap.dataset.sig === sig) return;
   wrap.dataset.sig = sig;
 
@@ -89,10 +114,11 @@ function renderSources() {
                    : s.auth_state === "error"       ? "err" : "";
     const detail = sourceDetailLine(s);
     const showNote = (s.auth_state === "needs_auth" || s.auth_state === "error") && s.auth_instructions;
+    const detailText = detail ? " - " + escapeHtml(detail) : "";
     tile.innerHTML = `
-      <div class="name">${s.display_name}</div>
-      <div class="state ${stateCls}">${s.playback_state}${s.auth_state !== "none_required" ? " - " + s.auth_state.replace("_", " ") : ""}${detail ? " - " + detail : ""}</div>
-      ${showNote ? `<div class="auth-note">${s.auth_instructions}</div>` : ""}
+      <div class="name">${escapeHtml(s.display_name)}</div>
+      <div class="state ${stateCls}">${escapeHtml(s.playback_state)}${s.auth_state !== "none_required" ? " - " + escapeHtml(s.auth_state.replace("_", " ")) : ""}${detailText}</div>
+      ${showNote ? `<div class="auth-note">${escapeHtml(s.auth_instructions)}</div>` : ""}
     `;
     tile.addEventListener("click", async () => {
       try { await api.send("/api/source/switch", { source: s.name }); }
@@ -106,10 +132,14 @@ function renderSources() {
 }
 
 let volDirty = false;
+function volumeSliderMax() {
+  return (cfg?.audio?.allow_volume_over_100 ?? state?.audio?.allow_volume_over_100) ? 2 : 1;
+}
 function renderOutput() {
   const gain = state?.audio?.output_gain ?? 0;
+  const slider = $("#vol");
+  slider.max = String(volumeSliderMax());
   if (!volDirty) {
-    const slider = $("#vol");
     if (Math.abs(parseFloat(slider.value) - gain) > 0.005) slider.value = gain;
     $("#vol-out").value = Math.round(gain * 100) + "%";
   }
@@ -138,8 +168,20 @@ const SCHEMA = [
     ["default_playlist", "Default playlist URL",   "text"],
     ["shuffle",          "Shuffle",                "checkbox"],
   ]],
+  ["roon", "Roon", [
+    ["enabled",             "Enabled",                "checkbox"],
+    ["selected_zone_id",    "Selected zone ID",       "text"],
+    ["selected_output_id",  "Selected output ID",     "text"],
+    ["render_loopback_endpoint_id",   "Loopback endpoint ID",   "text"],
+    ["render_loopback_endpoint_name", "Loopback endpoint name", "text"],
+    ["control_volume",      "Control Roon volume",    "checkbox"],
+    ["auto_reconnect",      "Auto-reconnect",         "checkbox"],
+    ["latency_ms",          "Capture latency (ms)",   "number", 50, 2000],
+    ["metadata_poll_ms",    "Metadata poll (ms)",     "number", 250, 5000],
+  ]],
   ["audio", "Audio", [
-    ["output_gain", "Output gain", "number", 0, 1, 0.01],
+    ["output_gain", "Output gain", "number", 0, "volumeSliderMax", 0.01],
+    ["allow_volume_over_100", "Allow volume over 100%", "checkbox"],
   ]],
   ["playback", "Playback", [
     ["race_start_playback",  "Race start",                "select",   ["next", "restart", "ignore"]],
@@ -178,25 +220,27 @@ function field(section, [key, label, type, a, b, c]) {
       </div>`).join("");
     return `<div class="field bands"><label>${label}</label>${rows}</div>`;
   }
+  const maxValue = b === "volumeSliderMax" ? volumeSliderMax() : b;
   const attrs = type === "number"
-    ? ` min="${a ?? ''}" max="${b ?? ''}" step="${c ?? 1}"`
+    ? ` min="${a ?? ''}" max="${maxValue ?? ''}" step="${c ?? 1}"`
     : "";
   return `<div class="field">
     <label for="${id}">${label}</label>
-    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${cur ?? ''}">
+    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${escapeHtml(cur ?? "")}">
   </div>`;
 }
 
 function renderSettings() {
   const form = $("#settings-form");
   form.innerHTML = SCHEMA.map(([sec, title, fields]) =>
-    `<fieldset><legend>${title}</legend>${fields.map(f => field(sec, f)).join("")}</fieldset>`
+    `<fieldset><legend>${title}</legend>${fields.map(f => field(sec, f)).join("")}${sec === "roon" ? '<div id="roon-settings-wizard"></div>' : ""}</fieldset>`
   ).join("");
   // Live "X.X dB" readout next to each EQ slider.
   $$(".field.bands input[type='range']", form).forEach(r => {
     const out = r.nextElementSibling;
     r.addEventListener("input", () => { out.textContent = `${parseFloat(r.value).toFixed(1)} dB`; });
   });
+  roonPanel.renderPanel();
 }
 
 function collectSettings() {
@@ -268,6 +312,8 @@ function wire() {
     } catch (err) { toast(err.message, true); }
   });
 
+  roonPanel.wire();
+
   $("#yt-shuffle").addEventListener("click", async () => {
     const yt = state?.sources?.available?.find(s => s.name === "youtube_music");
     if (!yt) return;
@@ -278,7 +324,7 @@ function wire() {
     } catch (err) { toast(err.message, true); }
   });
 
-  $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); };
+  $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); void roonPanel.refresh(true); };
   $("#close-settings").onclick = closeDrawer;
   $("#scrim").onclick          = closeDrawer;
   $("#save-config").onclick    = async () => {
@@ -286,6 +332,7 @@ function wire() {
       cfg = await api.send("/api/config", collectSettings(), "PUT");
       toast("Saved");
       closeDrawer();
+      await roonPanel.refresh(true);
     } catch (e) { toast(e.message, true); }
   };
   $("#reload-config").onclick  = async () => {
@@ -314,6 +361,7 @@ function render() {
   renderStatus();
   renderNowPlaying();
   renderSources();
+  roonPanel.renderPanel();
   renderOutput();
 
   const yt = state?.sources?.available?.find(s => s.name === "youtube_music");
@@ -321,6 +369,7 @@ function render() {
   if (shuffleBtn) {
     shuffleBtn.classList.toggle("active", !!yt?.details?.shuffle);
   }
+  void roonPanel.refresh();
 }
 
 wire();

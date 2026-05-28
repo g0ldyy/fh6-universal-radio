@@ -45,8 +45,15 @@ private:
     //   +0x68 && +0x69) plus the race_restart helper at +0x80.
     void run_playback_state_machines(time_point now) noexcept;
 
-    const RadioInstance* select_instance(const DiscoveryResult& disc,
-                                         bool require_live) const noexcept;
+    // Pick the best RadioInstance from a discovery result, preferring the
+    // target SoundName and optionally filtering to those whose +0x20 holds
+    // a live FMOD channel handle (used by recovery).
+    const RadioInstance* select_instance(const DiscoveryResult& disc, bool require_live,
+                                         std::byte* avoid_radio_stream) const noexcept;
+
+    // Re-discover and switch to an instance with a live channel handle when
+    // our DSP has stopped receiving reads (channel destroyed by FMOD with
+    // no replacement written to +0x20).
     void recover_stale_dsp() noexcept;
 
     DSPBridge& bridge_;
