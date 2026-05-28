@@ -24,6 +24,14 @@ const fmt = ms => {
   const s = Math.floor(ms / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 const toast = (msg, isErr = false) => {
   const el = document.createElement("div");
   el.className = "toast" + (isErr ? " err" : "");
@@ -106,10 +114,11 @@ function renderSources() {
                    : s.auth_state === "error"       ? "err" : "";
     const detail = sourceDetailLine(s);
     const showNote = (s.auth_state === "needs_auth" || s.auth_state === "error") && s.auth_instructions;
+    const detailText = detail ? " - " + escapeHtml(detail) : "";
     tile.innerHTML = `
-      <div class="name">${s.display_name}</div>
-      <div class="state ${stateCls}">${s.playback_state}${s.auth_state !== "none_required" ? " - " + s.auth_state.replace("_", " ") : ""}${detail ? " - " + detail : ""}</div>
-      ${showNote ? `<div class="auth-note">${s.auth_instructions}</div>` : ""}
+      <div class="name">${escapeHtml(s.display_name)}</div>
+      <div class="state ${stateCls}">${escapeHtml(s.playback_state)}${s.auth_state !== "none_required" ? " - " + escapeHtml(s.auth_state.replace("_", " ")) : ""}${detailText}</div>
+      ${showNote ? `<div class="auth-note">${escapeHtml(s.auth_instructions)}</div>` : ""}
     `;
     tile.addEventListener("click", async () => {
       try { await api.send("/api/source/switch", { source: s.name }); }
@@ -217,7 +226,7 @@ function field(section, [key, label, type, a, b, c]) {
     : "";
   return `<div class="field">
     <label for="${id}">${label}</label>
-    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${cur ?? ''}">
+    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${escapeHtml(cur ?? "")}">
   </div>`;
 }
 

@@ -46,6 +46,16 @@ foreach ($unsafeRoonField in @(
     }
 }
 
+foreach ($escapeRequirement in @(
+    'function escapeHtml',
+    'escapeHtml(s.display_name)',
+    'escapeHtml(detail)',
+    'escapeHtml(s.auth_instructions)',
+    'escapeHtml(cur ?? "")'
+)) {
+    Require-Text $js $escapeRequirement "Dashboard HTML templates should escape $escapeRequirement"
+}
+
 foreach ($text in @(
     'allow_volume_over_100',
     'Allow volume over 100%',
