@@ -170,11 +170,20 @@ int main() {
         }
 
         fh6::RoonConfig roon_cfg;
-        roon_cfg.enabled = true;
-        roon_cfg.auto_start_bridge = false;
+        roon_cfg.enabled           = true;
+        roon_cfg.auto_start_bridge = true;
+        roon_cfg.node_path         = R"(Z:\fh6-missing-node\node.exe)";
+        roon_cfg.bridge_path       = R"(Z:\fh6-missing-node\index.mjs)";
         auto roon = std::make_unique<fh6::sources::RoonSource>(roon_cfg);
         require(roon->initialize(), "test Roon source should initialize");
         mgr.register_source(std::move(roon));
+
+        auto reconnect_res = wait_post(port, "/api/source/roon/reconnect", "{}");
+        require_json_error(reconnect_res, 502,
+                           "reconnect should return source sidecar startup errors");
+        auto reconnect_body = nlohmann::json::parse(reconnect_res->body);
+        require(reconnect_body["error"].get<std::string>().find("Node.js") != std::string::npos,
+                "reconnect should restart the owned sidecar before calling the sidecar API");
 
         require_json_error(wait_post(port, "/api/source/roon/select-zone", "{}"), 400,
                            "select-zone should reject missing zone_id");

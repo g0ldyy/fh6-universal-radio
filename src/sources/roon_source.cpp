@@ -94,6 +94,7 @@ bool RoonSource::initialize() {
         return false;
     }
     if (cfg.auto_start_bridge) {
+        std::scoped_lock lk{sidecar_mu_};
         sidecar_ = std::make_unique<roon::RoonSidecarProcess>(cfg, data_dir_);
         if (!sidecar_->start()) {
             set_setup_error(sidecar_->error());
@@ -112,7 +113,10 @@ bool RoonSource::initialize() {
 void RoonSource::shutdown() noexcept {
     stop_metadata_polling();
     stop_capture();
-    if (sidecar_) sidecar_->stop();
+    {
+        std::scoped_lock lk{sidecar_mu_};
+        if (sidecar_) sidecar_->stop();
+    }
     state_.store(PlaybackState::stopped, std::memory_order_release);
     initialized_.store(false, std::memory_order_release);
     log::info("[roon] source shutdown");
@@ -140,17 +144,20 @@ void RoonSource::update_config(RoonConfig cfg, std::filesystem::path data_dir) {
     const bool sidecar_args_changed = old.auto_start_bridge != next.auto_start_bridge ||
                                       old.node_path != next.node_path ||
                                       old.bridge_path != next.bridge_path || old_dir != data_dir_;
-    if (sidecar_args_changed && sidecar_) {
-        sidecar_->stop();
-        sidecar_.reset();
-    }
-    if (next.auto_start_bridge && initialized_.load(std::memory_order_acquire) &&
-        (!sidecar_ || !sidecar_->running())) {
-        sidecar_ = std::make_unique<roon::RoonSidecarProcess>(next, data_dir_);
-        if (!sidecar_->start()) set_setup_error(sidecar_->error());
-    } else if (!next.auto_start_bridge && sidecar_) {
-        sidecar_->stop();
-        sidecar_.reset();
+    {
+        std::scoped_lock lk{sidecar_mu_};
+        if (sidecar_args_changed && sidecar_) {
+            sidecar_->stop();
+            sidecar_.reset();
+        }
+        if (next.auto_start_bridge && initialized_.load(std::memory_order_acquire) &&
+            (!sidecar_ || !sidecar_->running())) {
+            sidecar_ = std::make_unique<roon::RoonSidecarProcess>(next, data_dir_);
+            if (!sidecar_->start()) set_setup_error(sidecar_->error());
+        } else if (!next.auto_start_bridge && sidecar_) {
+            sidecar_->stop();
+            sidecar_.reset();
+        }
     }
 
     if (was_playing) {
@@ -160,6 +167,33 @@ void RoonSource::update_config(RoonConfig cfg, std::filesystem::path data_dir) {
             state_.store(PlaybackState::stopped, std::memory_order_release);
         }
     }
+}
+
+roon::RoonCommandResult RoonSource::reconnect() {
+    RoonConfig cfg;
+    std::filesystem::path data_dir;
+    {
+        std::scoped_lock lk{cfg_mu_};
+        cfg      = cfg_;
+        data_dir = data_dir_;
+    }
+    if (!cfg.enabled) return {false, 409, "Roon source is disabled"};
+
+    if (cfg.auto_start_bridge) {
+        std::scoped_lock lk{sidecar_mu_};
+        if (!sidecar_ || !sidecar_->running()) {
+            sidecar_ = std::make_unique<roon::RoonSidecarProcess>(cfg, data_dir);
+            if (!sidecar_->start()) {
+                set_setup_error(sidecar_->error());
+                return {false, 502, sidecar_->error()};
+            }
+        }
+    }
+
+    roon::RoonControlClient client;
+    auto result = client.reconnect();
+    if (result.ok) clear_setup_error();
+    return result;
 }
 
 void RoonSource::play() {

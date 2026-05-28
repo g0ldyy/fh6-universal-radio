@@ -51,6 +51,7 @@ public:
     bool initialize() override;
     void shutdown() noexcept override;
     void update_config(RoonConfig cfg, std::filesystem::path data_dir = {});
+    roon::RoonCommandResult reconnect();
 
     void play() override;
     void pause() override;
@@ -83,6 +84,7 @@ private:
     mutable std::mutex cfg_mu_;
     RoonConfig cfg_;
     std::filesystem::path data_dir_;
+    mutable std::mutex sidecar_mu_;
     std::unique_ptr<roon::RoonSidecarProcess> sidecar_;
     RoonCaptureFactory capture_factory_;
     RoonControlFactory control_factory_;

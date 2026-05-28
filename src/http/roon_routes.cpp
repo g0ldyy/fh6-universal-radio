@@ -7,6 +7,7 @@
 #include "fh6/log.hpp"
 #include "fh6/roon/roon_control_client.hpp"
 #include "fh6/roon/setup_diagnostics.hpp"
+#include "fh6/sources/roon_source.hpp"
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #include <httplib.h>
@@ -316,9 +317,13 @@ bool dispatch_roon_route(std::string_view method, std::string_view path, std::st
     if (is_route(method, path, "POST", "/api/source/roon/volume"))
         return handle_volume(body, ok, fail);
     if (is_route(method, path, "POST", "/api/source/roon/reconnect")) {
-        roon::RoonControlClient client;
         log::info("[roon] reconnect requested");
-        command_response(ok, fail, client.reconnect());
+        auto* source = dynamic_cast<sources::RoonSource*>(mgr.find("roon"));
+        if (!source) {
+            fail(500, "registered roon source has unexpected type");
+            return true;
+        }
+        command_response(ok, fail, source->reconnect());
         return true;
     }
     if (is_route(method, path, "GET", "/api/source/roon/artwork/current")) {

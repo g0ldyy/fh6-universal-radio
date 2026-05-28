@@ -150,6 +150,10 @@ int run_tests() {
             "missing Node should surface as auth/setup error");
     require_contains(missing_node.auth_instructions(), "Node.js",
                      "missing Node instructions should be actionable");
+    auto missing_node_reconnect = missing_node.reconnect();
+    require(!missing_node_reconnect.ok, "reconnect should report sidecar restart failures");
+    require_contains(missing_node_reconnect.error, "Node.js",
+                     "reconnect should surface owned sidecar startup errors");
 
     fh6::RoonConfig ready_cfg;
     ready_cfg.enabled           = true;
