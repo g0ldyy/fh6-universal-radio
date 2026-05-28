@@ -129,6 +129,7 @@ RoonStatus RoonControlClient::status() {
     }
     out.selected_zone_id   = get_string(body, "selected_zone_id");
     out.selected_zone_name = get_string(body, "selected_zone_name");
+    out.zone_available     = body.value("zone_available", false);
     out.error              = get_string(body, "error");
     out.now_playing        = parse_now_playing(body);
     {

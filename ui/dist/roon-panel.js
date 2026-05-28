@@ -108,6 +108,7 @@ export function createRoonPanel(deps) {
       roon.status?.pairing_state,
       roon.status?.core?.name,
       roon.status?.selected_zone_name,
+      roon.status?.zone_available,
       roon.setup?.roon_environment,
       roon.setup?.cable_environment,
       recommendedEndpoint()?.id,
@@ -195,6 +196,7 @@ export function createRoonPanel(deps) {
     const status = roon.status || {};
     return status.ok === true &&
       status.pairing_state === "authorized" &&
+      status.zone_available === true &&
       !!(r.selected_zone_id || status.selected_zone_id) &&
       !!selectedEndpointId();
   }
@@ -270,7 +272,7 @@ export function createRoonPanel(deps) {
     if (id === "zone") {
       return {
         label: "Select zone",
-        ok: !!ctx.selectedZone,
+        ok: !!ctx.selectedZone && ctx.status.zone_available === true,
         detail: ctx.status.selected_zone_name || "Choose the Roon zone to control.",
       };
     }

@@ -79,6 +79,7 @@ json roon_status_to_json(const roon::RoonStatus& s) {
              {"core", json{{"id", s.core_id}, {"name", s.core_name}}},
              {"selected_zone_id", s.selected_zone_id},
              {"selected_zone_name", s.selected_zone_name},
+             {"zone_available", s.zone_available},
              {"error", s.error}};
     if (s.now_playing) {
         out["now_playing"] = json{{"title", s.now_playing->title},

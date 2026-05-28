@@ -101,7 +101,7 @@ Configuring it from your browser
 
 Everything else is driven from a small web dashboard the mod hosts
 locally. With the game running, open this URL in any browser on the
-same machine or LAN:
+same machine:
 
     http://localhost:8420
 

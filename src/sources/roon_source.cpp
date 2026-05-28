@@ -307,6 +307,11 @@ std::string RoonSource::auth_instructions() const {
         return "Select the intended Roon zone in Web Control, then confirm it remains available in "
                "Roon.";
     }
+    if (!status.zone_available) {
+        return status.error.empty() ? "Selected Roon zone is unavailable. Select an available "
+                                      "Roon zone in Web Control."
+                                    : status.error;
+    }
     return {};
 }
 
@@ -328,6 +333,7 @@ AuthState RoonSource::setup_state() const noexcept {
     if (status.pairing_state != "authorized") return AuthState::needs_auth;
     if (status.selected_zone_id.empty() || status.selected_zone_id != cfg.selected_zone_id)
         return AuthState::needs_auth;
+    if (!status.zone_available) return AuthState::needs_auth;
     return AuthState::authenticated;
 }
 

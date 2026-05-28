@@ -44,6 +44,7 @@ struct RoonStatus {
     std::string core_name;
     std::string selected_zone_id;
     std::string selected_zone_name;
+    bool zone_available = false;
     std::string error;
     std::optional<RoonNowPlaying> now_playing;
 };

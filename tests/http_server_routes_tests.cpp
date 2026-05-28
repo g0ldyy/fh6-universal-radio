@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -72,11 +73,21 @@ httplib::Result wait_post(uint16_t port, const char* path, const char* body) {
     return {};
 }
 
+httplib::Result wait_put(uint16_t port, const char* path, const std::string& body) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+    while (std::chrono::steady_clock::now() < deadline) {
+        httplib::Client client{"127.0.0.1", port};
+        if (auto res = client.Put(path, body, "application/json")) return res;
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    }
+    return {};
+}
+
 void require_json_error(const httplib::Result& res, int status, const char* message) {
     require(res, message);
     require(res->status == status, message);
-    require(res->get_header_value("Access-Control-Allow-Origin") == "*",
-            "error responses should include CORS");
+    require(res->get_header_value("Access-Control-Allow-Origin") != "*",
+            "error responses should not allow arbitrary cross-origin callers");
     auto body = nlohmann::json::parse(res->body);
     require(body.contains("error") && body["error"].is_string(),
             "error responses should return JSON error");
@@ -95,8 +106,25 @@ int main() {
         fh6::fmod_bridge::FMODFns fns{};
         fh6::fmod_bridge::DSPBridge bridge{mgr, fns};
         fh6::ConfigStore store{root / "config.toml", fh6::Config{}};
+        const auto ui_root = root / "ui";
+        std::filesystem::create_directories(ui_root);
+        {
+            std::ofstream{ui_root / "index.html"} << "<!doctype html><title>dashboard</title>";
+            std::ofstream{root / "config.toml"} << "secret = 'do not serve'";
+        }
         const auto port = find_free_port();
-        fh6::http::HttpServer server{mgr, bridge, store, port, {}};
+        fh6::http::HttpServer server{mgr, bridge, store, port, ui_root};
+
+        auto index_res = wait_get(port, "/");
+        require(index_res, "dashboard index should respond");
+        require(index_res->status == 200, "dashboard index should be served");
+
+        require_json_error(wait_get(port, "/../config.toml"), 404,
+                           "dashboard static route should reject path traversal");
+
+        const std::string oversized_body(2U * 1024U * 1024U, 'x');
+        require_json_error(wait_put(port, "/api/config", oversized_body), 413,
+                           "dashboard should reject oversized request bodies before parsing");
 
         auto gain_res = wait_post(port, "/api/options", R"({"output_gain":1.6})");
         require(gain_res, "default volume option should respond");

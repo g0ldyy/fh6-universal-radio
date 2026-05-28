@@ -43,6 +43,7 @@ add_library(version SHARED
     src/fmod/metadata_injector.cpp
     src/http/config_json.cpp
     src/http/http_server.cpp
+    src/http/http_wire.cpp
     src/http/roon_routes.cpp
     src/roon/roon_control_client.cpp
     src/roon/setup_diagnostics.cpp
@@ -243,6 +244,7 @@ add_executable(http_server_routes_tests
     src/fmod/sig_scanner.cpp
     src/http/config_json.cpp
     src/http/http_server.cpp
+    src/http/http_wire.cpp
     src/http/roon_routes.cpp
     src/playback_dsp.cpp
     src/roon/roon_control_client.cpp

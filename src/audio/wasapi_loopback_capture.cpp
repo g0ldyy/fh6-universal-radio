@@ -25,6 +25,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -65,6 +66,29 @@ struct MixFormat {
     uint32_t channels    = 0;
     uint32_t sample_rate = 0;
     uint32_t block_align = 0;
+};
+
+struct ReleaseBufferGuard {
+    IAudioCaptureClient* capture = nullptr;
+    UINT32 frames                = 0;
+
+    HRESULT release() noexcept {
+        auto* current = capture;
+        capture       = nullptr;
+        return current ? current->ReleaseBuffer(frames) : S_OK;
+    }
+    ~ReleaseBufferGuard() { (void)release(); }
+};
+
+struct AudioClientStopGuard {
+    IAudioClient* client = nullptr;
+
+    HRESULT stop() noexcept {
+        auto* current = client;
+        client        = nullptr;
+        return current ? current->Stop() : S_OK;
+    }
+    ~AudioClientStopGuard() { (void)stop(); }
 };
 
 std::wstring utf8_to_wide(std::string_view value) {
@@ -143,6 +167,12 @@ std::optional<MixFormat> describe_mix_format(const WAVEFORMATEX& wf) {
     if (!format || wf.nChannels == 0 || wf.nSamplesPerSec == 0 || wf.nBlockAlign == 0)
         return std::nullopt;
     return MixFormat{*format, wf.nChannels, wf.nSamplesPerSec, wf.nBlockAlign};
+}
+
+void signal_ready(std::promise<bool>& ready, bool value) noexcept {
+    try {
+        ready.set_value(value);
+    } catch (const std::future_error&) {}
 }
 
 std::size_t queue_bytes(uint32_t queue_ms) {
@@ -226,162 +256,180 @@ struct WasapiLoopbackCapture::Impl {
 
     void run(const std::stop_token& stop, const WasapiLoopbackCaptureConfig& cfg,
              const std::shared_ptr<RingBuffer>& pcm_queue, std::promise<bool> ready) {
-        ComApartment com;
-        if (!com.usable()) {
-            set_error("COM initialization failed for WASAPI capture.");
-            ready.set_value(false);
-            return;
-        }
+        try {
+            ComApartment com;
+            if (!com.usable()) {
+                set_error("COM initialization failed for WASAPI capture.");
+                signal_ready(ready, false);
+                return;
+            }
 
-        ComPtr<IMMDeviceEnumerator> enumerator;
-        HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-                                      IID_PPV_ARGS(&enumerator));
-        if (FAILED(hr)) {
-            set_error(hr_error("CoCreateInstance(MMDeviceEnumerator)", hr));
-            ready.set_value(false);
-            return;
-        }
-
-        std::string setup_error;
-        auto device = open_render_device(enumerator.Get(), cfg.device_id, setup_error);
-        if (!device) {
-            set_error(setup_error.empty() ? "Capture device could not be opened." : setup_error);
-            ready.set_value(false);
-            return;
-        }
-
-        ComPtr<IAudioClient> client;
-        hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
-                              reinterpret_cast<void**>(client.GetAddressOf()));
-        if (FAILED(hr)) {
-            set_error(hr_error("IAudioClient activation", hr));
-            ready.set_value(false);
-            return;
-        }
-
-        WAVEFORMATEX* raw_format = nullptr;
-        hr                       = client->GetMixFormat(&raw_format);
-        CoTaskMemFormat wave_format{raw_format};
-        if (FAILED(hr) || !wave_format) {
-            set_error(hr_error("GetMixFormat", hr));
-            ready.set_value(false);
-            return;
-        }
-
-        const auto format = describe_mix_format(*wave_format);
-        if (!format) {
-            set_error("WASAPI mix format is unsupported for Roon loopback capture.");
-            ready.set_value(false);
-            return;
-        }
-        log::info("[wasapi] capture mix format: {}ch {}Hz {} block_align={}", format->channels,
-                  format->sample_rate, format_name(format->format), format->block_align);
-        log::info("[wasapi] conversion path: miniaudio {}ch {}Hz {} -> 2ch 48000Hz s16",
-                  format->channels, format->sample_rate, format_name(format->format));
-
-        ma_data_converter_config converter_cfg =
-            ma_data_converter_config_init(format->format, ma_format_s16, format->channels,
-                                          kTargetChannels, format->sample_rate, kTargetSampleRate);
-        converter_cfg.resampling.algorithm = ma_resample_algorithm_linear;
-        ma_data_converter converter{};
-        if (ma_data_converter_init(&converter_cfg, nullptr, &converter) != MA_SUCCESS) {
-            set_error("Failed to initialize PCM converter for WASAPI loopback.");
-            ready.set_value(false);
-            return;
-        }
-        const auto cleanup_converter =
-            std::unique_ptr<ma_data_converter, void (*)(ma_data_converter*)>{
-                &converter, [](ma_data_converter* c) { ma_data_converter_uninit(c, nullptr); }};
-
-        const auto buffer_hns =
-            static_cast<REFERENCE_TIME>(std::clamp<uint32_t>(cfg.latency_ms, 50, 2000)) * 10000;
-        hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, buffer_hns,
-                                0, wave_format.get(), nullptr);
-        if (FAILED(hr)) {
-            set_error(hr_error("IAudioClient::Initialize(loopback)", hr));
-            ready.set_value(false);
-            return;
-        }
-
-        ComPtr<IAudioCaptureClient> capture;
-        hr = client->GetService(__uuidof(IAudioCaptureClient),
-                                reinterpret_cast<void**>(capture.GetAddressOf()));
-        if (FAILED(hr)) {
-            set_error(hr_error("IAudioClient::GetService(IAudioCaptureClient)", hr));
-            ready.set_value(false);
-            return;
-        }
-
-        hr = client->Start();
-        if (FAILED(hr)) {
-            set_error(hr_error("IAudioClient::Start", hr));
-            ready.set_value(false);
-            return;
-        }
-
-        running.store(true, std::memory_order_release);
-        ready.set_value(true);
-        log::info("[wasapi] capture worker started");
-
-        std::vector<std::byte> silence;
-        std::vector<std::byte> converted;
-        bool saw_signal           = false;
-        auto last_silence_warning = std::chrono::steady_clock::now();
-        while (!stop.stop_requested()) {
-            UINT32 packet_frames = 0;
-            hr                   = capture->GetNextPacketSize(&packet_frames);
+            ComPtr<IMMDeviceEnumerator> enumerator;
+            HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                          IID_PPV_ARGS(&enumerator));
             if (FAILED(hr)) {
-                set_error(hr_error("IAudioCaptureClient::GetNextPacketSize", hr));
-                break;
-            }
-            if (packet_frames == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds{5});
-                continue;
+                set_error(hr_error("CoCreateInstance(MMDeviceEnumerator)", hr));
+                signal_ready(ready, false);
+                return;
             }
 
-            while (packet_frames > 0 && !stop.stop_requested()) {
-                BYTE* data    = nullptr;
-                UINT32 frames = 0;
-                DWORD flags   = 0;
-                hr            = capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
-                if (FAILED(hr)) {
-                    set_error(hr_error("IAudioCaptureClient::GetBuffer", hr));
-                    packet_frames = 0;
-                    break;
-                }
+            std::string setup_error;
+            auto device = open_render_device(enumerator.Get(), cfg.device_id, setup_error);
+            if (!device) {
+                set_error(setup_error.empty() ? "Capture device could not be opened."
+                                              : setup_error);
+                signal_ready(ready, false);
+                return;
+            }
 
-                const auto input_bytes = static_cast<std::size_t>(frames) * format->block_align;
-                const BYTE* input      = data;
-                if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0U) {
-                    silence.assign(input_bytes, std::byte{0});
-                    input = reinterpret_cast<const BYTE*>(silence.data());
-                }
+            ComPtr<IAudioClient> client;
+            hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                  reinterpret_cast<void**>(client.GetAddressOf()));
+            if (FAILED(hr)) {
+                set_error(hr_error("IAudioClient activation", hr));
+                signal_ready(ready, false);
+                return;
+            }
 
-                if (convert_packet(converter, *format, input, frames, converted)) {
-                    const auto level = peak_s16(converted.data(), converted.size());
-                    peak.store(level, std::memory_order_release);
-                    saw_signal     = saw_signal || level > 0.01f;
-                    const auto now = std::chrono::steady_clock::now();
-                    if (!saw_signal && now - last_silence_warning > std::chrono::seconds{5}) {
-                        log::warn("[wasapi] capture is silent; verify the selected Roon output "
-                                  "and Windows capture device");
-                        last_silence_warning = now;
-                    }
-                    write_queue(*pcm_queue, converted.data(), converted.size());
-                }
+            WAVEFORMATEX* raw_format = nullptr;
+            hr                       = client->GetMixFormat(&raw_format);
+            CoTaskMemFormat wave_format{raw_format};
+            if (FAILED(hr) || !wave_format) {
+                set_error(hr_error("GetMixFormat", hr));
+                signal_ready(ready, false);
+                return;
+            }
 
-                capture->ReleaseBuffer(frames);
-                hr = capture->GetNextPacketSize(&packet_frames);
+            const auto format = describe_mix_format(*wave_format);
+            if (!format) {
+                set_error("WASAPI mix format is unsupported for Roon loopback capture.");
+                signal_ready(ready, false);
+                return;
+            }
+            log::info("[wasapi] capture mix format: {}ch {}Hz {} block_align={}", format->channels,
+                      format->sample_rate, format_name(format->format), format->block_align);
+            log::info("[wasapi] conversion path: miniaudio {}ch {}Hz {} -> 2ch 48000Hz s16",
+                      format->channels, format->sample_rate, format_name(format->format));
+
+            ma_data_converter_config converter_cfg = ma_data_converter_config_init(
+                format->format, ma_format_s16, format->channels, kTargetChannels,
+                format->sample_rate, kTargetSampleRate);
+            converter_cfg.resampling.algorithm = ma_resample_algorithm_linear;
+            ma_data_converter converter{};
+            if (ma_data_converter_init(&converter_cfg, nullptr, &converter) != MA_SUCCESS) {
+                set_error("Failed to initialize PCM converter for WASAPI loopback.");
+                signal_ready(ready, false);
+                return;
+            }
+            const auto cleanup_converter =
+                std::unique_ptr<ma_data_converter, void (*)(ma_data_converter*)>{
+                    &converter, [](ma_data_converter* c) { ma_data_converter_uninit(c, nullptr); }};
+
+            const auto buffer_hns =
+                static_cast<REFERENCE_TIME>(std::clamp<uint32_t>(cfg.latency_ms, 50, 2000)) * 10000;
+            hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
+                                    buffer_hns, 0, wave_format.get(), nullptr);
+            if (FAILED(hr)) {
+                set_error(hr_error("IAudioClient::Initialize(loopback)", hr));
+                signal_ready(ready, false);
+                return;
+            }
+
+            ComPtr<IAudioCaptureClient> capture;
+            hr = client->GetService(__uuidof(IAudioCaptureClient),
+                                    reinterpret_cast<void**>(capture.GetAddressOf()));
+            if (FAILED(hr)) {
+                set_error(hr_error("IAudioClient::GetService(IAudioCaptureClient)", hr));
+                signal_ready(ready, false);
+                return;
+            }
+
+            hr = client->Start();
+            if (FAILED(hr)) {
+                set_error(hr_error("IAudioClient::Start", hr));
+                signal_ready(ready, false);
+                return;
+            }
+
+            AudioClientStopGuard stop_client{client.Get()};
+            running.store(true, std::memory_order_release);
+            signal_ready(ready, true);
+            log::info("[wasapi] capture worker started");
+
+            std::vector<std::byte> silence;
+            std::vector<std::byte> converted;
+            bool saw_signal           = false;
+            auto last_silence_warning = std::chrono::steady_clock::now();
+            while (!stop.stop_requested()) {
+                UINT32 packet_frames = 0;
+                hr                   = capture->GetNextPacketSize(&packet_frames);
                 if (FAILED(hr)) {
                     set_error(hr_error("IAudioCaptureClient::GetNextPacketSize", hr));
-                    packet_frames = 0;
+                    break;
+                }
+                if (packet_frames == 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds{5});
+                    continue;
+                }
+
+                while (packet_frames > 0 && !stop.stop_requested()) {
+                    BYTE* data    = nullptr;
+                    UINT32 frames = 0;
+                    DWORD flags   = 0;
+                    hr            = capture->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
+                    if (FAILED(hr)) {
+                        set_error(hr_error("IAudioCaptureClient::GetBuffer", hr));
+                        packet_frames = 0;
+                        break;
+                    }
+                    ReleaseBufferGuard release{capture.Get(), frames};
+
+                    const auto input_bytes = static_cast<std::size_t>(frames) * format->block_align;
+                    const BYTE* input      = data;
+                    if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0U) {
+                        silence.assign(input_bytes, std::byte{0});
+                        input = reinterpret_cast<const BYTE*>(silence.data());
+                    }
+
+                    if (convert_packet(converter, *format, input, frames, converted)) {
+                        const auto level = peak_s16(converted.data(), converted.size());
+                        peak.store(level, std::memory_order_release);
+                        saw_signal     = saw_signal || level > 0.01f;
+                        const auto now = std::chrono::steady_clock::now();
+                        if (!saw_signal && now - last_silence_warning > std::chrono::seconds{5}) {
+                            log::warn("[wasapi] capture is silent; verify the selected Roon output "
+                                      "and Windows capture device");
+                            last_silence_warning = now;
+                        }
+                        write_queue(*pcm_queue, converted.data(), converted.size());
+                    }
+
+                    hr = release.release();
+                    if (FAILED(hr)) {
+                        set_error(hr_error("IAudioCaptureClient::ReleaseBuffer", hr));
+                        packet_frames = 0;
+                        break;
+                    }
+                    hr = capture->GetNextPacketSize(&packet_frames);
+                    if (FAILED(hr)) {
+                        set_error(hr_error("IAudioCaptureClient::GetNextPacketSize", hr));
+                        packet_frames = 0;
+                    }
                 }
             }
-        }
 
-        client->Stop();
-        running.store(false, std::memory_order_release);
-        log::info("[wasapi] capture worker stopped");
+            stop_client.stop();
+            running.store(false, std::memory_order_release);
+            log::info("[wasapi] capture worker stopped");
+        } catch (const std::exception& e) {
+            set_error(std::string{"WASAPI capture worker failed: "} + e.what());
+            signal_ready(ready, false);
+            running.store(false, std::memory_order_release);
+        } catch (...) {
+            set_error("WASAPI capture worker failed with an unknown exception.");
+            signal_ready(ready, false);
+            running.store(false, std::memory_order_release);
+        }
     }
 };
 

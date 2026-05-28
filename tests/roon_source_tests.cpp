@@ -188,6 +188,34 @@ int run_tests() {
                      "offline Roon status should remain actionable");
     offline_source.shutdown();
 
+    fh6::RoonConfig stale_zone_cfg  = ready_cfg;
+    stale_zone_cfg.metadata_poll_ms = 10;
+    FakeControl* stale_zone_control = nullptr;
+    fh6::sources::RoonSource stale_zone_source{
+        stale_zone_cfg,
+        {},
+        [] { return std::make_unique<FakeCapture>(); },
+        [&] {
+            auto fake                           = std::make_unique<FakeControl>();
+            fake->status_value.ok               = true;
+            fake->status_value.pairing_state    = "authorized";
+            fake->status_value.selected_zone_id = "zone-1";
+            fake->status_value.zone_available   = false;
+            fake->status_value.error            = "Selected Roon zone is unavailable.";
+            stale_zone_control                  = fake.get();
+            return fake;
+        }};
+    require(stale_zone_source.initialize(), "stale zone Roon source should initialize");
+    for (int i = 0; i < 100; ++i) {
+        if (stale_zone_control && stale_zone_control->status_calls > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
+    require(stale_zone_source.auth_state() != fh6::AuthState::authenticated,
+            "stale selected zone should not authenticate");
+    require_contains(stale_zone_source.auth_instructions(), "zone",
+                     "stale selected zone should be actionable");
+    stale_zone_source.shutdown();
+
     FakeControl* control         = nullptr;
     FakeCapture* controlled_fake = nullptr;
     fh6::sources::RoonSource controlled_source{ready_cfg,
@@ -231,6 +259,7 @@ int run_tests() {
             fake->status_value.ok               = true;
             fake->status_value.pairing_state    = "authorized";
             fake->status_value.selected_zone_id = "zone-1";
+            fake->status_value.zone_available   = true;
             fake->status_value.now_playing      = fh6::roon::RoonNowPlaying{
                 "Road Song", "The Drivers", "Horizon Radio", "/api/source/roon/artwork/current",
                 245000,      67000};
@@ -257,13 +286,14 @@ int run_tests() {
                                                 return capture;
                                             },
                                             [&] {
-                                                auto control = std::make_unique<FakeControl>();
-                                                control->status_value.ok            = true;
-                                                control->status_value.pairing_state = "authorized";
-                                                control->status_value.selected_zone_id = "zone-1";
-                                                capture_auth_control = control.get();
-                                                return control;
-                                            }};
+                                                 auto control = std::make_unique<FakeControl>();
+                                                 control->status_value.ok            = true;
+                                                 control->status_value.pairing_state = "authorized";
+                                                 control->status_value.selected_zone_id = "zone-1";
+                                                 control->status_value.zone_available   = true;
+                                                 capture_auth_control = control.get();
+                                                 return control;
+                                             }};
     require(capture_source.initialize(), "ready Roon source should initialize");
     for (int i = 0; i < 100; ++i) {
         if (capture_auth_control && capture_auth_control->status_calls > 0) break;

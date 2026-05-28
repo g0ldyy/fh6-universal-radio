@@ -160,5 +160,7 @@ if ($setupComplete.Groups['body'].Value.Contains('captureTest')) {
 
 Require-Text $setupComplete.Groups['body'].Value 'status.ok === true' `
     'Roon setup completion should require current successful status'
+Require-Text $setupComplete.Groups['body'].Value 'status.zone_available === true' `
+    'Roon setup completion should require the selected zone to still be available'
 Require-Text $js 'roon.status = null;' `
     'Roon status refresh failures should clear stale ready state'

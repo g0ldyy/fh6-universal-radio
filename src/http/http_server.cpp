@@ -6,6 +6,7 @@
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "http_wire.hpp"
 #include "roon_routes.hpp"
 #include <nlohmann/json.hpp>
 #ifndef WIN32_LEAN_AND_MEAN
@@ -15,12 +16,8 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <algorithm>
-#include <array>
 #include <atomic>
-#include <cctype>
 #include <cstdint>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -89,122 +86,6 @@ json source_to_json(IAudioSource* s) {
     if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(s))
         j["details"]["shuffle"] = yt->shuffle();
     return j;
-}
-
-struct Request {
-    std::string method;
-    std::string path;
-    std::string body;
-};
-
-constexpr std::string_view status_text(int code) noexcept {
-    switch (code) {
-        case 200: return "OK";
-        case 400: return "Bad Request";
-        case 404: return "Not Found";
-        case 409: return "Conflict";
-        case 502: return "Bad Gateway";
-        default: return "Internal Server Error";
-    }
-}
-
-constexpr std::string_view mime_for(std::string_view path) noexcept {
-    auto ends = [&](std::string_view ext) { return path.ends_with(ext); };
-    if (ends(".html")) return "text/html";
-    if (ends(".css")) return "text/css";
-    if (ends(".js")) return "application/javascript";
-    if (ends(".svg")) return "image/svg+xml";
-    if (ends(".png")) return "image/png";
-    if (ends(".json")) return "application/json";
-    return "text/plain";
-}
-
-size_t header_size_t(std::string_view headers, std::string_view name_lower) {
-    for (size_t i = 0; i + name_lower.size() < headers.size(); ++i) {
-        bool match = true;
-        for (size_t k = 0; k < name_lower.size(); ++k) {
-            auto ch = static_cast<unsigned char>(headers[i + k]);
-            if (static_cast<char>(std::tolower(ch)) != name_lower[k]) {
-                match = false;
-                break;
-            }
-        }
-        if (!match) continue;
-        size_t p = i + name_lower.size();
-        while (p < headers.size() && (headers[p] == ':' || headers[p] == ' ' || headers[p] == '\t'))
-            ++p;
-        size_t v = 0;
-        while (p < headers.size() && std::isdigit(static_cast<unsigned char>(headers[p])))
-            v = v * 10 + static_cast<size_t>(headers[p++] - '0');
-        return v;
-    }
-    return 0;
-}
-
-bool read_request(SOCKET client, Request& req) {
-    std::string raw;
-    raw.reserve(1024);
-    std::array<char, 4096> buf{};
-
-    size_t header_end = std::string::npos;
-    while (header_end == std::string::npos) {
-        int r = recv(client, buf.data(), static_cast<int>(buf.size()), 0);
-        if (r <= 0) return false;
-        raw.append(buf.data(), static_cast<size_t>(r));
-        header_end = raw.find("\r\n\r\n");
-        if (raw.size() > 64 * 1024) return false;
-    }
-
-    std::istringstream first{raw.substr(0, raw.find("\r\n"))};
-    if (!(first >> req.method >> req.path)) return false;
-
-    const std::string_view headers{raw.data(), header_end};
-    const size_t content_length = header_size_t(headers, "content-length");
-
-    req.body.assign(raw, header_end + 4, std::string::npos);
-    while (req.body.size() < content_length) {
-        const size_t need = std::min<size_t>(buf.size(), content_length - req.body.size());
-        int r             = recv(client, buf.data(), static_cast<int>(need), 0);
-        if (r <= 0) break;
-        req.body.append(buf.data(), static_cast<size_t>(r));
-    }
-    return true;
-}
-
-void send_all(SOCKET client, std::string_view data) {
-    while (!data.empty()) {
-        int n = send(client, data.data(), static_cast<int>(data.size()), 0);
-        if (n <= 0) return;
-        data.remove_prefix(static_cast<size_t>(n));
-    }
-}
-
-void send_response(SOCKET client, int code, std::string_view body,
-                   std::string_view content_type = "application/json") {
-    std::ostringstream resp;
-    resp << "HTTP/1.1 " << code << ' ' << status_text(code) << "\r\n"
-         << "Content-Type: " << content_type << "\r\n"
-         << "Content-Length: " << body.size() << "\r\n"
-         << "Access-Control-Allow-Origin: *\r\n"
-         << "Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\n"
-         << "Access-Control-Allow-Headers: Content-Type\r\n"
-         << "Connection: close\r\n\r\n";
-    auto headers = resp.str();
-    send_all(client, headers);
-    send_all(client, body);
-}
-
-bool serve_file(SOCKET client, const std::filesystem::path& file) {
-    std::ifstream f{file, std::ios::binary};
-    if (!f) return false;
-    std::ostringstream buf;
-    buf << f.rdbuf();
-    send_response(client, 200, buf.str(), mime_for(file.string()));
-    return true;
-}
-
-constexpr SOCKET invalid_socket() noexcept {
-    return static_cast<SOCKET>(~static_cast<UINT_PTR>(0));
 }
 
 bool route_starts_with(std::string_view value, std::string_view prefix) {
@@ -290,7 +171,7 @@ struct HttpServer::Impl {
 
         sockaddr_in addr{};
         addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
         uint16_t bound = port;
         addr.sin_port  = htons(bound);
@@ -313,7 +194,7 @@ struct HttpServer::Impl {
             WSACleanup();
             return;
         }
-        log::info("[http] listening on http://0.0.0.0:{} (LAN-reachable)", bound);
+        log::info("[http] listening on http://127.0.0.1:{}", bound);
 
         while (!stopping.load(std::memory_order_acquire)) {
             fd_set rfds;
@@ -332,8 +213,15 @@ struct HttpServer::Impl {
     }
 
     void handle(SOCKET client) {
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                   reinterpret_cast<const char*>(&kSocketTimeoutMs), sizeof(kSocketTimeoutMs));
         Request req;
-        if (!read_request(client, req)) return;
+        if (!read_request(client, req)) {
+            if (req.error_status > 0) {
+                send_response(client, req.error_status, json{{"error", req.error_message}}.dump());
+            }
+            return;
+        }
 
         auto ok = [&](const json& j = json::object()) {
             std::string body = j.empty() ? std::string{R"({"ok":true})"}
@@ -468,8 +356,9 @@ struct HttpServer::Impl {
         }
 
         if (m == "GET" && !ui_dist.empty()) {
-            const std::string rel = (p == "/") ? "index.html" : p.substr(1);
-            if (serve_file(client, ui_dist / rel)) return;
+            std::filesystem::path file;
+            if (!static_file_path(ui_dist, p, file)) return fail(404, "not found");
+            if (serve_file(client, file)) return;
             if (p.find('.') == std::string::npos && serve_file(client, ui_dist / "index.html")) {
                 return;
             }
@@ -484,7 +373,6 @@ struct HttpServer::Impl {
         evt.append("HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/event-stream\r\n"
                    "Cache-Control: no-store\r\n"
-                   "Access-Control-Allow-Origin: *\r\n"
                    "Connection: close\r\n\r\n"
                    "retry: 1000\ndata: ");
         evt.append(body);

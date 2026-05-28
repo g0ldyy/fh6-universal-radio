@@ -30,9 +30,10 @@ public:
         server_.Get("/status", [](const httplib::Request&, httplib::Response& res) {
             res.set_content(json{{"ok", status_ok},
                                  {"core", {{"id", "core-1"}, {"name", "Roon Server"}}},
-                                 {"pairing_state", "authorized"},
-                                 {"selected_zone_id", "zone-1"},
-                                 {"selected_zone_name", "Main Room"},
+                                  {"pairing_state", "authorized"},
+                                  {"selected_zone_id", "zone-1"},
+                                  {"selected_zone_name", "Main Room"},
+                                  {"zone_available", zone_available},
                                  {"now_playing",
                                   {{"three_line",
                                     {{"line1", "Road Song"},
@@ -100,6 +101,7 @@ public:
     std::string last_volume_body;
     int reconnect_count          = 0;
     inline static bool status_ok = true;
+    inline static bool zone_available = true;
 
 private:
     httplib::Server server_;
@@ -130,6 +132,7 @@ int main() {
         require(status.ok, "status should parse ok response");
         require(status.core_id == "core-1", "status should parse core id");
         require(status.selected_zone_id == "zone-1", "status should parse selected zone");
+        require(status.zone_available, "status should parse selected zone availability");
         require(status.now_playing.has_value(), "status should parse now playing");
         require(status.now_playing->title == "Road Song", "status should parse now playing title");
         require(status.now_playing->artist == "The Drivers",

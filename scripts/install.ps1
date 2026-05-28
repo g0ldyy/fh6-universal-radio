@@ -65,4 +65,4 @@ if (-not $SkipMedia -and (Test-Path $mdir)) {
 }
 
 Write-Host "`nDone. Launch the game, set Audio -> Radio DJ = Off, Streamer Mode = On." -ForegroundColor Green
-Write-Host "Then open http://localhost:8420 in any browser on this LAN."
+Write-Host "Then open http://localhost:8420 in a browser on this machine."

@@ -32,6 +32,30 @@ function normalizeOutput(output) {
   };
 }
 
+export function buildStatus(state) {
+  const zone = state.selectedZoneId ? state.zones.get(state.selectedZoneId) ?? null : null;
+  const zoneAvailable = state.selectedZoneId ? !!zone : false;
+  const hasCore = state.pairingState === "authorized" && !!state.core;
+  const staleZone = !!state.selectedZoneId && !zoneAvailable;
+  return {
+    ok: hasCore && !staleZone,
+    core: state.core
+      ? {
+          id: state.core.core_id,
+          name: state.core.display_name,
+          version: state.core.display_version,
+          paired: true,
+        }
+      : null,
+    pairing_state: state.pairingState,
+    selected_zone_id: state.selectedZoneId,
+    selected_zone_name: zone?.display_name ?? "",
+    zone_available: zoneAvailable,
+    error: staleZone ? "Selected Roon zone is unavailable." : state.lastError,
+    now_playing: zone?.now_playing ?? null,
+  };
+}
+
 function callbackResult(resolve, reject) {
   return (err, body) => {
     if (err) reject(new Error(String(err)));
@@ -135,23 +159,7 @@ export function createRoonRuntime(options = {}) {
     },
 
     async status() {
-      const zone = selectedZone();
-      return {
-        ok: state.pairingState === "authorized" && !!state.core,
-        core: state.core
-          ? {
-              id: state.core.core_id,
-              name: state.core.display_name,
-              version: state.core.display_version,
-              paired: true,
-            }
-          : null,
-        pairing_state: state.pairingState,
-        selected_zone_id: state.selectedZoneId,
-        selected_zone_name: zone?.display_name ?? "",
-        error: state.lastError,
-        now_playing: zone?.now_playing ?? null,
-      };
+      return buildStatus(state);
     },
 
     async listZones() {

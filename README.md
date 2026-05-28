@@ -32,7 +32,7 @@ An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio stati
 3. Extract the ZIP into your Forza Horizon 6 install folder (next to `forzahorizon6.exe`). Overwrite when prompted.
 4. Launch the game. In **Audio settings**, set **Radio DJ = Off** and **Streamer Mode = On**.
 5. Cycle through radio stations until you land on the new one.
-6. Open <http://localhost:8420> in any browser on the same machine or LAN.
+6. Open <http://localhost:8420> in any browser on the same machine.
 
 ### YouTube Music
 
