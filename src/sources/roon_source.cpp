@@ -290,6 +290,22 @@ std::string RoonSource::auth_instructions() const {
         return "Select the Roon output / loopback capture device that receives the selected Roon "
                "zone audio.";
     }
+    bool seen = false;
+    const auto status = status_snapshot(&seen);
+    if (!seen) {
+        return "Waiting for Roon sidecar status. Use Reconnect if the Roon panel stays unavailable.";
+    }
+    if (!status.ok) {
+        return status.error.empty() ? "Roon sidecar status is unavailable. Use Reconnect."
+                                    : status.error;
+    }
+    if (status.pairing_state != "authorized") {
+        return "Open Roon Settings > Extensions and authorize FH6 Universal Radio.";
+    }
+    if (status.selected_zone_id.empty() || status.selected_zone_id != cfg.selected_zone_id) {
+        return "Select the intended Roon zone in Web Control, then confirm it remains available in "
+               "Roon.";
+    }
     return {};
 }
 
@@ -304,6 +320,13 @@ AuthState RoonSource::setup_state() const noexcept {
     if (cfg.bridge_path.empty()) return AuthState::error;
     if (cfg.selected_zone_id.empty() || cfg.render_loopback_endpoint_id.empty())
         return AuthState::needs_auth;
+    bool seen = false;
+    const auto status = status_snapshot(&seen);
+    if (!seen) return AuthState::needs_auth;
+    if (!status.ok) return AuthState::error;
+    if (status.pairing_state != "authorized") return AuthState::needs_auth;
+    if (status.selected_zone_id.empty() || status.selected_zone_id != cfg.selected_zone_id)
+        return AuthState::needs_auth;
     return AuthState::authenticated;
 }
 
@@ -312,10 +335,22 @@ std::string RoonSource::setup_error() const {
     return setup_error_;
 }
 
+roon::RoonStatus RoonSource::status_snapshot(bool* seen) const {
+    std::scoped_lock lk{status_mu_};
+    if (seen) *seen = last_status_seen_;
+    return last_status_;
+}
+
 void RoonSource::clear_setup_error() {
     std::scoped_lock lk{setup_mu_};
     setup_error_.clear();
     setup_error_present_.store(false, std::memory_order_release);
+}
+
+void RoonSource::remember_status(roon::RoonStatus status) {
+    std::scoped_lock lk{status_mu_};
+    last_status_      = std::move(status);
+    last_status_seen_ = true;
 }
 
 void RoonSource::set_setup_error(std::string message) {
@@ -431,6 +466,7 @@ void RoonSource::refresh_metadata() noexcept {
             return;
         }
     }
+    remember_status(status);
 
     if (!status.ok) return;
 

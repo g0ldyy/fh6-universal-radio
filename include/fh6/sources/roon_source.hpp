@@ -70,8 +70,10 @@ private:
     RoonConfig config_snapshot() const;
     AuthState setup_state() const noexcept;
     std::string setup_error() const;
+    roon::RoonStatus status_snapshot(bool* seen = nullptr) const;
     void clear_setup_error();
     void set_setup_error(std::string message);
+    void remember_status(roon::RoonStatus status);
     bool send_transport(std::string_view control);
     bool start_capture();
     void stop_capture() noexcept;
@@ -94,6 +96,9 @@ private:
     mutable std::mutex setup_mu_;
     std::string setup_error_;
     std::atomic<bool> setup_error_present_{false};
+    mutable std::mutex status_mu_;
+    roon::RoonStatus last_status_;
+    bool last_status_seen_ = false;
     mutable std::mutex info_mu_;
     TrackInfo info_{};
     std::jthread metadata_thread_;

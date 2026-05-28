@@ -162,6 +162,32 @@ int run_tests() {
     ready_cfg.render_loopback_endpoint_id = "device-1";
     ready_cfg.latency_ms        = 123;
 
+    fh6::RoonConfig offline_cfg  = ready_cfg;
+    offline_cfg.metadata_poll_ms = 10;
+    FakeControl* offline_control = nullptr;
+    fh6::sources::RoonSource offline_source{
+        offline_cfg,
+        {},
+        [] { return std::make_unique<FakeCapture>(); },
+        [&] {
+            auto fake                = std::make_unique<FakeControl>();
+            fake->status_value.error = "sidecar status request failed";
+            offline_control          = fake.get();
+            return fake;
+        }};
+    require(offline_source.initialize(), "offline Roon source should initialize");
+    for (int i = 0; i < 100; ++i) {
+        if (offline_control && offline_control->status_calls > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
+    require(offline_control != nullptr && offline_control->status_calls > 0,
+            "offline auth test should poll status");
+    require(offline_source.auth_state() != fh6::AuthState::authenticated,
+            "offline Roon status should not authenticate from config alone");
+    require_contains(offline_source.auth_instructions(), "sidecar",
+                     "offline Roon status should remain actionable");
+    offline_source.shutdown();
+
     FakeControl* control         = nullptr;
     FakeCapture* controlled_fake = nullptr;
     fh6::sources::RoonSource controlled_source{ready_cfg,
@@ -203,6 +229,7 @@ int run_tests() {
         [&] {
             auto fake                           = std::make_unique<FakeControl>();
             fake->status_value.ok               = true;
+            fake->status_value.pairing_state    = "authorized";
             fake->status_value.selected_zone_id = "zone-1";
             fake->status_value.now_playing      = fh6::roon::RoonNowPlaying{
                 "Road Song", "The Drivers", "Horizon Radio", "/api/source/roon/artwork/current",
@@ -220,7 +247,8 @@ int run_tests() {
     require(roon_track.position_ms == 67000, "Roon metadata poller should update position");
     metadata_source.shutdown();
 
-    FakeCapture* fake = nullptr;
+    FakeCapture* fake                 = nullptr;
+    FakeControl* capture_auth_control = nullptr;
     fh6::sources::RoonSource capture_source{ready_cfg,
                                             {},
                                             [&] {
@@ -228,8 +256,19 @@ int run_tests() {
                                                 fake         = capture.get();
                                                 return capture;
                                             },
-                                            [] { return std::make_unique<FakeControl>(); }};
+                                            [&] {
+                                                auto control = std::make_unique<FakeControl>();
+                                                control->status_value.ok            = true;
+                                                control->status_value.pairing_state = "authorized";
+                                                control->status_value.selected_zone_id = "zone-1";
+                                                capture_auth_control = control.get();
+                                                return control;
+                                            }};
     require(capture_source.initialize(), "ready Roon source should initialize");
+    for (int i = 0; i < 100; ++i) {
+        if (capture_auth_control && capture_auth_control->status_calls > 0) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    }
     require(capture_source.auth_state() == fh6::AuthState::authenticated,
             "complete Roon setup should authenticate");
 

@@ -144,6 +144,7 @@ export function createRoonPanel(deps) {
       const [setup, status, zones, outputs, devices] = results;
       if (setup.status === "fulfilled") roon.setup = setup.value;
       if (status.status === "fulfilled") roon.status = status.value;
+      else roon.status = null;
       if (zones.status === "fulfilled") roon.zones = zones.value.zones || [];
       if (outputs.status === "fulfilled") roon.outputs = outputs.value.outputs || [];
       if (devices.status === "fulfilled") roon.devices = devices.value.devices || [];
@@ -204,7 +205,8 @@ export function createRoonPanel(deps) {
   function setupComplete() {
     const r = getConfig()?.roon || {};
     const status = roon.status || {};
-    return status.pairing_state === "authorized" &&
+    return status.ok === true &&
+      status.pairing_state === "authorized" &&
       !!(r.selected_zone_id || status.selected_zone_id) &&
       !!selectedEndpointId();
   }

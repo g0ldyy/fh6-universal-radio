@@ -155,3 +155,8 @@ if (-not $setupComplete.Success) {
 if ($setupComplete.Groups['body'].Value.Contains('captureTest')) {
     throw 'Test audio should not affect initial Roon setup completion detection'
 }
+
+Require-Text $setupComplete.Groups['body'].Value 'status.ok === true' `
+    'Roon setup completion should require current successful status'
+Require-Text $js 'roon.status = null;' `
+    'Roon status refresh failures should clear stale ready state'
