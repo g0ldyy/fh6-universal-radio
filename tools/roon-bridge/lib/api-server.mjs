@@ -51,6 +51,22 @@ function requireNumber(body, key) {
   return value;
 }
 
+function validateVolume(how, value) {
+  if (how === "absolute") {
+    if (value < 0 || value > 100) {
+      const err = new Error("absolute volume value must be between 0 and 100");
+      err.statusCode = 400;
+      throw err;
+    }
+    return;
+  }
+  if (value < -100 || value > 100) {
+    const err = new Error("relative volume value must be between -100 and 100");
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
 async function route(req, res, runtime, startedAt) {
   const url = new URL(req.url ?? "/", "http://127.0.0.1");
   const path = url.pathname;
@@ -112,7 +128,9 @@ async function route(req, res, runtime, startedAt) {
       err.statusCode = 400;
       throw err;
     }
-    const request = { how, value: requireNumber(body, "value") };
+    const value = requireNumber(body, "value");
+    validateVolume(how, value);
+    const request = { how, value };
     if (typeof body.output_id === "string" && body.output_id.trim())
       request.output_id = body.output_id.trim();
     if (typeof body.zone_id === "string" && body.zone_id.trim()) request.zone_id = body.zone_id.trim();

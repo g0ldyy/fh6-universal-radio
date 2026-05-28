@@ -195,6 +195,24 @@ int main() {
                            "test-capture should reject missing device_id");
         require_json_error(wait_post(port, "/api/source/roon/volume", R"({"output_id":"out"})"),
                            400, "volume should reject missing value");
+        require_json_error(
+            wait_post(port, "/api/source/roon/volume",
+                      R"({"output_id":"out","how":"boost","value":10})"),
+            400, "volume should reject unsupported modes before contacting sidecar");
+        require_json_error(
+            wait_post(port, "/api/source/roon/volume",
+                      R"({"output_id":"out","how":"absolute","value":120})"),
+            400, "absolute volume should reject values above 100");
+        require_json_error(
+            wait_post(port, "/api/source/roon/volume",
+                      R"({"output_id":"out","how":"relative","value":101})"),
+            400, "relative volume should reject oversized deltas");
+        store.patch([](fh6::Config& c) { c.roon.control_volume = false; });
+        require_json_error(
+            wait_post(port, "/api/source/roon/volume",
+                      R"({"output_id":"out","how":"absolute","value":10})"),
+            403, "volume should respect control_volume=false");
+        store.patch([](fh6::Config& c) { c.roon.control_volume = true; });
 
         auto select_loopback = wait_post(port, "/api/source/roon/select-loopback-endpoint",
                                          R"({"endpoint_id":"endpoint-1","name":"Hi-Fi Cable Input"})");

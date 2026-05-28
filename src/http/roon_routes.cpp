@@ -13,6 +13,7 @@
 #include <httplib.h>
 
 #include <chrono>
+#include <cmath>
 #include <string>
 #include <thread>
 #include <vector>
@@ -145,6 +146,29 @@ audio::WasapiLoopbackCaptureStatus wait_for_capture_signal(audio::WasapiLoopback
     return capture.status();
 }
 
+bool validate_volume(std::string_view how, double value, const ErrorResponder& fail) {
+    if (!std::isfinite(value)) {
+        fail(400, "volume value must be finite");
+        return false;
+    }
+    if (how != "absolute" && how != "relative" && how != "relative_step") {
+        fail(400, "how must be absolute, relative, or relative_step");
+        return false;
+    }
+    if (how == "absolute") {
+        if (value < 0.0 || value > 100.0) {
+            fail(400, "absolute volume value must be between 0 and 100");
+            return false;
+        }
+        return true;
+    }
+    if (value < -100.0 || value > 100.0) {
+        fail(400, "relative volume value must be between -100 and 100");
+        return false;
+    }
+    return true;
+}
+
 void proxy_artwork(const ErrorResponder& fail, const BodyResponder& send_body) {
     httplib::Client client{"127.0.0.1", 47821};
     client.set_connection_timeout(std::chrono::milliseconds{500});
@@ -242,7 +266,8 @@ bool handle_test_capture(std::string_view body, ConfigStore& store, const JsonRe
     return true;
 }
 
-bool handle_volume(std::string_view body, const JsonResponder& ok, const ErrorResponder& fail) {
+bool handle_volume(std::string_view body, ConfigStore& store, const JsonResponder& ok,
+                   const ErrorResponder& fail) {
     auto parsed    = parse_body(body);
     auto output_id = parsed.is_object() ? required_string(parsed, "output_id") : std::string{};
     if (output_id.empty() || !parsed.contains("value") || !parsed["value"].is_number()) {
@@ -252,8 +277,14 @@ bool handle_volume(std::string_view body, const JsonResponder& ok, const ErrorRe
     std::string how = "absolute";
     if (auto it = parsed.find("how"); it != parsed.end() && it->is_string())
         how = it->get<std::string>();
+    const auto value = parsed["value"].get<double>();
+    if (!validate_volume(how, value, fail)) return true;
+    if (!store.snapshot().roon.control_volume) {
+        fail(403, "Roon volume control is disabled");
+        return true;
+    }
     roon::RoonControlClient client;
-    command_response(ok, fail, client.set_volume(output_id, parsed["value"].get<double>(), how));
+    command_response(ok, fail, client.set_volume(output_id, value, how));
     return true;
 }
 
@@ -315,7 +346,7 @@ bool dispatch_roon_route(std::string_view method, std::string_view path, std::st
     if (is_route(method, path, "POST", "/api/source/roon/test-capture"))
         return handle_test_capture(body, store, ok, fail);
     if (is_route(method, path, "POST", "/api/source/roon/volume"))
-        return handle_volume(body, ok, fail);
+        return handle_volume(body, store, ok, fail);
     if (is_route(method, path, "POST", "/api/source/roon/reconnect")) {
         log::info("[roon] reconnect requested");
         auto* source = dynamic_cast<sources::RoonSource*>(mgr.find("roon"));

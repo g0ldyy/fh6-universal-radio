@@ -152,6 +152,27 @@ describe("Roon sidecar local API", () => {
     });
     assert.equal(bad.status, 400);
 
+    const unsupportedMode = await fetch(`${server.url}/volume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ output_id: "output-1", how: "boost", value: 40 }),
+    });
+    assert.equal(unsupportedMode.status, 400);
+
+    const highAbsolute = await fetch(`${server.url}/volume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ output_id: "output-1", how: "absolute", value: 120 }),
+    });
+    assert.equal(highAbsolute.status, 400);
+
+    const highRelative = await fetch(`${server.url}/volume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ output_id: "output-1", how: "relative", value: 101 }),
+    });
+    assert.equal(highRelative.status, 400);
+
     const ok = await readJson(await fetch(`${server.url}/volume`, {
       method: "POST",
       headers: { "content-type": "application/json" },
