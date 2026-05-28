@@ -66,8 +66,8 @@ int main() {
     roon_cfg.render_loopback_endpoint_id = "device-1";
     fh6::sync_roon_source(mgr, roon_cfg);
     require(mgr.find("roon") == roon, "updating Roon config should keep the registered source");
-    require(roon->auth_state() == fh6::AuthState::authenticated,
-            "syncing updated Roon config should update the live source setup state");
+    require(roon->auth_state() == fh6::AuthState::needs_auth,
+            "complete Roon config should still wait for live sidecar status");
 
     require(mgr.switch_to("roon"), "default_source roon should be switchable after registration");
     require(mgr.active() == roon, "switch_to roon should make Roon active");

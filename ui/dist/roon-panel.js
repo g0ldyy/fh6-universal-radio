@@ -28,7 +28,6 @@ export function createRoonPanel(deps) {
   function roonAvailable() {
     return getState()?.sources?.available?.some(s => s.name === "roon");
   }
-
   function roonNowPlaying() {
     if (getState()?.sources?.active !== "roon") return null;
     const np = roon.status?.now_playing;
@@ -85,14 +84,12 @@ export function createRoonPanel(deps) {
     window.clearInterval(roon.captureTimer);
     roon.captureTimer = 0;
   }
-
   function recommendedEndpoint() {
     const endpoint = roon.setup?.recommended_endpoint;
     if (endpoint?.id) return endpoint;
     return roon.devices.find(d => d.recommendation === "preferred") ||
       roon.devices.find(d => d.recommendation === "fallback") || null;
   }
-
   function sourceDetailLine() {
     const parts = [];
     const status = roon.status || {};
@@ -106,7 +103,6 @@ export function createRoonPanel(deps) {
     }
     return parts.join(" - ") || null;
   }
-
   function signature() {
     return [
       roon.status?.pairing_state,
@@ -120,13 +116,11 @@ export function createRoonPanel(deps) {
       roon.captureTest?.peak,
     ].join(":");
   }
-
   async function roonGet(path) {
     const body = await api.get(path);
     if (body?.error) throw new Error(body.error);
     return body;
   }
-
   async function refreshRoon(force = false) {
     if (!roonAvailable() || roon.loading) return;
     const interval = Math.max(500, getConfig()?.roon?.metadata_poll_ms || 750);
@@ -160,7 +154,6 @@ export function createRoonPanel(deps) {
       requestRender();
     }
   }
-
   function labelForEnvironment(value) {
     return ({
       local_server: "Roon Server detected",
@@ -168,7 +161,6 @@ export function createRoonPanel(deps) {
       not_found: "Roon Server not detected",
     })[value] || "Waiting for diagnostics";
   }
-
   function labelForCable(value) {
     return ({
       hifi: "Hi-Fi Cable render endpoint detected",
@@ -178,7 +170,6 @@ export function createRoonPanel(deps) {
       missing: "No VB-Audio render endpoint detected",
     })[value] || "Waiting for endpoint scan";
   }
-
   function esc(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -187,7 +178,6 @@ export function createRoonPanel(deps) {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
   }
-
   function issuesMarkup() {
     const issues = roon.setup?.issues || [];
     if (!issues.length) {
@@ -197,11 +187,9 @@ export function createRoonPanel(deps) {
       `<li class="${i.severity === "error" ? "err" : "warn"}">${esc(i.message)}</li>`
     ).join("");
   }
-
   function roonSetupEnabled() {
     return roonAvailable();
   }
-
   function setupComplete() {
     const r = getConfig()?.roon || {};
     const status = roon.status || {};
@@ -210,12 +198,10 @@ export function createRoonPanel(deps) {
       !!(r.selected_zone_id || status.selected_zone_id) &&
       !!selectedEndpointId();
   }
-
   function shouldOpenSetupDialog() {
     return roonAvailable() && roonSetupEnabled() && !setupComplete() &&
       sessionStorage.getItem("fh6-roon-setup-dismissed") !== "1";
   }
-
   function renderStep(label, ok, detail) {
     return `<li class="${ok ? "ok" : "warn"}">
       <span>${esc(label)}</span>
@@ -223,7 +209,6 @@ export function createRoonPanel(deps) {
       <small>${esc(detail)}</small>
     </li>`;
   }
-
   function renderOptionalStep(label, ok, detail) {
     return `<li class="${ok ? "ok" : "warn"}">
       <span>${esc(label)}</span>
@@ -231,13 +216,11 @@ export function createRoonPanel(deps) {
       <small>${esc(detail)}</small>
     </li>`;
   }
-
   function renderOptions(items, selected, emptyLabel) {
     return `<option value="">${esc(emptyLabel)}</option>` + items.map(item =>
       `<option value="${esc(item.value)}"${item.value === selected ? " selected" : ""}>${esc(item.label)}</option>`
     ).join("");
   }
-
   function setupContext() {
     const r = getConfig()?.roon || {};
     const status = roon.status || {};
@@ -267,7 +250,6 @@ export function createRoonPanel(deps) {
       testOk, route, testResult, zoneOptions, endpointOptions,
     };
   }
-
   function stepInfo(id, ctx = setupContext()) {
     if (id === "environment") {
       const nodeOk = !!roon.setup?.node_available;
@@ -306,15 +288,12 @@ export function createRoonPanel(deps) {
       optional: true,
     };
   }
-
   function firstIncompleteStep(ctx = setupContext()) {
     return requiredStepIds.find(id => !stepInfo(id, ctx).ok) || "verify";
   }
-
   function activeDialogStep() {
     return stepOrder.includes(roon.dialogStep) ? roon.dialogStep : firstIncompleteStep();
   }
-
   function renderRoonSettingsSummary() {
     const ctx = setupContext();
     const next = stepInfo(firstIncompleteStep(ctx), ctx);
@@ -340,7 +319,6 @@ export function createRoonPanel(deps) {
       <p class="muted">${esc(roon.error || ctx.status.error || ctx.setupNote)}</p>
     </div>`;
   }
-
   function renderStepNav(ctx, active) {
     return stepOrder.map(id => {
       const item = stepInfo(id, ctx);
@@ -351,7 +329,6 @@ export function createRoonPanel(deps) {
       </li>`;
     }).join("");
   }
-
   function renderRoonSetupDialog() {
     const ctx = setupContext();
     const active = activeDialogStep();
@@ -379,7 +356,6 @@ export function createRoonPanel(deps) {
       <p class="muted">${esc(roon.error || ctx.status.error || ctx.setupNote)}</p>
     </div>`;
   }
-
   function renderRoonPanel() {
     const showSetup = roonSetupEnabled();
     const settings = $("#roon-settings-wizard");
@@ -399,12 +375,10 @@ export function createRoonPanel(deps) {
     if (showSetup && (dialog?.open || (drawerOpen && settings && !settings.hidden))) startAutoAudioTest();
     else stopAutoAudioTest();
   }
-
   function openSetupUrl(key, fallback) {
     const url = roon.setup?.official_urls?.[key] || fallback;
     window.open(url, "_blank", "noopener,noreferrer");
   }
-
   function setSelectedEndpoint(endpoint) {
     const r = cfgRoon();
     r.render_loopback_endpoint_id = endpoint.id;
@@ -412,7 +386,6 @@ export function createRoonPanel(deps) {
     r.capture_device_id = endpoint.id;
     r.capture_device_name = endpoint.name || "";
   }
-
   async function selectEndpoint(endpoint) {
     await api.send("/api/source/roon/select-loopback-endpoint", {
       endpoint_id: endpoint.id,
@@ -421,7 +394,6 @@ export function createRoonPanel(deps) {
     setSelectedEndpoint(endpoint);
     requestRender();
   }
-
   function wireRoonPanel() {
     document.addEventListener("change", async e => {
       if (!e.target.matches("[data-roon-zone]") && !e.target.matches("[data-roon-endpoint]")) return;
@@ -444,7 +416,6 @@ export function createRoonPanel(deps) {
         toast("Roon zone selected");
       } catch (err) { toast(err.message, true); }
     });
-
     document.addEventListener("click", async e => {
       const button = e.target.closest("[data-roon-action]");
       const action = button?.dataset.roonAction;
@@ -490,7 +461,6 @@ export function createRoonPanel(deps) {
       } catch (err) { toast(err.message, true); }
     });
   }
-
   return {
     refresh: refreshRoon,
     renderPanel: renderRoonPanel,
