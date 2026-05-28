@@ -22,18 +22,28 @@ function Require-Text {
 
 Require-Text $js '["roon", "Roon"' 'settings schema should include a Roon section'
 foreach ($field in @(
-    'node_path',
-    'bridge_path',
     'selected_zone_id',
     'render_loopback_endpoint_id',
     'render_loopback_endpoint_name',
     'control_volume',
-    'auto_start_bridge',
     'auto_reconnect',
     'latency_ms',
     'metadata_poll_ms'
 )) {
     Require-Text $js $field "Roon settings should include $field"
+}
+
+foreach ($unsafeRoonField in @(
+    '["node_path"',
+    '["bridge_path"',
+    '["auto_start_bridge"',
+    'Node path (optional)',
+    'Bridge script path',
+    'Auto-start sidecar'
+)) {
+    if ($js.Contains($unsafeRoonField)) {
+        throw "Roon settings should not expose sidecar launch control '$unsafeRoonField'"
+    }
 }
 
 foreach ($text in @(

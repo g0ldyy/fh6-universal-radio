@@ -141,8 +141,6 @@ void apply_config_patch(Config& c, const json& j) {
     }
     if (auto it = j.find("roon"); it != j.end()) {
         c.roon.enabled            = pull(*it, "enabled", c.roon.enabled);
-        c.roon.node_path          = pull_path(*it, "node_path", c.roon.node_path);
-        c.roon.bridge_path        = pull_path(*it, "bridge_path", c.roon.bridge_path);
         c.roon.selected_core_id   = pull(*it, "selected_core_id", c.roon.selected_core_id);
         c.roon.selected_zone_id   = pull(*it, "selected_zone_id", c.roon.selected_zone_id);
         c.roon.selected_output_id = pull(*it, "selected_output_id", c.roon.selected_output_id);
@@ -153,7 +151,6 @@ void apply_config_patch(Config& c, const json& j) {
             pull_string_alias(*it, "render_loopback_endpoint_name", "capture_device_name",
                               c.roon.render_loopback_endpoint_name);
         c.roon.control_volume    = pull(*it, "control_volume", c.roon.control_volume);
-        c.roon.auto_start_bridge = pull(*it, "auto_start_bridge", c.roon.auto_start_bridge);
         c.roon.auto_reconnect    = pull(*it, "auto_reconnect", c.roon.auto_reconnect);
         c.roon.latency_ms        = pull_u32(*it, "latency_ms", c.roon.latency_ms);
         c.roon.metadata_poll_ms  = pull_u32(*it, "metadata_poll_ms", c.roon.metadata_poll_ms);

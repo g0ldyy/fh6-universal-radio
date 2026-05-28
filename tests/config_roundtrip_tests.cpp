@@ -193,6 +193,23 @@ allow_volume_over_100 = true
         require(patched.roon.latency_ms == 333, "apply_config_patch updates latency");
         require(patched.roon.metadata_poll_ms == 750, "partial roon patch keeps fallback");
 
+        patched.roon.node_path         = "C:\\Program Files\\nodejs\\node.exe";
+        patched.roon.bridge_path       = std::filesystem::path{"tools"} / "roon-bridge" /
+                                   "index.mjs";
+        patched.roon.auto_start_bridge = false;
+        fh6::http::apply_config_patch(
+            patched, nlohmann::json{{"roon",
+                                      {{"node_path", "C:\\Temp\\not-node.exe"},
+                                       {"bridge_path", "\\\\attacker\\share\\sidecar.mjs"},
+                                       {"auto_start_bridge", true}}}});
+        require(patched.roon.node_path == "C:\\Program Files\\nodejs\\node.exe",
+                "api patch must not update Roon node executable path");
+        require(patched.roon.bridge_path ==
+                    (std::filesystem::path{"tools"} / "roon-bridge" / "index.mjs"),
+                "api patch must not update Roon sidecar script path");
+        require(!patched.roon.auto_start_bridge,
+                "api patch must not update Roon sidecar auto-start");
+
         fh6::http::apply_config_patch(
             patched, nlohmann::json{{"audio", {{"output_gain", 1.8},
                                                 {"allow_volume_over_100", true}}}});
