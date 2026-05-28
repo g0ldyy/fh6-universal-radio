@@ -19,6 +19,7 @@ try {
     $src = Join-Path $tmp "source"
     New-Item -ItemType Directory -Force -Path (Join-Path $src "lib") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $src "test") | Out-Null
+    New-Item -ItemType Directory -Force -Path (Join-Path $src "vendor\ip-shim") | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $src "node_modules\dep") | Out-Null
     Set-Content -Path (Join-Path $src "index.mjs") -Value "import './lib/api-server.mjs';" -Encoding ascii
     Set-Content -Path (Join-Path $src "package.json") -Value "{}" -Encoding ascii
@@ -27,6 +28,7 @@ try {
     Set-Content -Path (Join-Path $src "THIRD_PARTY_NOTICES.md") -Value "notices" -Encoding ascii
     Set-Content -Path (Join-Path $src "lib\api-server.mjs") -Value "export {};" -Encoding ascii
     Set-Content -Path (Join-Path $src "test\api.test.mjs") -Value "test" -Encoding ascii
+    Set-Content -Path (Join-Path $src "vendor\ip-shim\index.cjs") -Value "module.exports = {};" -Encoding ascii
     Set-Content -Path (Join-Path $src "node_modules\dep\index.js") -Value "module.exports = {};" -Encoding ascii
 
     $dst = Join-Path $tmp "dist\roon-bridge"
@@ -36,6 +38,7 @@ try {
     Assert-Exists (Join-Path $dst "package.json") "package manifest should be copied"
     Assert-Exists (Join-Path $dst "package-lock.json") "package lock should be copied"
     Assert-Exists (Join-Path $dst "lib\api-server.mjs") "runtime library should be copied"
+    Assert-Exists (Join-Path $dst "vendor\ip-shim\index.cjs") "vendored file dependencies should be staged"
     Assert-Exists (Join-Path $dst "THIRD_PARTY_NOTICES.md") "license notices should be copied"
     Assert-Missing (Join-Path $dst "test\api.test.mjs") "test files should not be staged"
     Assert-Missing (Join-Path $dst "node_modules\dep\index.js") "node_modules should be optional"

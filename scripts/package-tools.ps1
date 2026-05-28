@@ -40,6 +40,12 @@ function Copy-RoonBridgePackage {
         -SourceDir (Join-Path $SourceDir "lib") `
         -DestinationDir (Join-Path $DestinationDir "lib")
 
+    if (Test-Path (Join-Path $SourceDir "vendor")) {
+        Copy-DirectoryContents `
+            -SourceDir (Join-Path $SourceDir "vendor") `
+            -DestinationDir (Join-Path $DestinationDir "vendor")
+    }
+
     if ($IncludeNodeModules -and (Test-Path (Join-Path $SourceDir "node_modules"))) {
         Copy-DirectoryContents `
             -SourceDir (Join-Path $SourceDir "node_modules") `
