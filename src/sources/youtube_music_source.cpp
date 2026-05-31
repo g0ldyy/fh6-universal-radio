@@ -38,7 +38,7 @@ std::string drain_to_eof(HANDLE pipe) {
 }
 
 bool is_playlist_url(std::string_view url) {
-    return url.find("playlist?") != std::string_view::npos || url.find("list=") != std::string_view::npos;;
+    return url.find("playlist?") != std::string_view::npos || url.find("list=") != std::string_view::npos;
 }
 
 std::string watch_url_for_id(std::string_view id) {
