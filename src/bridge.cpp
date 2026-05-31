@@ -10,6 +10,7 @@
 #include "fh6/fmod/pe_image.hpp"
 #include "fh6/http/http_server.hpp"
 #include "fh6/sources/local_file_source.hpp"
+#include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
 
@@ -126,6 +127,13 @@ void run_bridge(HMODULE self) noexcept {
         } else if (!c.jellyfin.enabled && mgr.find("jellyfin")) {
             mgr.unregister_source("jellyfin");
         }
+
+        if (c.external_audio.enabled && !mgr.find("external_audio")) {
+            auto src = std::make_unique<sources::ExternalAudioSource>();
+            if (src->initialize()) mgr.register_source(std::move(src));
+        } else if (!c.external_audio.enabled && mgr.find("external_audio")) {
+            mgr.unregister_source("external_audio");
+        }
     };
 
     sync_sources(cfg);
@@ -172,6 +180,9 @@ void run_bridge(HMODULE self) noexcept {
         if (auto* jf = dynamic_cast<sources::JellyfinSource*>(mgr.find("jellyfin"))) {
             jf->set_ffmpeg_path(c.general.ffmpeg_path);
             jf->set_config(c.jellyfin);
+        }
+        if (auto* ext = dynamic_cast<sources::ExternalAudioSource*>(mgr.find("external_audio"))) {
+            ext->set_config(c.external_audio);
         }
 
         for (auto* s : mgr.sources_snapshot()) s->set_playback_options(c.playback);

@@ -63,6 +63,8 @@ add_library(version SHARED
     src/sources/local_file_source.cpp
     src/sources/youtube_music_source.cpp
     src/sources/jellyfin_source.cpp
+    src/sources/external_audio_source.cpp
+    src/sources/external_media_session.cpp
 )
 
 # MSVC carries the forwarders via pragmas in dll_main.cpp because its .def
@@ -78,7 +80,7 @@ target_include_directories(version PRIVATE
     third_party/miniaudio
 )
 
-target_link_libraries(version PRIVATE ws2_32 bcrypt psapi winhttp)
+target_link_libraries(version PRIVATE ws2_32 bcrypt psapi winhttp ole32 uuid ksuser runtimeobject)
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version

@@ -62,6 +62,11 @@ public:
     // EQ band/enable updates land here. No-op for sources that don't care.
     virtual void set_playback_options(const PlaybackConfig& /*opts*/) {}
 
+    // The game stopped (pause menu, radio off) or resumed draining our station.
+    // Sources wrapping a live external player mirror this onto that player's
+    // transport; pull-based sources need nothing -- they pause by not being read.
+    virtual void on_radio_audible(bool /*audible*/) {}
+
     virtual TrackInfo current_track() const               = 0;
     virtual PlaybackState playback_state() const noexcept = 0;
     virtual AuthState auth_state() const noexcept         = 0;

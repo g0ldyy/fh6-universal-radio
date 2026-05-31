@@ -6,7 +6,7 @@
 
 <p align="center"><img src="assets/banner.png" alt="FH6 Universal Radio" /></p>
 
-An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music**, **YouTube Music**, or **Jellyfin** server, controlled from a browser dashboard.
+An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music**, **YouTube Music**, **Jellyfin** server, or **any Windows app** (Spotify, Deezer, a browser tab...), controlled from a browser dashboard.
 
 <p align="center">
   <img src="assets/ingame.png" alt="In-game radio station" width="49%" />
@@ -18,6 +18,7 @@ An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio stati
 - **Local files**: point it at any folder. MP3 / FLAC / WAV / OGG play out of the box; M4A / AAC / OPUS / WMA / etc. play if `ffmpeg` is installed (same binary as YouTube Music below).
 - **YouTube Music**: paste any video, playlist, or YT Music URL from the dashboard.
 - **Jellyfin**: stream playlists from your own Jellyfin server.
+- **External audio**: capture any Windows app (Spotify, Deezer, a browser tab) and pipe it into the radio through a virtual audio cable; metadata and next/previous come from the Windows media session.
 - **In-game radio integration**: audio is routed through FH6's radio bus, fades with menus and reacts to in-game volume like every other station.
 - **Live dashboard** at `http://localhost:8420`: switch source, transport controls, volume, settings.
 - **Race start action**: on race begin, advance to next track, restart the current one, or leave it alone.
@@ -50,6 +51,17 @@ Then restart the game.
 `ffmpeg` can also be configured under **Settings > General > ffmpeg path**.
 
 Private/age-restricted content also needs a Netscape `cookies.txt` exported from your browser. Use an extension like **Get cookies.txt LOCALLY** to export it.
+
+### External audio
+
+External Audio is a loopback capture of a Windows playback device, so the app has to play onto a device you don't otherwise hear, or it reaches your speakers directly instead of through the radio. Route it through a virtual audio cable:
+
+1. Install a virtual audio cable, e.g. [VB-Audio Virtual Cable](https://vb-audio.com/Cable/).
+2. Send the app's audio to the cable. Apps without their own output picker (like Deezer) can still be routed from Windows **Settings > System > Sound > Volume mixer**, setting the app's output to `CABLE Input`; for a browser tab, an extension like **AuRo** does the same.
+3. In the dashboard, pick that cable as the **Capture device**.
+4. Pick the app as the **Media session** for the in-game title/artist and the next/previous controls.
+
+The app then pauses and resumes with the game radio (menus, radio off) instead of playing on in the background.
 
 ## Uninstall
 
@@ -94,6 +106,8 @@ Requires **CMake** and **llvm-mingw** (the Clang-based MinGW-w64 toolchain, sinc
 | `[local] failed to open ... .m4a` (or `.opus`, `.aac`, ...) | The built-in decoder handles MP3/FLAC/WAV/OGG only; other formats are routed through `ffmpeg`. Install it (`winget install Gyan.FFmpeg`) and either put it on `PATH` or set the path under **Settings > General > ffmpeg path**. |
 | YouTube Music produces no audio | Check `%TEMP%\fh6-stderr.log` (helper-process stderr lands there). Usually missing yt-dlp/ffmpeg, expired cookies, or geo/format restrictions. |
 | Jellyfin cast returns "fetch failed" (502) | Check server URL, API key, and user ID under **Settings > Jellyfin**, that the playlist ID exists, and that the server is reachable from this machine. Jellyfin transcodes to PCM via `ffmpeg`, so the configured ffmpeg path must be valid. |
+| External Audio plays in the background, not through the radio | You're capturing the same device the app plays on. Route the app's output to a **virtual audio cable** and select that cable as the **Capture device** (see [External audio](#external-audio)). |
+| External Audio has clicks / artifacts | Set the virtual cable to **48000 Hz** (2 ch). Other sample rates caused artifacts in testing. |
 
 ## Why this exists
 

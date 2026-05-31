@@ -6,6 +6,8 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
+#include "fh6/sources/external_audio_source.hpp"
+#include "fh6/sources/external_media_session.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -135,6 +137,12 @@ json config_to_json(const Config& c) {
              {"use_favorites", c.jellyfin.use_favorites},
              {"shuffle", c.jellyfin.shuffle},
          }},
+        {"external_audio",
+         json{
+             {"enabled", c.external_audio.enabled},
+             {"endpoint_id", c.external_audio.endpoint_id},
+             {"media_session_id", c.external_audio.media_session_id},
+         }},
         {"audio",
          json{
              {"output_gain", c.audio.output_gain},
@@ -197,6 +205,13 @@ void apply_patch(Config& c, const json& j) {
         c.jellyfin.default_playlist = pull(*it, "default_playlist", c.jellyfin.default_playlist);
         c.jellyfin.use_favorites    = pull(*it, "use_favorites", c.jellyfin.use_favorites);
         c.jellyfin.shuffle          = pull(*it, "shuffle", c.jellyfin.shuffle);
+    }
+    if (auto it = j.find("external_audio"); it != j.end()) {
+        c.external_audio.enabled = pull(*it, "enabled", c.external_audio.enabled);
+        c.external_audio.endpoint_id =
+            pull(*it, "endpoint_id", c.external_audio.endpoint_id);
+        c.external_audio.media_session_id =
+            pull(*it, "media_session_id", c.external_audio.media_session_id);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
@@ -460,7 +475,7 @@ struct HttpServer::Impl {
         Request req;
         if (!read_request(client, req)) return;
 
-        auto ok = [&](const json& j = json::object()) {
+        auto ok = [&](json j = {}) {
             std::string body = j.empty()
                                    ? std::string{R"({"ok":true})"}
                                    : j.dump(-1, ' ', false, json::error_handler_t::replace);
@@ -504,6 +519,54 @@ struct HttpServer::Impl {
         if (m == "POST" && p == "/api/source/switch") {
             auto src = json::parse(req.body).at("source").get<std::string>();
             return mgr.switch_to(src) ? ok() : fail(404, "unknown source");
+        }
+        if (m == "GET" && p == "/api/external_audio/devices") {
+            json devices = json::array();
+            for (const auto& d : sources::enumerate_external_audio_devices()) {
+                devices.push_back(json{
+                    {"id", d.id},
+                    {"name", d.name},
+                    {"is_default", d.is_default},
+                });
+            }
+            auto snap = store.snapshot();
+            json sessions = json::array();
+            for (const auto& session : sources::enumerate_external_audio_media_sessions(
+                     snap.external_audio.media_session_id)) {
+                sessions.push_back(json{
+                    {"id", session.id},
+                    {"name", session.name},
+                    {"is_current", session.is_current},
+                    {"is_selected", session.is_selected},
+                });
+            }
+            return ok(json{
+                {"enabled", snap.external_audio.enabled},
+                {"endpoint_id", snap.external_audio.endpoint_id},
+                {"media_session_id", snap.external_audio.media_session_id},
+                {"media_sessions_available", sources::external_audio_media_sessions_available()},
+                {"media_sessions", sessions},
+                {"devices", devices},
+            });
+        }
+        if (m == "PUT" && p == "/api/external_audio/config") {
+            auto body = req.body.empty() ? json::object() : json::parse(req.body);
+            auto snap_before = store.snapshot();
+            const auto endpoint = body.value("endpoint_id", snap_before.external_audio.endpoint_id);
+            const auto media_session_id =
+                body.value("media_session_id", snap_before.external_audio.media_session_id);
+            const auto enabled = body.value("enabled", snap_before.external_audio.enabled);
+            // store.patch() notifies the bridge observer synchronously, which
+            // (un)registers the source and pushes the new config via set_config.
+            store.patch([&](Config& c) {
+                c.external_audio.enabled = enabled;
+                c.external_audio.endpoint_id = endpoint;
+                c.external_audio.media_session_id = media_session_id;
+            });
+            auto snap = store.snapshot();
+            return ok(json{{"enabled", snap.external_audio.enabled},
+                           {"endpoint_id", snap.external_audio.endpoint_id},
+                           {"media_session_id", snap.external_audio.media_session_id}});
         }
         if (m == "POST" && p == "/api/source/youtube_music/cast") {
             auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");

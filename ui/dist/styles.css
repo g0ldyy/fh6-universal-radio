@@ -35,7 +35,7 @@ body {
 
 button { font: inherit; color: inherit; }
 
-input, output { font: inherit; color: inherit; }
+input, output, select { font: inherit; color: inherit; }
 
 h1, h2 { margin: 0; font-weight: 600; letter-spacing: .2px; }
 
@@ -200,13 +200,17 @@ main {
   display: flex; gap: 8px; align-items: center;
 }
 
-input[type="text"], input[type="number"] {
+.external-audio-row select { flex: 1; min-width: 0; }
+
+.external-audio-label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 0.9rem; }
+
+input[type="text"], input[type="number"], select {
   flex: 1; min-width: 0;
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; color: var(--text);
 }
 
-input[type="text"]:focus, input[type="number"]:focus {
+input[type="text"]:focus, input[type="number"]:focus, select:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(182,255,60,0.15);
 }
 

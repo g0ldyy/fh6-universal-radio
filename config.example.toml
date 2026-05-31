@@ -8,7 +8,7 @@
 [general]
 port              = 8420
 ring_buffer_mb    = 4
-default_source    = "local_files"     # local_files | youtube_music | jellyfin
+default_source    = "local_files"     # local_files | youtube_music | jellyfin | external_audio
 fallback_source   = "local_files"
 ffmpeg_path       = ''                # blank = `ffmpeg` on PATH; shared by all sources
 
@@ -35,6 +35,16 @@ user_id            = ''                # the ID of the user to track playback ag
 default_playlist   = ''                # jellyfin playlist ID goes here
 use_favorites      = false             # set to true to play your favorites instead of a playlist
 shuffle            = true              # true or false
+
+
+[external_audio]
+# Off by default. Enable from the dashboard Settings drawer before using External Audio.
+enabled = false
+# Empty = default Windows playback device. Otherwise use full endpoint id or part of device name, e.g. 'CABLE Input'.
+# This section is read directly by ExternalAudioSource.
+endpoint_id = ''
+# Empty = current Windows media session. Select a specific session from the dashboard when needed.
+media_session_id = ''
 
 [audio]
 output_gain = 1.0
