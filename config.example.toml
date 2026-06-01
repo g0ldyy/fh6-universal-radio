@@ -51,6 +51,16 @@ enabled            = false
 librespot_path     = ''                # blank = auto-download to fh6-radio/bin (else `librespot` on PATH)
 cache_dir          = 'spotify_cache'   # folder to save the Spotify Connect auth data
 
+[online_radio]
+enabled               = false
+default_station_index = 0 # index of radio station in list (0 refers to start of the list)
+
+# you can add as many stations as you want below
+#[[online_radio.stations]]
+#name = "" # name of radio station
+#url  = "" # url of radio station stream
+
+
 [audio]
 output_gain = 1.0
 

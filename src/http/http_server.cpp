@@ -10,6 +10,7 @@
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/external_media_session.hpp"
 #include "fh6/sources/spotify_source.hpp"
+#include "fh6/sources/online_radio_source.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -151,6 +152,18 @@ json config_to_json(const Config& c) {
              {"librespot_path", path_s(c.spotify.librespot_path)},
              {"cache_dir", path_s(c.spotify.cache_dir)},
          }},
+         {"online_radio",
+         json{
+             {"enabled", c.online_radio.enabled},
+             {"default_station_index", c.online_radio.default_station_index},
+             {"stations", [&c]() {
+                  json arr = json::array();
+                  for (const auto& st : c.online_radio.stations) {
+                      arr.push_back({{"name", st.name}, {"url", st.url}});
+                  }
+                  return arr;
+              }()}
+         }},
         {"audio",
          json{
              {"output_gain", c.audio.output_gain},
@@ -225,6 +238,19 @@ void apply_patch(Config& c, const json& j) {
         c.spotify.enabled        = pull(*it, "enabled", c.spotify.enabled);
         c.spotify.librespot_path = pull_path(*it, "librespot_path", c.spotify.librespot_path);
         c.spotify.cache_dir      = pull_path(*it, "cache_dir", c.spotify.cache_dir);
+    }
+    if (auto it = j.find("online_radio"); it != j.end()) {
+        c.online_radio.enabled = pull(*it, "enabled", c.online_radio.enabled);
+        c.online_radio.default_station_index = pull(*it, "default_station_index", c.online_radio.default_station_index);
+        if (auto st = it->find("stations"); st != it->end() && st->is_array()) {
+            c.online_radio.stations.clear();
+            for (const auto& item : *st) {
+                c.online_radio.stations.push_back({
+                    item.value("name", ""),
+                    item.value("url", "")
+                });
+            }
+        }
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
@@ -638,6 +664,20 @@ struct HttpServer::Impl {
             if (!jf->cast(std::move(playlist_id))) return fail(502, "jellyfin fetch failed");
             if (was_active) mgr.ring().drain();
             mgr.switch_to("jellyfin");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/online_radio/cast") {
+            auto* rd = find_typed<sources::OnlineRadioSource>("online_radio");
+            if (!rd) return fail(404, "online_radio not registered");
+            auto url = json::parse(req.body).value("url", std::string{});
+            if (url.empty()) return fail(400, "url required");
+            
+            const bool was_active = (mgr.active() == rd);
+            rd->stop();
+            rd->set_target(std::move(url));
+            if (was_active) mgr.ring().drain();
+            rd->play();
+            mgr.switch_to("online_radio");
             return ok();
         }
         if (m == "POST" && p == "/api/source/local_files/rescan") {

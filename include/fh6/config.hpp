@@ -55,6 +55,17 @@ struct JellyfinConfig {
     bool shuffle = true;
 };
 
+struct RadioStation {
+    std::string name;
+    std::string url;
+};
+
+struct OnlineRadioConfig {
+    bool enabled = false;
+    std::vector<RadioStation> stations;
+    size_t default_station_index = 0;
+};
+
 struct AudioConfig {
     float output_gain = 1.0f;
 };
@@ -86,6 +97,7 @@ struct Config {
     JellyfinConfig jellyfin;
     ExternalAudioConfig external_audio;
     SpotifyConfig spotify;
+    OnlineRadioConfig online_radio;
     PlaybackConfig playback;
 };
 

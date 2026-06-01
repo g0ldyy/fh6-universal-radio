@@ -68,6 +68,7 @@ add_library(version SHARED
     src/sources/external_audio_source.cpp
     src/sources/external_media_session.cpp
     src/sources/spotify_source.cpp
+    src/sources/online_radio_source.cpp
 )
 
 # MSVC carries the forwarders via pragmas in dll_main.cpp because its .def

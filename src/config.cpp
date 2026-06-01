@@ -94,6 +94,22 @@ Config load_config(const std::filesystem::path& path) {
     cfg.jellyfin.use_favorites = pick<bool>(jf, "use_favorites", cfg.jellyfin.use_favorites);
     cfg.jellyfin.shuffle = pick<bool>(jf, "shuffle", cfg.jellyfin.shuffle);
 
+    const auto& or_sec = section(root, "online_radio");
+    cfg.online_radio.enabled = pick<bool>(or_sec, "enabled", cfg.online_radio.enabled);
+    cfg.online_radio.default_station_index = pick<int>(or_sec, "default_station_index", cfg.online_radio.default_station_index);
+    try {
+        if (or_sec.contains("stations")) {
+            const auto& arr = toml::find<std::vector<toml::table>>(or_sec, "stations");
+            cfg.online_radio.stations.clear();
+            for (const auto& t : arr) {
+                RadioStation st;
+                if (t.count("name")) st.name = toml::get<std::string>(t.at("name"));
+                if (t.count("url"))  st.url  = toml::get<std::string>(t.at("url"));
+                cfg.online_radio.stations.push_back(st);
+            }
+        }
+    } catch (...) {}
+
     const auto& ea = section(root, "external_audio");
     cfg.external_audio.enabled = pick<bool>(ea, "enabled", cfg.external_audio.enabled);
     cfg.external_audio.endpoint_id =
@@ -150,6 +166,14 @@ struct Emitter {
         out += name;
         out += "]\n";
     }
+    
+    void header_array(const char* name) {
+        if (!out.empty()) out += '\n';
+        out += "[[";
+        out += name;
+        out += "]]\n";
+    }
+
     void kv(std::string_view key, std::string_view str) {
         // Literal (single-quoted) strings don't process escapes, which is
         // what we want for Windows paths. Use them when the value contains
@@ -264,6 +288,15 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("enabled", cfg.spotify.enabled);
     e.kv_path("librespot_path", cfg.spotify.librespot_path);
     e.kv_path("cache_dir", cfg.spotify.cache_dir);
+
+    e.header("online_radio");
+    e.kv("enabled", cfg.online_radio.enabled);
+    e.kv("default_station_index", (int64_t)cfg.online_radio.default_station_index);
+    for (const auto& st : cfg.online_radio.stations) {
+        e.header_array("online_radio.stations");
+        e.kv("name", st.name);
+        e.kv("url", st.url);
+    }
 
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);

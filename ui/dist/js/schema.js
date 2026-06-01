@@ -57,6 +57,14 @@ export const SCHEMA = [
       ["cache_dir", "Cache directory", "text"],
     ],
   ],
+  [
+    "online_radio",
+    "Online Radio",
+    [
+      ["enabled", "Enable Online Radio", "checkbox"],
+      ["default_station_index", "Default Station (Index)", "number", 0, 99, 1]
+    ],
+  ],
   ["audio", "Audio", [["output_gain", "Output gain", "number", 0, 1, 0.01]]],
   [
     "playback",

@@ -1,4 +1,4 @@
-import { $ } from "./dom.js";
+import { $, el } from "./dom.js";
 import { api } from "./api.js";
 import { connect } from "./events.js";
 import { icons } from "./icons.js";
@@ -33,6 +33,10 @@ const refs = {
   ytCard: $("#yt-cast-card"),
   jfCard: $("#jf-cast-card"),
   ytShuffle: $("#yt-shuffle"),
+  orCard: $("#or-cast-card"),
+  orForm: $("#or-cast"),
+  orUrl: $("#or-url"),
+  orStationView: $("#or-station-view"),
   drawer: $("#drawer"),
   scrim: $("#scrim"),
   form: $("#settings-form"),
@@ -128,6 +132,37 @@ function render() {
   const shuffleOn = !!available.find(s => s.name === "youtube_music")?.details?.shuffle;
   refs.ytShuffle.classList.toggle("toggled", shuffleOn);
   refs.ytShuffle.setAttribute("aria-pressed", String(shuffleOn));
+
+  refs.orCard.hidden = !available.some(s => s.name === "online_radio");
+
+  if (cfg?.online_radio?.stations && refs.orStationView) {
+    refs.orStationView.innerHTML = "";
+    cfg.online_radio.stations.forEach((station, index) => {
+      const row = el("div", { class: "row", style: "justify-content: space-between; padding: 6px 12px; background: var(--surface-raise); border-radius: var(--radius-md); border: 1px solid var(--line);" }, [
+        el("span", { style: "font-weight: 500;" }, station.name || `Station ${index + 1}`),
+        el("div", { class: "row", style: "gap: 8px;" }, [
+          el("button", { type: "button", class: "btn ghost", html: "Tune" }),
+          el("button", { type: "button", class: "btn ghost", html: "Delete" })
+        ])
+      ]);
+      
+      const btns = row.querySelectorAll("button");
+      btns[0].onclick = () => {
+        api.castOnlineRadio(station.url);
+        toast(`Tuning into ${station.name}`);
+      };
+      btns[1].onclick = async () => {
+        if (!confirm(`Delete ${station.name}?`)) return;
+        const newStations = cfg.online_radio.stations.filter((_, i) => i !== index);
+        try {
+          cfg = await api.putConfig({ online_radio: { stations: newStations } });
+          render();
+          toast("Station deleted");
+        } catch(e) { toast(e.message, true); }
+      };
+      refs.orStationView.appendChild(row);
+    });
+  }
 }
 
 $("#t-play").addEventListener("click", () => transport("play"));
@@ -142,6 +177,40 @@ $("#yt-cast").addEventListener("submit", async e => {
     await api.castYoutube(url);
     $("#yt-url").value = "";
     toast("Casting…");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+const orForm = document.getElementById("or-cast");
+const orUrlInput = $("#or-url");
+
+$("#or-cast").addEventListener("submit", async e => {
+  e.preventDefault();
+  const url = orUrlInput.value.trim();
+  if (!url) return;
+  try {
+    await api.castOnlineRadio(url);
+    orUrlInput.value = "";
+    toast("Casting audio stream...");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$("#or-save").addEventListener("click", async () => {
+  const url = orUrlInput.value.trim();
+  if (!url) return toast("Enter a URL first to save.", true);
+
+  const name = prompt("Enter a name for this radio station:", "New Station");
+  if (!name) return; // cancelled
+
+  const updatedStations = [...(cfg?.online_radio?.stations || []), { name, url }];
+
+  try {
+    cfg = await api.putConfig({ online_radio: { stations: updatedStations } });
+    render();
+    toast("Station saved!");
   } catch (err) {
     toast(err.message, true);
   }
