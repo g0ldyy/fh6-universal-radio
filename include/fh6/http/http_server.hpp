@@ -22,7 +22,7 @@ namespace fh6::http {
 //
 //   GET  /api/sources                     registered sources
 //   POST /api/source/switch               body {"source":"name"}
-//   POST /api/source/<name>/{play,pause,stop,next,previous}
+//   POST /api/source/<name>/{play,pause,stop,next,previous,seek}
 //
 //   POST /api/source/youtube_music/cast   body {"url":"..."}
 //   POST /api/source/local_files/rescan   body {"music_dir":"...","recursive":bool}

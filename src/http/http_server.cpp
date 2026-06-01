@@ -643,6 +643,12 @@ struct HttpServer::Impl {
             else if (act == "stop")     { s->stop();     if (is_active) mgr.ring().drain(); }
             else if (act == "next")     { s->next();     if (is_active) mgr.ring().drain(); }
             else if (act == "previous") { s->previous(); if (is_active) mgr.ring().drain(); }
+            else if (act == "seek") {
+                auto j = req.body.empty() ? json::object() : json::parse(req.body);
+                const auto pos = static_cast<uint64_t>(std::max<int64_t>(0, j.value("position_ms", int64_t{0})));
+                s->seek(pos);
+                if (is_active) mgr.ring().drain();
+            }
             else return fail(404, "unknown action");
             return ok();
         }
