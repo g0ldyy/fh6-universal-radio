@@ -18,8 +18,12 @@ if(NOT WIN32)
         "toolchain file, e.g. -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake")
 endif()
 
+if(NOT DEFINED URADIO_VERSION)
+    set(URADIO_VERSION "unknown")
+endif()
+
 add_compile_definitions(_WIN32_WINNT=0x0A00 WIN32_LEAN_AND_MEAN NOMINMAX
-                        UNICODE _UNICODE)
+                        UNICODE _UNICODE URADIO_VERSION="${URADIO_VERSION}")
 
 if(MSVC)
     add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8 /MP /EHsc /wd4324)

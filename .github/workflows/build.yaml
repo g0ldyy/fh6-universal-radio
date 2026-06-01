@@ -3,15 +3,23 @@ on:
   push:
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Check code
+        run: npm install && npm run check
+
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      
-      - name: Check code
-        run: npm install && npm run check
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

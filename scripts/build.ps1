@@ -41,8 +41,24 @@ cmake.exe not found. Either:
 "@
 }
 
+function Get-GitRef {
+    $gitRef = git tag --points-at HEAD 2>$null
+
+    if ([string]::IsNullOrWhiteSpace($gitRef)) {
+        $gitRef = git rev-parse --short HEAD 2>$null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($gitRef)) {
+        return "unknown"
+    }
+
+    return $gitRef.Trim()
+}
+
 $cmake = Find-CMake
 Write-Host "Using cmake: $cmake" -ForegroundColor DarkGray
+$gitRef = Get-GitRef
+Write-Host "Extracted version from git: $gitRef" -ForegroundColor DarkGray
 
 if (-not (Test-Path (Join-Path $root "third_party\nlohmann\nlohmann\json.hpp"))) {
     Write-Host "third_party/ is empty -- running get-deps.ps1 first." -ForegroundColor Yellow
@@ -50,7 +66,7 @@ if (-not (Test-Path (Join-Path $root "third_party\nlohmann\nlohmann\json.hpp")))
 }
 
 Write-Host "-> cmake configure" -ForegroundColor Cyan
-& $cmake -S $root -B $build -A x64 | Out-Host
+& $cmake -S $root -B $build -A x64 -DURADIO_VERSION="$gitRef" | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
 
 Write-Host "-> cmake build (Release)" -ForegroundColor Cyan
