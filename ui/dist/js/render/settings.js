@@ -1,6 +1,6 @@
 import { $$, el } from "../dom.js";
 import { db } from "../format.js";
-import { EQ_BAND_LABELS, SCHEMA } from "../schema.js";
+import { EQ_BAND_LABELS, SCHEMA, SOURCE_SECTIONS } from "../schema.js";
 
 function buildField(section, spec, cfg) {
   const [key, label, type, a, b, c] = spec;
@@ -12,6 +12,19 @@ function buildField(section, spec, cfg) {
     return el("div", { class: "field checkbox" }, [
       el("input", { type: "checkbox", id, checked: !!cur, dataset }),
       el("label", { for: id }, label),
+    ]);
+  }
+
+  if (type === "source-select") {
+    const available = SOURCE_SECTIONS.filter(([s]) => cfg?.[s]?.enabled);
+    const options = [el("option", { value: "" }, "— none —")];
+    for (const [value, name] of available)
+      {options.push(el("option", { value, selected: cur === value }, name));}
+    if (cur && !available.some(([v]) => v === cur))
+      {options.push(el("option", { value: cur, selected: true }, cur));}
+    return el("div", { class: "field" }, [
+      el("label", { for: id }, label),
+      el("select", { id, dataset }, options),
     ]);
   }
 
