@@ -31,7 +31,8 @@ ENV PATH="/opt/llvm-mingw/bin:${PATH}"
 ARG WINRT_MINGW_VERSION=2.0.250303.1-2-any
 RUN export MINGW_TARGET_DIR="/opt/llvm-mingw/x86_64-w64-mingw32" \
     && curl -fSL "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-cppwinrt-${WINRT_MINGW_VERSION}.pkg.tar.zst" -o /tmp/mingw-cppwinrt.tar.zst \
-    && tar -I zstd -xf /tmp/mingw-cppwinrt.tar.zst -C ${MINGW_TARGET_DIR}/include --strip-components=2 mingw64/include
+    && tar -I zstd -xf /tmp/mingw-cppwinrt.tar.zst -C ${MINGW_TARGET_DIR}/include --strip-components=2 mingw64/include \
+    && rm /tmp/mingw-cppwinrt.tar.zst
 
 # Copy
 WORKDIR /src
