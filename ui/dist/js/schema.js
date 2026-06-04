@@ -4,6 +4,7 @@ export const SOURCE_SECTIONS = [
   ["local_files", "Local files"],
   ["youtube_music", "YouTube Music"],
   ["jellyfin", "Jellyfin"],
+  ["koel", "Koel"],
   ["external_audio", "External Audio"],
   ["spotify", "Spotify Connect"],
 ];
@@ -52,6 +53,16 @@ export const SCHEMA = [
       ["default_playlist", "Default Playlist", "text"],
       ["use_favorites", "Use Favorites", "checkbox"],
       ["shuffle", "Shuffle", "checkbox"],
+    ],
+  ],
+  [
+    "koel",
+    "Koel",
+    [
+      ["enabled", "Enabled", "checkbox"],
+      ["server_url", "Server URL (e.g. 'https://koel.example.com' or 'https://koel.example.com/api/subsonic')", "text"],
+      ["username", "Username (your Koel email)", "text"],
+      ["password", "Password / API Key", "text"],
     ],
   ],
   ["external_audio", "External Audio", [["enabled", "Enabled", "checkbox"]]],

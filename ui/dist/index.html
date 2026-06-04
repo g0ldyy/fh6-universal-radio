@@ -71,6 +71,26 @@
         </form>
       </section>
 
+      <section class="card" id="koel-cast-card" hidden>
+        <h2>Koel Radio</h2>
+        <p class="muted">
+          Select a source type and pick from the list, then click Play.
+        </p>
+        <form id="koel-cast" class="row" style="flex-wrap: wrap; gap: 8px;">
+          <select id="koel-source-type" style="flex: 1; min-width: 140px;">
+            <option value="favorites">Favorites</option>
+            <option value="playlist">Playlist</option>
+            <option value="album">Album</option>
+            <option value="artist">Artist</option>
+            <option value="random">Random</option>
+          </select>
+          <select id="koel-source-id" style="flex: 1; min-width: 160px;" disabled>
+            <option value="">—</option>
+          </select>
+          <button type="submit" class="btn filled">Play</button>
+        </form>
+      </section>
+
       <section class="card" id="output-card" hidden>
         <h2>Output</h2>
         <label class="slider">

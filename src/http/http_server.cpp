@@ -4,9 +4,11 @@
 #include "fh6/deps.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/log.hpp"
+#include "fh6/net/http_get.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
+#include "fh6/sources/koel_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/external_media_session.hpp"
 #include "fh6/sources/spotify_source.hpp"
@@ -33,6 +35,18 @@ namespace fh6::http {
 using json = nlohmann::json;
 
 namespace {
+
+std::string url_encode(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (unsigned char c : s) {
+        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+            out += static_cast<char>(c);
+        else
+            out += std::format("%{:02X}", c);
+    }
+    return out;
+}
 
 constexpr const char* state_string(PlaybackState s) noexcept {
     switch (s) {
@@ -110,6 +124,12 @@ json source_to_json(IAudioSource* s) {
         j["details"]["shuffle"] = yt->shuffle();
     if (auto* rd = dynamic_cast<sources::OnlineRadioSource*>(s))
         j["details"]["song_history"] = rd->song_history();
+    if (auto* kl = dynamic_cast<sources::KoelSource*>(s)) {
+        j["details"]["source_type"] = kl->source_type();
+        j["details"]["track_count"] = kl->track_count();
+        if (kl->auth_state() == AuthState::error)
+            j["details"]["auth_error"] = kl->auth_error();
+    }
     return j;
 }
 
@@ -171,6 +191,17 @@ json config_to_json(const Config& c) {
              {"default_playlist", c.jellyfin.default_playlist},
              {"use_favorites", c.jellyfin.use_favorites},
              {"shuffle", c.jellyfin.shuffle},
+         }},
+        {"koel",
+         json{
+             {"enabled", c.koel.enabled},
+             {"server_url", c.koel.server_url},
+             {"username", c.koel.username},
+             {"password", c.koel.password},
+             {"source_type", c.koel.source_type},
+             {"source_id", c.koel.source_id},
+             {"shuffle", c.koel.shuffle},
+             {"random_count", c.koel.random_count},
          }},
         {"external_audio",
          json{
@@ -296,6 +327,16 @@ void apply_patch(Config& c, const json& j) {
         c.jellyfin.default_playlist = pull(*it, "default_playlist", c.jellyfin.default_playlist);
         c.jellyfin.use_favorites    = pull(*it, "use_favorites", c.jellyfin.use_favorites);
         c.jellyfin.shuffle          = pull(*it, "shuffle", c.jellyfin.shuffle);
+    }
+    if (auto it = j.find("koel"); it != j.end()) {
+        c.koel.enabled      = pull(*it, "enabled", c.koel.enabled);
+        c.koel.server_url   = pull(*it, "server_url", c.koel.server_url);
+        c.koel.username     = pull(*it, "username", c.koel.username);
+        c.koel.password     = pull(*it, "password", c.koel.password);
+        c.koel.source_type  = pull(*it, "source_type", c.koel.source_type);
+        c.koel.source_id    = pull(*it, "source_id", c.koel.source_id);
+        c.koel.shuffle      = pull(*it, "shuffle", c.koel.shuffle);
+        c.koel.random_count = pull(*it, "random_count", c.koel.random_count);
     }
     if (auto it = j.find("external_audio"); it != j.end()) {
         c.external_audio.enabled     = pull(*it, "enabled", c.external_audio.enabled);
@@ -624,6 +665,7 @@ struct HttpServer::Impl {
 
         if (m == "OPTIONS") return send_response(client, 200, "", "text/plain");
 
+        if (m == "GET" && p == "/favicon.ico") return send_response(client, 200, "", "image/x-icon");
         if (m == "GET" && p == "/api/state") return ok(build_state());
         if (m == "GET" && p == "/api/events") return send_event_snapshot(client);
         if (m == "GET" && p == "/api/sources") return ok(build_sources());
@@ -825,6 +867,74 @@ struct HttpServer::Impl {
             if (was_active) mgr.ring().drain();
             mgr.switch_to("jellyfin");
             return ok();
+        }
+        if (m == "POST" && p == "/api/source/koel/cast") {
+            auto* kl = find_typed<sources::KoelSource>("koel");
+            if (!kl) return fail(404, "Koel not registered – enable it in Settings first");
+            auto j = json::parse(req.body);
+            auto source_type = j.value("source_type", std::string{});
+            auto source_id   = j.value("source_id", std::string{});
+            if (source_type.empty()) return fail(400, "source_type required");
+            const bool was_active = (mgr.active() == kl);
+            auto err = kl->cast(source_type, source_id);
+            if (!err.empty()) return fail(502, err);
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("koel");
+            return ok();
+        }
+        if (m == "GET" && p.starts_with("/api/source/koel/browse/")) {
+            auto snap = store.snapshot();
+            auto& k   = snap.koel;
+            if (!k.enabled || k.server_url.empty())
+                return fail(400, "Koel not configured");
+            auto auth = std::format("u={}&p={}&v=1.16.1&c=fh6-radio",
+                                     url_encode(k.username), url_encode(k.password));
+            auto su = k.server_url;
+            if (su.ends_with('/')) su.resize(su.size() - 1);
+            auto sub = std::string_view(p).substr(std::string_view("/api/source/koel/browse/").size());
+            std::string method, extra;
+            if (sub == "playlists") { method = "getPlaylists"; }
+            else if (sub == "albums") { method = "getAlbumList2"; extra = "type=newest&size=50"; }
+            else if (sub == "artists") { method = "getArtists"; }
+            else return fail(404, "unknown browse type");
+            auto url = std::format("{}/rest/{}.view?f=json&{}", su, method, auth);
+            if (!extra.empty()) url += "&" + extra;
+            auto body = net::http_get(url);
+            if (!body) return fail(502, "cannot reach Koel server");
+            try {
+                auto root = json::parse(*body);
+                auto resp = root.find("subsonic-response");
+                if (resp == root.end()) return fail(502, "unexpected response");
+                if (resp->value("status", "") != "ok")
+                    return fail(502, resp->value("error", json::object()).value("message", "API error"));
+                json out = json::array();
+                if (sub == "playlists") {
+                    auto lists = resp->find("playlists");
+                    if (lists != resp->end() && lists->is_object()) {
+                        auto& arr = (*lists)["playlist"];
+                        if (arr.is_array()) for (auto& e : arr)
+                            out.push_back({{"id", e.value("id", "")}, {"name", e.value("name", "")}});
+                    }
+                } else if (sub == "albums") {
+                    auto lists = resp->find("albumList2");
+                    if (lists != resp->end() && lists->is_object()) {
+                        auto& arr = (*lists)["album"];
+                        if (arr.is_array()) for (auto& e : arr)
+                            out.push_back({{"id", e.value("id", "")}, {"name", e.value("name", "")}});
+                    }
+                } else if (sub == "artists") {
+                    auto idx = resp->find("artists");
+                    if (idx != resp->end() && idx->is_object()) {
+                        auto& arr = (*idx)["index"];
+                        if (arr.is_array()) for (auto& ix : arr)
+                            for (auto& a : ix["artist"])
+                                out.push_back({{"id", a.value("id", "")}, {"name", a.value("name", "")}});
+                    }
+                }
+                return ok(json{{"items", std::move(out)}});
+            } catch (const std::exception& e) {
+                return fail(502, std::string("parse error: ") + e.what());
+            }
         }
         if (m == "POST" && p == "/api/source/online_radio/cast") {
             auto* rd = find_typed<sources::OnlineRadioSource>("online_radio");

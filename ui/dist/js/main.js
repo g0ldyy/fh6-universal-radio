@@ -34,6 +34,7 @@ const refs = {
   outputCard: $("#output-card"),
   ytCard: $("#yt-cast-card"),
   jfCard: $("#jf-cast-card"),
+  koelCard: $("#koel-cast-card"),
   ytShuffle: $("#yt-shuffle"),
   drawer: $("#drawer"),
   scrim: $("#scrim"),
@@ -151,6 +152,7 @@ function render() {
   // Source-specific cards only show while that source is on air.
   refs.ytCard.hidden = active !== "youtube_music";
   refs.jfCard.hidden = active !== "jellyfin";
+  refs.koelCard.hidden = active !== "koel";
   const shuffleOn = !!available.find(s => s.name === "youtube_music")?.details?.shuffle;
   refs.ytShuffle.classList.toggle("toggled", shuffleOn);
   refs.ytShuffle.setAttribute("aria-pressed", String(shuffleOn));
@@ -180,6 +182,46 @@ $("#yt-shuffle").addEventListener("click", async () => {
   try {
     await api.shuffleYoutube(shuffle);
     toast(shuffle ? "Shuffle on" : "Shuffle off");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$("#koel-source-type").addEventListener("change", async () => {
+  const type = $("#koel-source-type").value;
+  const sel = $("#koel-source-id");
+  sel.innerHTML = "";
+  if (type === "favorites" || type === "random") {
+    sel.disabled = true;
+    sel.innerHTML = '<option value="">—</option>';
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const data = await api.browseKoel(type === "playlist" ? "playlists" : type + "s");
+    const items = data.items || [];
+    sel.innerHTML = '<option value="">Select ' + type + '…</option>';
+    items.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item.id;
+      opt.textContent = item.name;
+      sel.appendChild(opt);
+    });
+  } catch (err) {
+    sel.innerHTML = '<option value="">Error loading</option>';
+    toast(err.message, true);
+  }
+});
+
+$("#koel-cast").addEventListener("submit", async e => {
+  e.preventDefault();
+  const sourceType = $("#koel-source-type").value;
+  const sel = $("#koel-source-id");
+  const sourceId = sel.disabled ? "" : sel.value.trim();
+  try {
+    await api.castKoel(sourceType, sourceId);
+    toast("Playing…");
   } catch (err) {
     toast(err.message, true);
   }
