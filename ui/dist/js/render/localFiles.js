@@ -162,7 +162,7 @@ export function createLocalFiles(main, ctx) {
 					el("label", { class: "lf-mode" }, ["Repeat", repeatSelect]),
 				]),
 			]),
-			
+
 			el("div", { class: "row lf-editor-foot" }, [saveBtn]),
 		]),
 		el("div", { class: "lf-queue" }, [
@@ -469,6 +469,7 @@ export function createLocalFiles(main, ctx) {
 	// --- lifecycle ------------------------------------------------------------
 	let lastTrackCount = -1;
 	let lastIndexVersion = -1;
+	let lastTrackTitle = "";
 	function render() {
 		const state = ctx.getState();
 		const isActive = state?.sources?.active === "local_files";
@@ -480,9 +481,12 @@ export function createLocalFiles(main, ctx) {
 		const lf = state?.sources?.available?.find(s => s.name === "local_files");
 		const tc = lf?.details?.track_count ?? -1;
 		const iv = lf?.details?.index_version ?? -1;
-		if (loaded && (tc !== lastTrackCount || iv !== lastIndexVersion)) {
+		const title = state?.track?.title ?? "";
+
+		if (loaded && (tc !== lastTrackCount || iv !== lastIndexVersion || title !== lastTrackTitle)) {
 			lastTrackCount = tc;
 			lastIndexVersion = iv;
+			lastTrackTitle = title;
 			loadQueue();
 		}
 	}
@@ -492,5 +496,6 @@ export function createLocalFiles(main, ctx) {
 		invalidate: () => {
 			loaded = false;
 		},
+		reloadQueue: loadQueue,
 	};
 }

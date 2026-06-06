@@ -108,6 +108,11 @@ async function transport(action) {
     }
     try {
         await api.transport(source, act);
+        await new Promise(r => setTimeout(r, 300));
+        state = await api.getState().catch(() => state);
+        render();
+        // Some transports may change the queue so refresh it if needed.
+        if (source === "local_files") localFiles.reloadQueue();
     } catch (e) {
         toast(e.message, true);
     }
