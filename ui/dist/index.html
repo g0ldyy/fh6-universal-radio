@@ -71,6 +71,25 @@
         </form>
       </section>
 
+      <section class="card" id="koel-cast-card" hidden>
+        <h2>Koel / Subsonic</h2>
+        <p class="muted">
+          Select a source type, use the search to filter, pick from the list, then Play.
+        </p>
+        <form id="koel-cast" class="row" style="flex-wrap: wrap; gap: 8px;">
+          <select id="koel-source-type" style="flex: 1; min-width: 140px;">
+            <option value="favorites">Favorites</option>
+            <option value="playlist">Playlist</option>
+            <option value="album">Album</option>
+            <option value="artist">Artist</option>
+            <option value="random">Random</option>
+          </select>
+          <input type="text" id="koel-source-id" placeholder="Search and select…" autocomplete="off" style="flex: 1; min-width: 200px;" list="koel-datalist" disabled>
+          <datalist id="koel-datalist"></datalist>
+          <button type="submit" class="btn filled">Play</button>
+        </form>
+      </section>
+
       <section class="card" id="output-card" hidden>
         <h2>Output</h2>
         <label class="slider">

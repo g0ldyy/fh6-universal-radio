@@ -8,7 +8,7 @@
 [general]
 port              = 8420
 ring_buffer_mb    = 4
-default_source    = "online_radio"    # local_files | online_radio | youtube_music | jellyfin | external_audio | spotify
+default_source    = "online_radio"    # local_files | online_radio | youtube_music | jellyfin | koel | external_audio | spotify
 fallback_source   = "local_files"
 ffmpeg_path       = ''                # blank = auto-download to fh6-radio/bin (else `ffmpeg` on PATH); shared by all sources
 
@@ -45,6 +45,15 @@ default_playlist   = ''                # jellyfin playlist ID goes here
 use_favorites      = false             # set to true to play your favorites instead of a playlist
 shuffle            = true              # true or false
 
+[koel]
+enabled            = false
+server_url         = ''                # e.g. 'https://koel.example.com'
+username           = 'email@example.com' # your Koel email or Subsonic username
+password           = ''                # Koel Subsonic API key (Profile & Preferences > Subsonic) or Subsonic API key
+source_type        = 'favorites'       # chosen from the main menu
+source_id          = ''                # chosen from the main menu
+shuffle            = true
+random_count       = 25
 
 [external_audio]
 # Off by default. Enable from the dashboard Settings drawer before using External Audio.

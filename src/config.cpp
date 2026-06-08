@@ -3,6 +3,7 @@
 
 #include <toml.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <span>
 #include <system_error>
@@ -134,6 +135,16 @@ Config load_config(const std::filesystem::path& path) {
         pick<std::string>(jf, "default_playlist", cfg.jellyfin.default_playlist);
     cfg.jellyfin.use_favorites = pick<bool>(jf, "use_favorites", cfg.jellyfin.use_favorites);
     cfg.jellyfin.shuffle       = pick<bool>(jf, "shuffle", cfg.jellyfin.shuffle);
+
+    const auto& kl              = section(root, "koel");
+    cfg.koel.enabled           = pick<bool>(kl, "enabled", cfg.koel.enabled);
+    cfg.koel.server_url        = pick<std::string>(kl, "server_url", cfg.koel.server_url);
+    cfg.koel.username          = pick<std::string>(kl, "username", cfg.koel.username);
+    cfg.koel.password          = pick<std::string>(kl, "password", cfg.koel.password);
+    cfg.koel.source_type       = pick<std::string>(kl, "source_type", cfg.koel.source_type);
+    cfg.koel.source_id         = pick<std::string>(kl, "source_id", cfg.koel.source_id);
+    cfg.koel.shuffle           = pick<bool>(kl, "shuffle", cfg.koel.shuffle);
+    cfg.koel.random_count      = (std::max)(pick<int>(kl, "random_count", cfg.koel.random_count), 1);
 
     const auto& or_sec       = section(root, "online_radio");
     cfg.online_radio.enabled = pick<bool>(or_sec, "enabled", cfg.online_radio.enabled);
@@ -340,6 +351,16 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("default_playlist", cfg.jellyfin.default_playlist);
     e.kv("use_favorites", cfg.jellyfin.use_favorites);
     e.kv("shuffle", cfg.jellyfin.shuffle);
+
+    e.header("koel");
+    e.kv("enabled", cfg.koel.enabled);
+    e.kv("server_url", cfg.koel.server_url);
+    e.kv("username", cfg.koel.username);
+    e.kv("password", cfg.koel.password);
+    e.kv("source_type", cfg.koel.source_type);
+    e.kv("source_id", cfg.koel.source_id);
+    e.kv("shuffle", cfg.koel.shuffle);
+    e.kv("random_count", (int64_t)cfg.koel.random_count);
 
     e.header("external_audio");
     e.kv("enabled", cfg.external_audio.enabled);

@@ -14,6 +14,7 @@
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
+#include "fh6/sources/koel_source.hpp"
 #include "fh6/sources/spotify_source.hpp"
 #include "fh6/worker/worker_client.hpp"
 #include "fh6/sources/online_radio_source.hpp"
@@ -186,10 +187,16 @@ void run_bridge(HMODULE self) noexcept {
         }
         if (c.jellyfin.enabled && !mgr.find("jellyfin")) {
             auto src = std::make_unique<sources::JellyfinSource>(c.jellyfin, c.general.ffmpeg_path,
-                                                                  &worker);
+                                                                   &worker);
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.jellyfin.enabled && mgr.find("jellyfin")) {
             mgr.unregister_source("jellyfin");
+        }
+        if (c.koel.enabled && !mgr.find("koel")) {
+            auto src = std::make_unique<sources::KoelSource>(c.koel, c.general.ffmpeg_path, &worker);
+            if (src->initialize()) mgr.register_source(std::move(src));
+        } else if (!c.koel.enabled && mgr.find("koel")) {
+            mgr.unregister_source("koel");
         }
         if (c.online_radio.enabled && !mgr.find("online_radio")) {
             auto src = std::make_unique<sources::OnlineRadioSource>(c.online_radio,
@@ -282,6 +289,10 @@ void run_bridge(HMODULE self) noexcept {
         if (auto* jf = dynamic_cast<sources::JellyfinSource*>(mgr.find("jellyfin"))) {
             jf->set_ffmpeg_path(c.general.ffmpeg_path);
             jf->set_config(c.jellyfin);
+        }
+        if (auto* kl = dynamic_cast<sources::KoelSource*>(mgr.find("koel"))) {
+            kl->set_ffmpeg_path(c.general.ffmpeg_path);
+            kl->set_config(c.koel);
         }
         if (auto* ext = dynamic_cast<sources::ExternalAudioSource*>(mgr.find("external_audio"))) {
             ext->set_config(c.external_audio);
