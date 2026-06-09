@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cwctype>
 #include <cstring>
@@ -143,6 +144,12 @@ std::vector<DWORD> find_apple_music_pids() noexcept {
 
 bool contains_pid(const std::vector<DWORD>& pids, DWORD pid) noexcept {
     return std::find(pids.begin(), pids.end(), pid) != pids.end();
+}
+
+uint64_t ms_from_timespan(winrt::Windows::Foundation::TimeSpan const& ts) noexcept {
+    using namespace std::chrono;
+    const auto ms = duration_cast<milliseconds>(ts);
+    return ms.count() > 0 ? static_cast<uint64_t>(ms.count()) : 0;
 }
 
 bool is_apple_music_session_id(std::string_view id) noexcept {
@@ -977,10 +984,8 @@ void AppleMusicSource::append_frames(const void* data, uint32_t frames, uint32_t
 
     const auto bytes_total = out_frames * kFrameBytes;
     if (ring.write(scratch_.data(), bytes_total) == bytes_total) {
-        const auto queued = ring.readable();
-        const auto played_bytes = bytes_total > queued ? bytes_total - queued : 0;
         const auto previous = position_ms_.load(std::memory_order_acquire);
-        position_ms_.store(previous + (played_bytes * 1000ull / kPcmBytesPerSec),
+        position_ms_.store(previous + (bytes_total * 1000ull / kPcmBytesPerSec),
                            std::memory_order_release);
     }
 }
@@ -1036,6 +1041,18 @@ void AppleMusicSource::refresh_track_locked(bool force) {
             if (!title.empty()) next.title = std::move(title);
             if (!artist.empty()) next.artist = std::move(artist);
             if (!album.empty()) next.album = std::move(album);
+
+            try {
+                const auto timeline = media_->session.GetTimelineProperties();
+                const auto position = ms_from_timespan(timeline.Position());
+                const auto start = ms_from_timespan(timeline.StartTime());
+                const auto end = ms_from_timespan(timeline.EndTime());
+                if (position > 0) {
+                    next.position_ms = position;
+                    position_ms_.store(position, std::memory_order_release);
+                }
+                if (end > start) next.duration_ms = end - start;
+            } catch (...) {}
         }
     } catch (...) {}
 
