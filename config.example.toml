@@ -89,3 +89,14 @@ equalizer_enabled    = false
 equalizer_bands      = [0.0, 0.0, 0.0, 0.0, 0.0]   # 60/250/1000/4000/12000 Hz, [-6, +6] dB
 force_stereo_audio   = true        # off => mono (avoids metallic phase-cancellation on the 3D radio channel)
 prebuffer_next_track = true        # pre-spawn the next track's pipeline so transitions skip the "(loading)" gap
+
+[tidal]
+enabled          = false
+client_id        = ""              # blank = use the default python-tidal client
+client_secret    = ""              # blank = use the default python-tidal secret
+access_token     = ""
+refresh_token    = ""
+expiry_time      = 0
+default_playlist = ""              # TIDAL playlist ID (UUID format)
+shuffle          = true
+audio_quality    = "HIGH"          # LOW | HIGH | LOSSLESS | HI_RES

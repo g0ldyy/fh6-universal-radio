@@ -14,7 +14,7 @@ describe("renderSettings", () => {
       local_files: { enabled: true },
       playback: { equalizer_bands: [1, 2, 3, 4, 5], race_start_playback: "restart" },
     });
-    expect(form().querySelectorAll("fieldset").length).toBe(9);
+    expect(form().querySelectorAll("fieldset").length).toBe(10);
     expect(form().querySelector("#f-general-port").value).toBe("8420");
     expect(form().querySelector("#f-local_files-enabled").checked).toBe(true);
 

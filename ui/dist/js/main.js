@@ -12,6 +12,7 @@ import { createDeps } from "./render/deps.js";
 import { createExternalAudio } from "./render/externalAudio.js";
 import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
+import { createTidal } from "./render/tidal.js";
 
 let state = null;
 let cfg = null;
@@ -34,6 +35,7 @@ const refs = {
   outputCard: $("#output-card"),
   ytCard: $("#yt-cast-card"),
   jfCard: $("#jf-cast-card"),
+  tidalCard: $("#tidal-cast-card"),
   ytShuffle: $("#yt-shuffle"),
   drawer: $("#drawer"),
   scrim: $("#scrim"),
@@ -89,6 +91,11 @@ const onlineRadio = createOnlineRadio(mainEl, {
   },
 });
 
+const tidal = createTidal(mainEl, {
+  getState: () => state,
+  getConfig: () => cfg,
+});
+
 async function switchSource(name) {
   try {
     await api.switchSource(name);
@@ -142,6 +149,7 @@ function render() {
   externalAudio.render();
   localFiles.render();
   onlineRadio.render();
+  tidal.render();
 
   refs.sourceCard.hidden = false;
   refs.outputCard.hidden = !state.sources?.active;
@@ -151,6 +159,7 @@ function render() {
   // Source-specific cards only show while that source is on air.
   refs.ytCard.hidden = active !== "youtube_music";
   refs.jfCard.hidden = active !== "jellyfin";
+  refs.tidalCard.hidden = active !== "tidal";
   const shuffleOn = !!available.find(s => s.name === "youtube_music")?.details?.shuffle;
   refs.ytShuffle.classList.toggle("toggled", shuffleOn);
   refs.ytShuffle.setAttribute("aria-pressed", String(shuffleOn));
@@ -198,6 +207,19 @@ $("#jf-cast").addEventListener("submit", async e => {
   }
 });
 
+$("#tidal-cast").addEventListener("submit", async e => {
+  e.preventDefault();
+  const playlistId = $("#tidal-url").value.trim();
+  if (!playlistId) return;
+  try {
+    await api.castTidal(playlistId);
+    $("#tidal-url").value = "";
+    toast("Playing TIDAL playlist…");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
 $("#open-settings").addEventListener("click", async () => {
   try {
     cfg = await api.getConfig();
@@ -221,6 +243,7 @@ $("#save-config").addEventListener("click", async () => {
     externalAudio.invalidate();
     localFiles.invalidate();
     onlineRadio.invalidate();
+    tidal.invalidate();
     state = await api.getState().catch(() => state);
     render();
     toast("Saved");
@@ -236,6 +259,7 @@ $("#reload-config").addEventListener("click", async () => {
     externalAudio.invalidate();
     localFiles.invalidate();
     onlineRadio.invalidate();
+    tidal.invalidate();
     renderSettings(refs.form, cfg);
     render();
     toast("Reloaded from disk");
