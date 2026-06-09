@@ -9,7 +9,8 @@
 # or, for the Xbox/Game Pass install routed through Proton:
 #   ~/.steam/steam/steamapps/compatdata/<appid>/pfx/drive_c/...
 #
-# Existing files are backed up to *.bak before being overwritten.
+# Existing files are backed up to *.bak before being overwritten. Existing
+# backups are preserved so update installs do not replace an original proxy DLL.
 
 set -euo pipefail
 
@@ -30,7 +31,7 @@ mdir=$dist/media
 backup_and_copy() {
     local src=$1 dst=$2
     mkdir -p "$(dirname "$dst")"
-    [ -f "$dst" ] && cp -f "$dst" "$dst.bak"
+    [ -f "$dst" ] && [ ! -f "$dst.bak" ] && cp -f "$dst" "$dst.bak"
     cp -f "$src" "$dst"
     printf '  + %s\n' "${dst#"$game/"}"
 }

@@ -118,6 +118,19 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
     cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
 
+    const auto& am = section(root, "apple_music");
+    cfg.apple_music.enabled = pick<bool>(am, "enabled", cfg.apple_music.enabled);
+    cfg.apple_music.transport_controls =
+        pick<bool>(am, "transport_controls", cfg.apple_music.transport_controls);
+    cfg.apple_music.mute_external_output =
+        pick<bool>(am, "mute_external_output", cfg.apple_music.mute_external_output);
+    cfg.apple_music.capture_mode =
+        pick<std::string>(am, "capture_mode", cfg.apple_music.capture_mode);
+    cfg.apple_music.capture_device =
+        pick<std::string>(am, "capture_device", cfg.apple_music.capture_device);
+    cfg.apple_music.monitor_when_radio_inactive =
+        pick<bool>(am, "monitor_when_radio_inactive", cfg.apple_music.monitor_when_radio_inactive);
+
     const auto& sp             = section(root, "spotify");
     cfg.spotify.enabled        = pick<bool>(sp, "enabled", cfg.spotify.enabled);
     cfg.spotify.librespot_path = pick_path(sp, "librespot_path");
@@ -175,6 +188,14 @@ Config load_config(const std::filesystem::path& path) {
     }
     cfg.playback.quick_station_skip =
         pick<bool>(pb, "quick_station_skip", cfg.playback.quick_station_skip);
+    cfg.playback.radio_pause_delay_ms =
+        pick<int>(pb, "radio_pause_delay_ms", cfg.playback.radio_pause_delay_ms);
+    if (cfg.playback.radio_pause_delay_ms < 20) cfg.playback.radio_pause_delay_ms = 20;
+    if (cfg.playback.radio_pause_delay_ms > 5000) cfg.playback.radio_pause_delay_ms = 5000;
+    cfg.playback.radio_diagnostics =
+        pick<bool>(pb, "radio_diagnostics", cfg.playback.radio_diagnostics);
+    cfg.playback.show_album_in_hud =
+        pick<bool>(pb, "show_album_in_hud", cfg.playback.show_album_in_hud);
     cfg.playback.volume_normalization =
         pick<bool>(pb, "volume_normalization", cfg.playback.volume_normalization);
     cfg.playback.equalizer_enabled =
@@ -332,6 +353,14 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
     e.kv("shuffle", cfg.youtube_music.shuffle);
 
+    e.header("apple_music");
+    e.kv("enabled", cfg.apple_music.enabled);
+    e.kv("transport_controls", cfg.apple_music.transport_controls);
+    e.kv("mute_external_output", cfg.apple_music.mute_external_output);
+    e.kv("capture_mode", cfg.apple_music.capture_mode);
+    e.kv("capture_device", cfg.apple_music.capture_device);
+    e.kv("monitor_when_radio_inactive", cfg.apple_music.monitor_when_radio_inactive);
+
     e.header("jellyfin");
     e.kv("enabled", cfg.jellyfin.enabled);
     e.kv("server_url", cfg.jellyfin.server_url);
@@ -373,6 +402,9 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.header("playback");
     e.kv("race_start_playback", cfg.playback.race_start_playback);
     e.kv("quick_station_skip", cfg.playback.quick_station_skip);
+    e.kv("radio_pause_delay_ms", (int64_t)cfg.playback.radio_pause_delay_ms);
+    e.kv("radio_diagnostics", cfg.playback.radio_diagnostics);
+    e.kv("show_album_in_hud", cfg.playback.show_album_in_hud);
     e.kv("volume_normalization", cfg.playback.volume_normalization);
     e.kv("equalizer_enabled", cfg.playback.equalizer_enabled);
     e.kv_floats("equalizer_bands", std::span<const float>{cfg.playback.equalizer_bands});

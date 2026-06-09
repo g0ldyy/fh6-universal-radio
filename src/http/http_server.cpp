@@ -4,6 +4,7 @@
 #include "fh6/deps.hpp"
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/log.hpp"
+#include "fh6/sources/apple_music_source.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
@@ -22,17 +23,25 @@
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <cmath>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 namespace fh6::http {
 
 using json = nlohmann::json;
 
 namespace {
+
+double round2(double v) noexcept {
+    return std::round(v * 100.0) / 100.0;
+}
 
 constexpr const char* state_string(PlaybackState s) noexcept {
     switch (s) {
@@ -162,6 +171,15 @@ json config_to_json(const Config& c) {
              {"default_playlist", c.youtube_music.default_playlist},
              {"shuffle", c.youtube_music.shuffle},
          }},
+        {"apple_music",
+         json{
+             {"enabled", c.apple_music.enabled},
+             {"transport_controls", c.apple_music.transport_controls},
+             {"mute_external_output", c.apple_music.mute_external_output},
+             {"capture_mode", c.apple_music.capture_mode},
+             {"capture_device", c.apple_music.capture_device},
+             {"monitor_when_radio_inactive", c.apple_music.monitor_when_radio_inactive},
+         }},
         {"jellyfin",
          json{
              {"enabled", c.jellyfin.enabled},
@@ -206,12 +224,15 @@ json config_to_json(const Config& c) {
          }},
         {"audio",
          json{
-             {"output_gain", c.audio.output_gain},
+             {"output_gain", round2(c.audio.output_gain)},
          }},
         {"playback",
          json{
              {"race_start_playback", c.playback.race_start_playback},
              {"quick_station_skip", c.playback.quick_station_skip},
+             {"radio_pause_delay_ms", c.playback.radio_pause_delay_ms},
+             {"radio_diagnostics", c.playback.radio_diagnostics},
+             {"show_album_in_hud", c.playback.show_album_in_hud},
              {"volume_normalization", c.playback.volume_normalization},
              {"equalizer_enabled", c.playback.equalizer_enabled},
              {"equalizer_bands", c.playback.equalizer_bands},
@@ -288,6 +309,23 @@ void apply_patch(Config& c, const json& j) {
             pull(*it, "default_playlist", c.youtube_music.default_playlist);
         c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
     }
+    if (auto it = j.find("apple_music"); it != j.end()) {
+        c.apple_music.enabled = pull(*it, "enabled", c.apple_music.enabled);
+        c.apple_music.transport_controls =
+            pull(*it, "transport_controls", c.apple_music.transport_controls);
+        c.apple_music.mute_external_output =
+            pull(*it, "mute_external_output", c.apple_music.mute_external_output);
+        auto mode = pull<std::string>(*it, "capture_mode", c.apple_music.capture_mode);
+        if (mode == "auto" || mode == "process_loopback" || mode == "device") {
+            c.apple_music.capture_mode = std::move(mode);
+        } else {
+            log::warn("[http] ignoring invalid apple_music.capture_mode '{}'", mode);
+        }
+        c.apple_music.capture_device =
+            pull(*it, "capture_device", c.apple_music.capture_device);
+        c.apple_music.monitor_when_radio_inactive =
+            pull(*it, "monitor_when_radio_inactive", c.apple_music.monitor_when_radio_inactive);
+    }
     if (auto it = j.find("jellyfin"); it != j.end()) {
         c.jellyfin.enabled          = pull(*it, "enabled", c.jellyfin.enabled);
         c.jellyfin.server_url       = pull(*it, "server_url", c.jellyfin.server_url);
@@ -343,6 +381,13 @@ void apply_patch(Config& c, const json& j) {
             c.playback.race_start_playback = std::move(rs);
         c.playback.quick_station_skip =
             pull(*it, "quick_station_skip", c.playback.quick_station_skip);
+        c.playback.radio_pause_delay_ms =
+            std::clamp(pull(*it, "radio_pause_delay_ms", c.playback.radio_pause_delay_ms),
+                       20, 5000);
+        c.playback.radio_diagnostics =
+            pull(*it, "radio_diagnostics", c.playback.radio_diagnostics);
+        c.playback.show_album_in_hud =
+            pull(*it, "show_album_in_hud", c.playback.show_album_in_hud);
         c.playback.volume_normalization =
             pull(*it, "volume_normalization", c.playback.volume_normalization);
         c.playback.force_stereo_audio =
@@ -459,6 +504,7 @@ void send_response(SOCKET client, int code, std::string_view body,
     resp << "HTTP/1.1 " << code << ' ' << status_text(code) << "\r\n"
          << "Content-Type: " << content_type << "\r\n"
          << "Content-Length: " << body.size() << "\r\n"
+         << "Cache-Control: no-store\r\n"
          << "Access-Control-Allow-Origin: *\r\n"
          << "Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS\r\n"
          << "Access-Control-Allow-Headers: Content-Type\r\n"
@@ -480,14 +526,22 @@ bool serve_file(SOCKET client, const std::filesystem::path& file) {
 } // namespace
 
 struct HttpServer::Impl {
+    struct ClientThread {
+        std::thread thread;
+        std::shared_ptr<std::atomic<bool>> done;
+    };
+
     AudioSourceManager& mgr;
     fmod_bridge::DSPBridge& bridge;
     ConfigStore& store;
     DependencyManager& deps;
     std::filesystem::path ui_dist;
     std::atomic<bool> stopping{false};
+    std::atomic<bool> wsa_started{false};
     SOCKET srv_sock = INVALID_SOCKET;
     std::thread thr;
+    std::mutex clients_mtx;
+    std::vector<ClientThread> clients;
 
     Impl(AudioSourceManager& m, fmod_bridge::DSPBridge& b, ConfigStore& s, DependencyManager& d,
          uint16_t port, std::filesystem::path dist)
@@ -498,6 +552,14 @@ struct HttpServer::Impl {
         stopping.store(true, std::memory_order_release);
         if (srv_sock != INVALID_SOCKET) closesocket(srv_sock);
         if (thr.joinable()) thr.join();
+        std::vector<ClientThread> remaining;
+        {
+            std::lock_guard lock{clients_mtx};
+            remaining = std::move(clients);
+        }
+        for (auto& client : remaining)
+            if (client.thread.joinable()) client.thread.join();
+        if (wsa_started.exchange(false, std::memory_order_acq_rel)) WSACleanup();
     }
 
     json build_sources() const {
@@ -512,19 +574,27 @@ struct HttpServer::Impl {
 
     json build_state() const {
         auto* a = mgr.active();
+        auto meta = bridge.metadata_status();
         return json{
             {"game", json{{"attached", true}, {"injector_ready", true}}},
             {"audio",
              json{
                  {"active", bridge.mode() == fmod_bridge::DSPMode::pcm},
                  {"native_dsp_mode", mode_string(bridge.mode())},
-                 {"output_gain", bridge.gain()},
+                 {"output_gain", round2(store.snapshot().audio.output_gain)},
                  {"underruns", bridge.underruns()},
                  {"calls", bridge.call_count()},
                  {"buffer_len", bridge.last_buffer_len()},
                  {"out_channels", bridge.last_out_channels()},
                  {"ring_avail", mgr.ring().readable()},
                  {"ring_capacity", mgr.ring().capacity()},
+             }},
+            {"metadata",
+             json{
+                 {"last_title", meta.title},
+                 {"last_artist", meta.artist},
+                 {"last_write_ok", meta.ok},
+                 {"updates", meta.updates},
              }},
             {"sources", build_sources()},
             {"track", a ? track_to_json(a->current_track()) : json::object()},
@@ -543,11 +613,11 @@ struct HttpServer::Impl {
             log::error("[http] WSAStartup failed");
             return;
         }
+        wsa_started.store(true, std::memory_order_release);
 
         srv_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (srv_sock == INVALID_SOCKET) {
             log::error("[http] socket() failed");
-            WSACleanup();
             return;
         }
         BOOL yes = TRUE;
@@ -567,7 +637,6 @@ struct HttpServer::Impl {
                 log::error("[http] could not bind port {} or {}", port, bound);
                 closesocket(srv_sock);
                 srv_sock = INVALID_SOCKET;
-                WSACleanup();
                 return;
             }
         }
@@ -576,7 +645,6 @@ struct HttpServer::Impl {
             log::error("[http] listen() failed");
             closesocket(srv_sock);
             srv_sock = INVALID_SOCKET;
-            WSACleanup();
             return;
         }
         log::info("[http] listening on http://0.0.0.0:{} (LAN-reachable)", bound);
@@ -590,11 +658,33 @@ struct HttpServer::Impl {
 
             SOCKET client = accept(srv_sock, nullptr, nullptr);
             if (client == INVALID_SOCKET) continue;
+            start_client(client);
+        }
+    }
+
+    void start_client(SOCKET client) {
+        const DWORD timeout_ms = 5000;
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO,
+                   reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+        setsockopt(client, SOL_SOCKET, SO_SNDTIMEO,
+                   reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+        auto done = std::make_shared<std::atomic<bool>>(false);
+        std::thread worker{[this, client, done] {
             handle(client);
             closesocket(client);
-        }
+            done->store(true, std::memory_order_release);
+        }};
 
-        WSACleanup();
+        std::lock_guard lock{clients_mtx};
+        for (auto it = clients.begin(); it != clients.end();) {
+            if (it->done->load(std::memory_order_acquire)) {
+                if (it->thread.joinable()) it->thread.join();
+                it = clients.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        clients.push_back(ClientThread{std::move(worker), std::move(done)});
     }
 
     void handle(SOCKET client) {
@@ -856,6 +946,7 @@ struct HttpServer::Impl {
             auto j = json::parse(req.body);
             if (auto it = j.find("output_gain"); it != j.end()) {
                 float g = std::clamp(it->get<float>(), 0.0f, 1.0f);
+                g = std::round(g * 100.0f) / 100.0f;
                 bridge.set_gain(g);
                 store.patch([&](Config& c) { c.audio.output_gain = g; });
             }

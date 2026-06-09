@@ -2,6 +2,8 @@ import { $$, el } from "../dom.js";
 import { db } from "../format.js";
 import { EQ_BAND_LABELS, SCHEMA, SOURCE_SECTIONS } from "../schema.js";
 
+const COMPACT_SOURCE_SECTIONS = new Set(["local_files", "online_radio"]);
+
 function buildField(section, spec, cfg) {
   const [key, label, type, a, b, c] = spec;
   const id = `f-${section}-${key}`;
@@ -81,8 +83,18 @@ function buildField(section, spec, cfg) {
 export function renderSettings(form, cfg) {
   form.replaceChildren(
     ...SCHEMA.map(([section, title, fields]) => {
-      const fieldset = el("fieldset", {}, [el("legend", {}, title)]);
-      for (const spec of fields) fieldset.append(buildField(section, spec, cfg));
+      const isSource = SOURCE_SECTIONS.some(([name]) => name === section);
+      const sourceDisabled = isSource && cfg?.[section]?.enabled === false;
+      const compactSource = COMPACT_SOURCE_SECTIONS.has(section);
+      const visibleFields = sourceDisabled || compactSource
+        ? fields.filter(([key]) => key === "enabled")
+        : fields;
+      const fieldset = el(
+        "fieldset",
+        { class: sourceDisabled || compactSource ? "collapsed-source" : "" },
+        [el("legend", {}, title)],
+      );
+      for (const spec of visibleFields) fieldset.append(buildField(section, spec, cfg));
       return fieldset;
     }),
   );

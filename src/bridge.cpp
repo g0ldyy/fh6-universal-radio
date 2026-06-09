@@ -10,6 +10,7 @@
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/pe_image.hpp"
 #include "fh6/http/http_server.hpp"
+#include "fh6/sources/apple_music_source.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
@@ -184,6 +185,12 @@ void run_bridge(HMODULE self) noexcept {
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
+        if (c.apple_music.enabled && !mgr.find("apple_music")) {
+            auto src = std::make_unique<sources::AppleMusicSource>(c.apple_music);
+            if (src->initialize()) mgr.register_source(std::move(src));
+        } else if (!c.apple_music.enabled && mgr.find("apple_music")) {
+            mgr.unregister_source("apple_music");
+        }
         if (c.jellyfin.enabled && !mgr.find("jellyfin")) {
             auto src = std::make_unique<sources::JellyfinSource>(c.jellyfin, c.general.ffmpeg_path,
                                                                   &worker);
@@ -235,6 +242,7 @@ void run_bridge(HMODULE self) noexcept {
     fmod_bridge::DSPBridge bridge{mgr, fns};
     bridge.set_gain(cfg.audio.output_gain);
     bridge.set_force_stereo_audio(cfg.playback.force_stereo_audio);
+    bridge.set_diagnostics_enabled(cfg.playback.radio_diagnostics);
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;
     if (fns.ready()) {
@@ -265,6 +273,7 @@ void run_bridge(HMODULE self) noexcept {
         // the bridge value back to its own cached target on the next tick.
         bridge.set_gain(c.audio.output_gain);
         bridge.set_force_stereo_audio(c.playback.force_stereo_audio);
+        bridge.set_diagnostics_enabled(c.playback.radio_diagnostics);
         if (ctrl_ptr) ctrl_ptr->set_configured_gain(c.audio.output_gain);
         if (auto* local = dynamic_cast<sources::LocalFileSource*>(mgr.find("local_files"))) {
             local->set_ffmpeg_path(c.general.ffmpeg_path);
@@ -278,6 +287,9 @@ void run_bridge(HMODULE self) noexcept {
             yt->set_shuffle(c.youtube_music.shuffle);
             yt->set_ffmpeg_path(c.general.ffmpeg_path);
             yt->set_yt_dlp_path(c.youtube_music.yt_dlp_path);
+        }
+        if (auto* am = dynamic_cast<sources::AppleMusicSource*>(mgr.find("apple_music"))) {
+            am->set_config(c.apple_music);
         }
         if (auto* jf = dynamic_cast<sources::JellyfinSource*>(mgr.find("jellyfin"))) {
             jf->set_ffmpeg_path(c.general.ffmpeg_path);

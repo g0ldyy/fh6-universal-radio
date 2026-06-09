@@ -80,6 +80,17 @@ std::vector<std::byte*> find_vtable_candidates(const std::byte* s, const std::by
     return out;
 }
 
+std::uint64_t read_msvc_string_capacity(const void* addr) noexcept {
+    struct Header {
+        std::byte sbo[16];
+        std::uint64_t size;
+        std::uint64_t cap;
+    } hdr{};
+    if (!safe_read(addr, hdr)) return 0;
+    if (hdr.cap < 15 || hdr.size > hdr.cap) return 0;
+    return hdr.cap > 15 ? hdr.cap : 15;
+}
+
 // Heap scan: walk every committed private R/W region, look for 16-byte
 // aligned slots whose first qword is `vtable` and whose use/weak refcounts
 // (next 8 bytes) sit in (0, 0x80]. SEH-wrapped per region, because a page
@@ -186,6 +197,11 @@ constexpr int kRescanThreshold = 30;
 
 } // namespace
 
+void reset_radio_discovery_cache() noexcept {
+    std::scoped_lock lk{g_cache_mu};
+    g_cache = Cache{};
+}
+
 void* resolve_fmod_system(const PEImage& img, std::byte* radio_stream) noexcept {
     if (!radio_stream) return nullptr;
     void* out = nullptr;
@@ -283,7 +299,10 @@ DiscoveryResult discover_radio_instances(const PEImage& img) noexcept {
             continue;
         }
         result.vtable = local.vtable;
-        result.instances.push_back({refcount, radio_stream, body, std::move(name)});
+        const auto title_cap = body ? read_msvc_string_capacity(body + 0x30) : 0;
+        const auto artist_cap = body ? read_msvc_string_capacity(body + 0x50) : 0;
+        result.instances.push_back({refcount, radio_stream, body, std::move(name), title_cap,
+                                    artist_cap});
     }
 
     if (result.instances.empty()) {
@@ -327,8 +346,9 @@ DiscoveryResult discover_radio_instances(const PEImage& img) noexcept {
         log::info("[discovery] found {} chain-valid RadioStreamFmod instance(s):",
                   result.instances.size());
         for (auto& i : result.instances) {
-            log::info("[discovery]   @0x{:X}  SoundName=\"{}\"",
-                      reinterpret_cast<uintptr_t>(i.radio_stream), i.sound_name);
+            log::info("[discovery]   @0x{:X} title_cap={} artist_cap={} SoundName=\"{}\"",
+                      reinterpret_cast<uintptr_t>(i.radio_stream), i.title_capacity,
+                      i.artist_capacity, i.sound_name);
         }
     }
     return result;

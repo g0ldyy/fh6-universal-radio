@@ -62,6 +62,8 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $dist "fh6-radio") | Out-Null
 
 Copy-Item (Join-Path $build "Release\version.dll") $dist
+Copy-Item (Join-Path $build "Release\fh6-radio-companion.exe") $dist
+Copy-Item (Join-Path $build "Release\fh6-radio-companion.exe") (Join-Path $dist "fh6-radio")
 Copy-Item (Join-Path $build "Release\fh6-radio-worker.exe") (Join-Path $dist "fh6-radio")
 Copy-Item -Recurse (Join-Path $root "ui\dist") (Join-Path $dist "fh6-radio\ui")
 Copy-Item (Join-Path $root "config.example.toml") (Join-Path $dist "fh6-radio\config.toml")

@@ -3,7 +3,8 @@
 #
 #   PS> .\scripts\install.ps1 -GameDir "C:\XboxGames\Forza Horizon 6\Content"
 #
-# Existing files are backed up to *.bak before being overwritten.
+# Existing files are backed up to *.bak before being overwritten. Existing
+# backups are preserved so update installs do not replace an original proxy DLL.
 
 param(
     [Parameter(Mandatory = $true)] [string] $GameDir,
@@ -28,7 +29,9 @@ if (-not (Test-Path (Join-Path $GameDir "forzahorizon6.exe"))) {
 function Backup-AndCopy([string]$src, [string]$dst) {
     $dstDir = Split-Path -Parent $dst
     if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
-    if (Test-Path $dst) { Copy-Item $dst "$dst.bak" -Force }
+    if ((Test-Path $dst) -and -not (Test-Path "$dst.bak")) {
+        Copy-Item $dst "$dst.bak" -Force
+    }
     Copy-Item $src $dst -Force
     "  + $($dst.Substring($GameDir.Length + 1))"
 }

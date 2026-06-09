@@ -5,6 +5,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
+#include <string>
 
 namespace fh6 {
 class AudioSourceManager;
@@ -64,7 +66,7 @@ public:
 
     // Re-attach if the game stored a new channel handle on the RadioStream
     // (station changed, race ended, etc.). Cheap to call every tick.
-    void retarget_if_needed() noexcept;
+    bool retarget_if_needed() noexcept;
 
     // True when `radio_stream`+0x20 holds a live, resolvable FMOD channel
     // handle. Lets the control loop prefer the instance actually carrying
@@ -90,12 +92,37 @@ public:
         force_stereo_audio_.store(v, std::memory_order_release);
     }
 
+    bool radio_active() const noexcept { return radio_active_.load(std::memory_order_acquire); }
+    void set_radio_active(bool v) noexcept {
+        radio_active_.store(v, std::memory_order_release);
+    }
+
+    bool diagnostics_enabled() const noexcept {
+        return diagnostics_enabled_.load(std::memory_order_acquire);
+    }
+    void set_diagnostics_enabled(bool v) noexcept {
+        diagnostics_enabled_.store(v, std::memory_order_release);
+    }
+    uint32_t consume_input_peak_milli() noexcept {
+        return input_peak_milli_.exchange(0, std::memory_order_acq_rel);
+    }
+
     uint64_t underruns() const noexcept { return underruns_.load(std::memory_order_relaxed); }
     uint64_t call_count() const noexcept { return calls_.load(std::memory_order_relaxed); }
     uint32_t last_buffer_len() const noexcept { return last_len_.load(std::memory_order_relaxed); }
     uint32_t last_out_channels() const noexcept {
         return last_out_ch_.load(std::memory_order_relaxed);
     }
+
+    struct MetadataStatus {
+        std::string title;
+        std::string artist;
+        bool ok = false;
+        uint64_t updates = 0;
+    };
+
+    void set_metadata_status(std::string title, std::string artist, bool ok);
+    MetadataStatus metadata_status() const;
 
     AudioSourceManager& manager() noexcept { return mgr_; }
 
@@ -110,7 +137,7 @@ private:
     // or dead, validating it through the resolver.
     uint32_t read_live_handle(std::byte* radio_stream) const noexcept;
     void release_current_dsp_locked() noexcept;
-    void install_dsp_locked(uint32_t handle) noexcept;
+    bool install_dsp_locked(uint32_t handle) noexcept;
 
     AudioSourceManager& mgr_;
     FMODFns fns_;
@@ -127,11 +154,17 @@ private:
     std::atomic<DSPMode> mode_{DSPMode::pcm};
     std::atomic<float> gain_{1.0f};
     std::atomic<bool> force_stereo_audio_{false};
+    std::atomic<bool> radio_active_{false};
+    std::atomic<bool> diagnostics_enabled_{false};
+    std::atomic<uint32_t> input_peak_milli_{0};
 
     std::atomic<uint64_t> underruns_{0};
     std::atomic<uint64_t> calls_{0};
     std::atomic<uint32_t> last_len_{0};
     std::atomic<uint32_t> last_out_ch_{0};
+
+    mutable std::mutex metadata_mtx_;
+    MetadataStatus metadata_status_;
 };
 
 } // namespace fh6::fmod_bridge

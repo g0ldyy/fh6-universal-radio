@@ -18,11 +18,9 @@ namespace fh6::fmod_bridge {
 //   +0x50  Artist       (rendered as the artist line)
 //
 // MSVC std::string is 32 bytes: 16-byte SSO buffer or heap pointer, then
-// size and capacity. When the new content fits, we overwrite in place;
-// otherwise we VirtualAlloc a fresh buffer and switch the slot to it.
-// VirtualAlloc (not free()) is deliberate: we don't own the original
-// allocator and freeing through the wrong one would corrupt the heap. The
-// leak is one buffer per outgrown overwrite.
+// size and capacity. We only overwrite storage FH6 already owns. We never
+// swap in our own heap pointer, because FH6 may later assign/destruct the
+// string through its own allocator.
 class MetadataInjector {
 public:
     void set_target(std::byte* sample_props_body) noexcept;

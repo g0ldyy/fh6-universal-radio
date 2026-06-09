@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(fh6_universal_radio LANGUAGES CXX)
+project(fh6_universal_radio LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,6 +64,7 @@ add_library(version SHARED
     src/http/http_server.cpp
     src/sources/local_file_source.cpp
     src/sources/youtube_music_source.cpp
+    src/sources/apple_music_source.cpp
     src/sources/jellyfin_source.cpp
     src/sources/external_audio_source.cpp
     src/sources/external_media_session.cpp
@@ -78,19 +79,64 @@ if(NOT MSVC)
     target_sources(version PRIVATE src/proxy/version.def)
 endif()
 
+set(FH6_CPPWINRT_HINTS)
+if(DEFINED ENV{WindowsSdkDir} AND DEFINED ENV{WindowsSDKVersion})
+    list(APPEND FH6_CPPWINRT_HINTS
+         "$ENV{WindowsSdkDir}/Include/$ENV{WindowsSDKVersion}/cppwinrt")
+endif()
+if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+    list(APPEND FH6_CPPWINRT_HINTS
+         "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/Include/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/cppwinrt"
+         "$ENV{ProgramFiles}/Windows Kits/10/Include/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/cppwinrt")
+endif()
+
+find_path(FH6_CPPWINRT_INCLUDE
+    NAMES winrt/base.h
+    HINTS ${FH6_CPPWINRT_HINTS}
+    NO_DEFAULT_PATH
+)
+if(NOT FH6_CPPWINRT_INCLUDE)
+    message(FATAL_ERROR
+        "Could not find C++/WinRT headers (winrt/base.h). Install the Windows SDK "
+        "or run from a Visual Studio Developer environment that sets WindowsSdkDir "
+        "and WindowsSDKVersion.")
+endif()
+
 target_include_directories(version PRIVATE
     include
     third_party/nlohmann
     third_party/toml11
     third_party/miniaudio
+    "${FH6_CPPWINRT_INCLUDE}"
 )
 
-target_link_libraries(version PRIVATE ws2_32 bcrypt psapi winhttp ole32 uuid ksuser runtimeobject)
+target_link_libraries(version PRIVATE
+    ws2_32 bcrypt psapi winhttp ole32 windowsapp winmm uuid ksuser runtimeobject
+)
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version
     PREFIX ""
 )
+
+add_executable(fh6-radio-companion
+    src/companion/cable_monitor.cpp
+    src/companion/fh6-radio-companion.rc
+)
+
+if(MSVC)
+    set_target_properties(fh6-radio-companion PROPERTIES
+        LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
+    )
+else()
+    target_link_options(fh6-radio-companion PRIVATE -mwindows)
+endif()
+
+target_include_directories(fh6-radio-companion PRIVATE
+    third_party/miniaudio
+)
+
+target_link_libraries(fh6-radio-companion PRIVATE ole32)
 
 # Worker process: lightweight spawner that lives outside the game's address
 # space so CreateProcess (= fork on Wine) is cheap.

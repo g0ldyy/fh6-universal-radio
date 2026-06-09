@@ -6,7 +6,7 @@
 
 <p align="center"><img src="assets/banner.png" alt="FH6 Universal Radio" /></p>
 
-An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music**, **online radio** stations, **Spotify**, **YouTube Music**, **Jellyfin** server, or **any Windows app** (Deezer, a browser tab...), controlled from a browser dashboard.
+An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music**, **online radio** stations, **Spotify**, **Apple Music**, **YouTube Music**, **Jellyfin** server, or **any Windows app** (Deezer, a browser tab...), controlled from a browser dashboard.
 
 <p align="center">
   <img src="assets/ingame.png" alt="In-game radio station" width="49%" />
@@ -18,6 +18,7 @@ An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio stati
 - **Local files**: build named **stations** from one or more folders, exclude subfolders you don't want, and pick a play order (shuffle / albums / name / folder) with repeat modes and a searchable queue. MP3 / FLAC / WAV / OGG / M4A / AAC / OPUS / WMA / M3U / M3U8 etc.
 - **Online radio**: search a directory of thousands of internet stations by name, genre, or country (via [radio-browser.info](https://www.radio-browser.info)) or paste any stream URL; save favourites with logos and genre/bitrate badges, with live track info.
 - **YouTube Music**: paste any video, playlist, or YT Music URL from the dashboard.
+- **Apple Music**: capture full Apple Music playback through Windows/virtual-cable audio and mirror FH6 radio pause/resume/skip behavior.
 - **Spotify Connect**: cast from the Spotify app to an "FH6 Universal Radio" device (requires Spotify Premium).
 - **Jellyfin**: stream playlists from your own Jellyfin server.
 - **External audio**: capture any Windows app (Deezer, a browser tab...) and pipe it into the radio through a virtual audio cable.
@@ -52,6 +53,16 @@ Private/age-restricted content needs a Netscape `cookies.txt` exported from your
 ### Spotify Connect
 
 Enable Spotify under **Settings**, then open the Spotify app on a device on the same Wi-Fi network, tap the **Devices** icon, and pick **FH6 Universal Radio**. Requires an old Spotify Premium account (a Spotify Connect limitation).
+
+### Apple Music
+
+Apple Music tracks are DRM-protected, so the mod does not download full tracks from Apple links. The supported path is to play Apple Music in the Apple Music app, route its output to VB-CABLE, and let FH6 Universal Radio capture that cable into the in-game radio.
+
+1. Install [VB-Audio Virtual Cable](https://vb-audio.com/Cable/) and reboot if the installer asks.
+2. In Windows **Settings > System > Sound > Volume mixer**, set Apple Music's output to `CABLE Input`.
+3. In the dashboard, enable **Apple Music**, set capture mode to `auto` or `device`, and use `CABLE Output` as the capture device.
+4. Leave **Control playback** enabled so the source mirrors FH6 radio pause/resume/skip to Apple Music.
+5. Run FH6 Radio Companion if you want the cable monitored to your normal headphones/speakers while FH6 is closed.
 
 ### External audio
 

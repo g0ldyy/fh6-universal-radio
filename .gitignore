@@ -1,9 +1,14 @@
 # Build + staging output
 build/
 /dist/
+/package/
+
+# Local installer compiler output
+installer/inno/Output/
 
 # Downloaded by scripts\get-deps.ps1
 third_party/
 
 # Dependency directories
 node_modules/
+/tmp

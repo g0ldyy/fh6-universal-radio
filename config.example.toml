@@ -8,7 +8,7 @@
 [general]
 port              = 8420
 ring_buffer_mb    = 4
-default_source    = "online_radio"    # local_files | online_radio | youtube_music | jellyfin | external_audio | spotify
+default_source    = "online_radio"    # local_files | online_radio | youtube_music | apple_music | jellyfin | external_audio | spotify
 fallback_source   = "local_files"
 ffmpeg_path       = ''                # blank = auto-download to fh6-radio/bin (else `ffmpeg` on PATH); shared by all sources
 
@@ -35,6 +35,14 @@ cookies_path       = ''                # optional Netscape cookies.txt
 yt_dlp_path        = ''                # blank = auto-download to fh6-radio/bin (else `yt-dlp` on PATH)
 default_playlist   = ""
 shuffle            = true
+
+[apple_music]
+enabled                     = false
+transport_controls          = true     # mirror FH6 radio pause/resume/skip to Apple Music
+mute_external_output        = false    # legacy option; prefer VB-CABLE routing
+capture_mode                = "auto"   # auto | process_loopback | device
+capture_device              = "CABLE Output"
+monitor_when_radio_inactive = true     # play the cable to your default output while FH6 is not using it
 
 [jellyfin]
 enabled            = false
@@ -84,6 +92,9 @@ output_gain = 1.0
 [playback]
 race_start_playback  = "next"      # "next" | "restart" | "ignore" -- action when a race begins
 quick_station_skip   = false       # tune the radio away and back within 1s to skip the track
+radio_pause_delay_ms = 300         # mixer silence delay before mirroring radio pause/resume to live sources
+radio_diagnostics    = false       # log detailed radio/DSP counters and show diagnostics in the dashboard
+show_album_in_hud    = true        # append the album to artist text in the in-game HUD when available
 volume_normalization = false       # apply ReplayGain (local files) / EBU R128 loudnorm (YT) when on
 equalizer_enabled    = false
 equalizer_bands      = [0.0, 0.0, 0.0, 0.0, 0.0]   # 60/250/1000/4000/12000 Hz, [-6, +6] dB
