@@ -31,6 +31,10 @@ using subprocess::spawn_in_job;
 using subprocess::widen;
 using subprocess::narrow;
 
+// DEFAULT_TIDAL_CLIENT_ID and DEFAULT_TIDAL_CLIENT_SECRET are public client ID/secret keys
+// retrieved from the open-source python-tidal library. They are widely distributed public
+// keys intended to allow community applications to access the TIDAL API out-of-the-box
+// and do not represent a credential leak of proprietary secrets.
 constexpr std::string_view DEFAULT_TIDAL_CLIENT_ID = "fX2JxdmntZWK0ixT";
 constexpr std::string_view DEFAULT_TIDAL_CLIENT_SECRET = "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAvxAg=";
 
@@ -171,7 +175,14 @@ bool read_line_from_pipe(HANDLE pipe, std::string& line) {
     return !line.empty() || got > 0;
 }
 
-std::string run_tidal_helper(const std::wstring& args) {
+struct TidalEnv {
+    std::string access_token;
+    std::string refresh_token;
+    std::string client_id;
+    std::string client_secret;
+};
+
+std::string run_tidal_helper(const std::wstring& args, const TidalEnv& env = {}) {
     HANDLE job = create_kill_on_close_job();
     if (!job) {
         log::warn("[tidal] failed to create job for helper");
@@ -192,8 +203,34 @@ std::string run_tidal_helper(const std::wstring& args) {
 
     std::wstring cmd = L"python -u fh6-radio\\tidal_helper.py " + args;
 
+    if (!env.access_token.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_ACCESS_TOKEN", widen(env.access_token).c_str());
+    }
+    if (!env.refresh_token.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_REFRESH_TOKEN", widen(env.refresh_token).c_str());
+    }
+    if (!env.client_id.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_CLIENT_ID", widen(env.client_id).c_str());
+    }
+    if (!env.client_secret.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_CLIENT_SECRET", widen(env.client_secret).c_str());
+    }
+
     HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
     const DWORD ec = proc ? 0u : GetLastError();
+
+    if (!env.access_token.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_ACCESS_TOKEN", nullptr);
+    }
+    if (!env.refresh_token.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_REFRESH_TOKEN", nullptr);
+    }
+    if (!env.client_id.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_CLIENT_ID", nullptr);
+    }
+    if (!env.client_secret.empty()) {
+        SetEnvironmentVariableW(L"TIDAL_CLIENT_SECRET", nullptr);
+    }
     CloseHandle(wr);
     if (nul_in) CloseHandle(nul_in);
     if (err_log) CloseHandle(err_log);
@@ -442,15 +479,14 @@ bool TidalSource::refresh_queue_locked() {
     }
 
     std::wstring args = widen(std::format(
-        "playlist {} {}",
-        cfg_.default_playlist,
-        cfg_.access_token
+        "playlist {}",
+        cfg_.default_playlist
     ));
 
     std::string raw;
     {
         std::scoped_lock fetch_lk{fetch_serializer()};
-        raw = run_tidal_helper(args);
+        raw = run_tidal_helper(args, TidalEnv{ .access_token = cfg_.access_token });
     }
 
     if (raw.empty()) {
@@ -515,16 +551,15 @@ std::unique_ptr<TidalSource::Pipe> TidalSource::spawn_pipe_locked(std::size_t fo
     }
 
     std::wstring args = widen(std::format(
-        "stream {} {} {}",
+        "stream {} {}",
         track_id,
-        cfg_.access_token,
         quality
     ));
 
     std::string raw;
     {
         std::scoped_lock fetch_lk{fetch_serializer()};
-        raw = run_tidal_helper(args);
+        raw = run_tidal_helper(args, TidalEnv{ .access_token = cfg_.access_token });
     }
 
     if (raw.empty()) {
@@ -706,12 +741,6 @@ void TidalSource::run_auth_loop() {
         std::string client_id = get_effective_client_id(cfg_.client_id);
         std::string client_secret = get_effective_client_secret(cfg_.client_id, cfg_.client_secret);
 
-        std::wstring cmd = L"login";
-        if (!client_id.empty()) {
-            cmd += L" " + widen(client_id);
-            cmd += L" " + (client_secret.empty() ? L"\"\"" : widen(client_secret));
-        }
-
         HANDLE job = create_kill_on_close_job();
         if (!job) {
             Sleep(5000);
@@ -730,9 +759,21 @@ void TidalSource::run_auth_loop() {
         HANDLE nul_in = open_nul(GENERIC_READ);
         HANDLE err_log = open_stderr_log();
 
-        std::wstring helper_cmd = L"python -u fh6-radio\\tidal_helper.py " + cmd;
+        std::wstring helper_cmd = L"python -u fh6-radio\\tidal_helper.py login";
 
-        HANDLE proc = spawn_in_job(job, helper_cmd, nul_in, wr, err_log);
+        HANDLE proc = nullptr;
+        {
+            std::scoped_lock env_lk{fetch_serializer()};
+            if (!client_id.empty()) {
+                SetEnvironmentVariableW(L"TIDAL_CLIENT_ID", widen(client_id).c_str());
+                if (!client_secret.empty()) {
+                    SetEnvironmentVariableW(L"TIDAL_CLIENT_SECRET", widen(client_secret).c_str());
+                }
+            }
+            proc = spawn_in_job(job, helper_cmd, nul_in, wr, err_log);
+            SetEnvironmentVariableW(L"TIDAL_CLIENT_ID", nullptr);
+            SetEnvironmentVariableW(L"TIDAL_CLIENT_SECRET", nullptr);
+        }
         const DWORD ec = proc ? 0u : GetLastError();
         CloseHandle(wr);
         if (nul_in) CloseHandle(nul_in);
@@ -807,25 +848,38 @@ void TidalSource::run_auth_loop() {
                 }
                 const auto root = nlohmann::json::parse(rest);
                 if (root.value("status", "") == "success") {
-                    std::scoped_lock lk{mu_};
-                    cfg_.access_token = root.value("access_token", "");
-                    cfg_.refresh_token = root.value("refresh_token", "");
-                    int token_expires_in = root.value("expires_in", 3600);
-                    cfg_.expiry_time = static_cast<uint64_t>(std::time(nullptr)) + token_expires_in;
-                    auth_.store(AuthState::authenticated, std::memory_order_release);
-                    auth_user_code_.clear();
-                    auth_verification_uri_.clear();
+                    std::string access_token;
+                    std::string refresh_token;
+                    uint64_t expiry_time = 0;
+                    {
+                        std::scoped_lock lk{mu_};
+                        cfg_.access_token = root.value("access_token", "");
+                        cfg_.refresh_token = root.value("refresh_token", "");
+                        int token_expires_in = root.value("expires_in", 3600);
+                        cfg_.expiry_time = static_cast<uint64_t>(std::time(nullptr)) + token_expires_in;
+                        auth_.store(AuthState::authenticated, std::memory_order_release);
+                        auth_user_code_.clear();
+                        auth_verification_uri_.clear();
 
-                    store_.patch([this](Config& c) {
-                        c.tidal.access_token = cfg_.access_token;
-                        c.tidal.refresh_token = cfg_.refresh_token;
-                        c.tidal.expiry_time = cfg_.expiry_time;
+                        access_token = cfg_.access_token;
+                        refresh_token = cfg_.refresh_token;
+                        expiry_time = cfg_.expiry_time;
+                    }
+
+                    store_.patch([&](Config& c) {
+                        c.tidal.access_token = access_token;
+                        c.tidal.refresh_token = refresh_token;
+                        c.tidal.expiry_time = expiry_time;
                     });
 
                     log::info("[tidal] account linked successfully via python helper!");
-                    refresh_queue_locked();
+                    {
+                        std::scoped_lock lk{mu_};
+                        refresh_queue_locked();
+                    }
                     break;
-                } else {
+                }
+ else {
                     log::error("[tidal] account link helper failed: {}", root.value("error", "Unknown error"));
                 }
             } catch (const std::exception& e) {
@@ -846,17 +900,16 @@ bool TidalSource::refresh_access_token() {
     std::string client_secret = get_effective_client_secret(cfg_.client_id, cfg_.client_secret);
     if (cfg_.refresh_token.empty()) return false;
 
-    std::wstring args = widen(std::format(
-        "refresh {} {} {}",
-        cfg_.refresh_token,
-        client_id.empty() ? "\"\"" : client_id,
-        client_secret.empty() ? "\"\"" : client_secret
-    ));
+    std::wstring args = L"refresh";
 
     std::string raw;
     {
         std::scoped_lock fetch_lk{fetch_serializer()};
-        raw = run_tidal_helper(args);
+        raw = run_tidal_helper(args, TidalEnv{
+            .refresh_token = cfg_.refresh_token,
+            .client_id = client_id,
+            .client_secret = client_secret
+        });
     }
 
     if (raw.empty()) {
@@ -894,17 +947,25 @@ bool TidalSource::refresh_access_token() {
         }
         int expires_in = root.value("expires_in", 3600);
 
-        std::scoped_lock lk{mu_};
-        cfg_.access_token = access_token;
-        cfg_.expiry_time = static_cast<uint64_t>(std::time(nullptr)) + expires_in;
-        if (!refresh_token.empty()) {
-            cfg_.refresh_token = refresh_token;
+        std::string final_access_token;
+        std::string final_refresh_token;
+        uint64_t final_expiry_time = 0;
+        {
+            std::scoped_lock lk{mu_};
+            cfg_.access_token = access_token;
+            cfg_.expiry_time = static_cast<uint64_t>(std::time(nullptr)) + expires_in;
+            if (!refresh_token.empty()) {
+                cfg_.refresh_token = refresh_token;
+            }
+            final_access_token = cfg_.access_token;
+            final_refresh_token = cfg_.refresh_token;
+            final_expiry_time = cfg_.expiry_time;
         }
 
-        store_.patch([this](Config& c) {
-            c.tidal.access_token = cfg_.access_token;
-            c.tidal.refresh_token = cfg_.refresh_token;
-            c.tidal.expiry_time = cfg_.expiry_time;
+        store_.patch([&](Config& c) {
+            c.tidal.access_token = final_access_token;
+            c.tidal.refresh_token = final_refresh_token;
+            c.tidal.expiry_time = final_expiry_time;
         });
 
         log::info("[tidal] access token refreshed successfully via helper");
@@ -916,15 +977,22 @@ bool TidalSource::refresh_access_token() {
 }
 
 bool TidalSource::exchange_authorization_code(const std::string& code) {
-    std::scoped_lock lk{mu_};
-    
-    std::string client_id = get_effective_client_id(cfg_.client_id);
-    std::string client_secret = get_effective_client_secret(cfg_.client_id, cfg_.client_secret);
+    std::string client_id;
+    std::string client_secret;
+    {
+        std::scoped_lock lk{mu_};
+        client_id = get_effective_client_id(cfg_.client_id);
+        client_secret = get_effective_client_secret(cfg_.client_id, cfg_.client_secret);
+    }
     if (client_id.empty() || client_secret.empty()) {
         log::error("[tidal] cannot exchange authorization code: client_id or client_secret is empty");
         return false;
     }
 
+    // Note: The redirect_uri uses a hardcoded port 8420 which matches the default general port
+    // (cfg.general.port). The OAuth client credentials used for the default TIDAL auth flow
+    // have this specific URL pre-registered with TIDAL. If the server port is changed in the configuration,
+    // authentication may fail unless a different client credentials pair is registered with the matching redirect URI.
     std::string body = std::format(
         "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&client_secret={}",
         url_encode(code),
@@ -949,28 +1017,37 @@ bool TidalSource::exchange_authorization_code(const std::string& code) {
 
     try {
         const auto root = nlohmann::json::parse(res->body);
-        cfg_.access_token = root.value("access_token", "");
-        cfg_.refresh_token = root.value("refresh_token", "");
+        std::string access_token = root.value("access_token", "");
+        std::string refresh_token = root.value("refresh_token", "");
         int expires_in = root.value("expires_in", 3600);
-        cfg_.expiry_time = static_cast<uint64_t>(std::time(nullptr)) + expires_in;
+        uint64_t expiry_time = static_cast<uint64_t>(std::time(nullptr)) + expires_in;
 
-        if (cfg_.access_token.empty()) {
+        if (access_token.empty()) {
             log::error("[tidal] token exchange returned empty access_token");
             return false;
         }
 
-        auth_.store(AuthState::authenticated, std::memory_order_release);
-        auth_verification_uri_.clear();
-        auth_user_code_.clear();
+        {
+            std::scoped_lock lk{mu_};
+            cfg_.access_token = access_token;
+            cfg_.refresh_token = refresh_token;
+            cfg_.expiry_time = expiry_time;
+            auth_.store(AuthState::authenticated, std::memory_order_release);
+            auth_verification_uri_.clear();
+            auth_user_code_.clear();
+        }
 
         store_.patch([&](Config& c) {
-            c.tidal.access_token = cfg_.access_token;
-            c.tidal.refresh_token = cfg_.refresh_token;
-            c.tidal.expiry_time = cfg_.expiry_time;
+            c.tidal.access_token = access_token;
+            c.tidal.refresh_token = refresh_token;
+            c.tidal.expiry_time = expiry_time;
         });
 
         log::info("[tidal] account linked via web authorization successfully!");
-        refresh_queue_locked();
+        {
+            std::scoped_lock lk{mu_};
+            refresh_queue_locked();
+        }
         return true;
     } catch (const std::exception& e) {
         log::error("[tidal] JSON parse error on token exchange: {}", e.what());

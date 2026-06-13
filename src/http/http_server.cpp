@@ -181,9 +181,9 @@ json config_to_json(const Config& c) {
          json{
              {"enabled", c.tidal.enabled},
              {"client_id", c.tidal.client_id},
-             {"client_secret", c.tidal.client_secret},
-             {"access_token", c.tidal.access_token},
-             {"refresh_token", c.tidal.refresh_token},
+             {"client_secret", c.tidal.client_secret.empty() ? "" : "********"},
+             {"has_access_token", !c.tidal.access_token.empty()},
+             {"has_refresh_token", !c.tidal.refresh_token.empty()},
              {"expiry_time", c.tidal.expiry_time},
              {"default_playlist", c.tidal.default_playlist},
              {"shuffle", c.tidal.shuffle},
@@ -317,10 +317,17 @@ void apply_patch(Config& c, const json& j) {
     if (auto it = j.find("tidal"); it != j.end()) {
         c.tidal.enabled          = pull(*it, "enabled", c.tidal.enabled);
         c.tidal.client_id        = pull(*it, "client_id", c.tidal.client_id);
-        c.tidal.client_secret    = pull(*it, "client_secret", c.tidal.client_secret);
+        std::string secret       = pull(*it, "client_secret", c.tidal.client_secret);
+        if (secret != "********") {
+            c.tidal.client_secret = secret;
+        }
         c.tidal.access_token     = pull(*it, "access_token", c.tidal.access_token);
         c.tidal.refresh_token    = pull(*it, "refresh_token", c.tidal.refresh_token);
-        c.tidal.expiry_time      = static_cast<uint64_t>(pull(*it, "expiry_time", static_cast<int64_t>(c.tidal.expiry_time)));
+        int64_t expiry_tmp       = pull(*it, "expiry_time", static_cast<int64_t>(c.tidal.expiry_time));
+        if (expiry_tmp < 0) {
+            expiry_tmp = 0;
+        }
+        c.tidal.expiry_time      = static_cast<uint64_t>(expiry_tmp);
         c.tidal.default_playlist = pull(*it, "default_playlist", c.tidal.default_playlist);
         c.tidal.shuffle          = pull(*it, "shuffle", c.tidal.shuffle);
         c.tidal.audio_quality    = pull(*it, "audio_quality", c.tidal.audio_quality);
@@ -400,6 +407,7 @@ constexpr std::string_view status_text(int code) noexcept {
     switch (code) {
         case 200: return "OK";
         case 400: return "Bad Request";
+        case 401: return "Unauthorized";
         case 404: return "Not Found";
         case 502: return "Bad Gateway";
         default: return "Internal Server Error";
@@ -505,6 +513,40 @@ bool serve_file(SOCKET client, const std::filesystem::path& file) {
     return true;
 }
 
+std::string url_decode(std::string_view str) {
+    std::string decoded;
+    decoded.reserve(str.size());
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == '%') {
+            if (i + 2 < str.size()) {
+                char hex1 = str[i + 1];
+                char hex2 = str[i + 2];
+                if (std::isxdigit(static_cast<unsigned char>(hex1)) &&
+                    std::isxdigit(static_cast<unsigned char>(hex2))) {
+                    auto hex_val = [](char c) -> int {
+                        if (c >= '0' && c <= '9') return c - '0';
+                        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                        return 0;
+                    };
+                    char decoded_char = static_cast<char>((hex_val(hex1) << 4) + hex_val(hex2));
+                    decoded += decoded_char;
+                    i += 2;
+                } else {
+                    return {}; // Invalid escape
+                }
+            } else {
+                return {}; // Invalid escape
+            }
+        } else if (str[i] == '+') {
+            decoded += ' ';
+        } else {
+            decoded += str[i];
+        }
+    }
+    return decoded;
+}
+
 std::string get_query_param(std::string_view path, std::string_view name) {
     size_t q = path.find('?');
     if (q == std::string_view::npos) return {};
@@ -523,9 +565,9 @@ std::string get_query_param(std::string_view path, std::string_view name) {
             size_t start = next_idx + 1;
             size_t end = query.find('&', start);
             if (end == std::string_view::npos) {
-                return std::string(query.substr(start));
+                return url_decode(query.substr(start));
             } else {
-                return std::string(query.substr(start, end - start));
+                return url_decode(query.substr(start, end - start));
             }
         }
         pos += 1;

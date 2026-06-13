@@ -98,11 +98,11 @@ def main():
     subcommand = sys.argv[1]
 
     if subcommand == "login":
-        client_id = ""
-        client_secret = ""
-        if len(sys.argv) > 2 and sys.argv[2] != "" and sys.argv[2] != '""':
+        client_id = os.environ.get("TIDAL_CLIENT_ID", "")
+        client_secret = os.environ.get("TIDAL_CLIENT_SECRET", "")
+        if not client_id and len(sys.argv) > 2 and sys.argv[2] != "" and sys.argv[2] != '""':
             client_id = sys.argv[2]
-        if len(sys.argv) > 3 and sys.argv[3] != "" and sys.argv[3] != '""':
+        if not client_secret and len(sys.argv) > 3 and sys.argv[3] != "" and sys.argv[3] != '""':
             client_secret = sys.argv[3]
 
         session = tidalapi.Session()
@@ -146,17 +146,20 @@ def main():
             print(json.dumps({"status": "error", "error": "Session verification failed after login"}), flush=True)
 
     elif subcommand == "refresh":
-        if len(sys.argv) < 3:
+        refresh_token = os.environ.get("TIDAL_REFRESH_TOKEN", "")
+        client_id = os.environ.get("TIDAL_CLIENT_ID", "")
+        client_secret = os.environ.get("TIDAL_CLIENT_SECRET", "")
+
+        if not refresh_token and len(sys.argv) > 2:
+            refresh_token = sys.argv[2]
+        if not client_id and len(sys.argv) > 3 and sys.argv[3] != "" and sys.argv[3] != '""':
+            client_id = sys.argv[3]
+        if not client_secret and len(sys.argv) > 4 and sys.argv[4] != "" and sys.argv[4] != '""':
+            client_secret = sys.argv[4]
+
+        if not refresh_token:
             print(json.dumps({"status": "error", "error": "Missing refresh_token"}), flush=True)
             sys.exit(1)
-
-        refresh_token = sys.argv[2]
-        client_id = ""
-        client_secret = ""
-        if len(sys.argv) > 3 and sys.argv[3] != "" and sys.argv[3] != '""':
-            client_id = sys.argv[3]
-        if len(sys.argv) > 4 and sys.argv[4] != "" and sys.argv[4] != '""':
-            client_secret = sys.argv[4]
 
         session = tidalapi.Session()
         if client_id:
@@ -193,12 +196,19 @@ def main():
             handle_exception("Token refresh failed", e)
 
     elif subcommand == "playlist":
-        if len(sys.argv) < 4:
-            print(json.dumps({"status": "error", "error": "Usage: playlist <playlist_id> <access_token>"}), flush=True)
+        access_token = os.environ.get("TIDAL_ACCESS_TOKEN", "")
+        if not access_token and len(sys.argv) > 3:
+            access_token = sys.argv[3]
+
+        if len(sys.argv) < 3:
+            print(json.dumps({"status": "error", "error": "Usage: playlist <playlist_id> [access_token]"}), flush=True)
             sys.exit(1)
 
         playlist_id = sys.argv[2]
-        access_token = sys.argv[3]
+
+        if not access_token:
+            print(json.dumps({"status": "error", "error": "Missing access_token"}), flush=True)
+            sys.exit(1)
 
         session = tidalapi.Session()
         loaded = session.load_oauth_session("Bearer", access_token)
@@ -259,13 +269,23 @@ def main():
             handle_exception("Failed to fetch tracks", e)
 
     elif subcommand == "stream":
-        if len(sys.argv) < 5:
-            print(json.dumps({"status": "error", "error": "Usage: stream <track_id> <access_token> <quality>"}), flush=True)
+        access_token = os.environ.get("TIDAL_ACCESS_TOKEN", "")
+        
+        if len(sys.argv) == 4:
+            track_id = sys.argv[2]
+            quality_str = sys.argv[3]
+        elif len(sys.argv) >= 5:
+            track_id = sys.argv[2]
+            if not access_token:
+                access_token = sys.argv[3]
+            quality_str = sys.argv[4]
+        else:
+            print(json.dumps({"status": "error", "error": "Usage: stream <track_id> <quality>"}), flush=True)
             sys.exit(1)
 
-        track_id = sys.argv[2]
-        access_token = sys.argv[3]
-        quality_str = sys.argv[4]
+        if not access_token:
+            print(json.dumps({"status": "error", "error": "Missing access_token"}), flush=True)
+            sys.exit(1)
 
         session = tidalapi.Session()
         loaded = session.load_oauth_session("Bearer", access_token)

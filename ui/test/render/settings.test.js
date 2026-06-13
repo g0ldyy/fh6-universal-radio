@@ -13,8 +13,13 @@ describe("renderSettings", () => {
       general: { port: 8420 },
       local_files: { enabled: true },
       playback: { equalizer_bands: [1, 2, 3, 4, 5], race_start_playback: "restart" },
+      tidal: { enabled: true, client_id: "my-id", audio_quality: "LOSSLESS" },
     });
-    expect(form().querySelectorAll("fieldset").length).toBe(10);
+    const tidalEnabled = form().querySelector("#f-tidal-enabled");
+    expect(tidalEnabled).not.toBeNull();
+    expect(tidalEnabled.checked).toBe(true);
+    expect(form().querySelector("#f-tidal-client_id").value).toBe("my-id");
+    expect(form().querySelector("#f-tidal-audio_quality").value).toBe("LOSSLESS");
     expect(form().querySelector("#f-general-port").value).toBe("8420");
     expect(form().querySelector("#f-local_files-enabled").checked).toBe(true);
 
