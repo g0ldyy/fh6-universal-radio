@@ -39,6 +39,12 @@ backup_and_copy "$dist/version.dll" "$game/version.dll"
 
 mkdir -p "$game/fh6-radio"
 cp -rfT "$dist/fh6-radio/ui" "$game/fh6-radio/ui"
+if [ -f "$dist/fh6-radio/tidal_helper.py" ]; then
+    cp "$dist/fh6-radio/tidal_helper.py" "$game/fh6-radio/tidal_helper.py"
+fi
+if [ -d "$dist/fh6-radio/tidalapi" ]; then
+    cp -rfT "$dist/fh6-radio/tidalapi" "$game/fh6-radio/tidalapi"
+fi
 if [ ! -f "$game/fh6-radio/config.toml" ]; then
     cp "$dist/fh6-radio/config.toml" "$game/fh6-radio/config.toml"
     printf '\033[33m  + fh6-radio/config.toml  (seeded from example)\033[0m\n'

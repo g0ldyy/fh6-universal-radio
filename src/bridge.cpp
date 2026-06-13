@@ -17,6 +17,7 @@
 #include "fh6/sources/spotify_source.hpp"
 #include "fh6/worker/worker_client.hpp"
 #include "fh6/sources/online_radio_source.hpp"
+#include "fh6/sources/tidal_source.hpp"
 
 #include <windows.h>
 #include <array>
@@ -168,7 +169,7 @@ void run_bridge(HMODULE self) noexcept {
     // Register/unregister sources to match the enabled flags. Called at
     // startup and on every config change so toggling enabled adds/removes
     // the dashboard tile live, without a game restart.
-    auto sync_sources = [&mgr, &data_dir, &worker](const Config& c) {
+    auto sync_sources = [&mgr, &data_dir, &worker, &store](const Config& c) {
         if (c.local_files.enabled && !mgr.find("local_files")) {
             auto src = std::make_unique<sources::LocalFileSource>(
                 c.local_files, c.general.ffmpeg_path, data_dir / "local_index.json", &worker);
@@ -197,6 +198,12 @@ void run_bridge(HMODULE self) noexcept {
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.online_radio.enabled && mgr.find("online_radio")) {
             mgr.unregister_source("online_radio");
+        }
+        if (c.tidal.enabled && !mgr.find("tidal")) {
+            auto src = std::make_unique<sources::TidalSource>(c.tidal, c.general.ffmpeg_path, store);
+            if (src->initialize()) mgr.register_source(std::move(src));
+        } else if (!c.tidal.enabled && mgr.find("tidal")) {
+            mgr.unregister_source("tidal");
         }
 
         if (c.external_audio.enabled && !mgr.find("external_audio")) {
@@ -282,6 +289,10 @@ void run_bridge(HMODULE self) noexcept {
         if (auto* jf = dynamic_cast<sources::JellyfinSource*>(mgr.find("jellyfin"))) {
             jf->set_ffmpeg_path(c.general.ffmpeg_path);
             jf->set_config(c.jellyfin);
+        }
+        if (auto* td = dynamic_cast<sources::TidalSource*>(mgr.find("tidal"))) {
+            td->set_ffmpeg_path(c.general.ffmpeg_path);
+            td->set_config(c.tidal);
         }
         if (auto* ext = dynamic_cast<sources::ExternalAudioSource*>(mgr.find("external_audio"))) {
             ext->set_config(c.external_audio);

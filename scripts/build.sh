@@ -57,6 +57,10 @@ cp "$build/version.dll"            "$dist/"
 cp "$build/fh6-radio-worker.exe"   "$dist/fh6-radio/"
 cp -r "$root/ui/dist"              "$dist/fh6-radio/ui"
 cp "$root/config.example.toml"     "$dist/fh6-radio/config.toml"
+cp "$root/src/sources/tidal_helper.py" "$dist/fh6-radio/tidal_helper.py"
+if [ -d "$root/python-tidal/tidalapi" ]; then
+    cp -r "$root/python-tidal/tidalapi" "$dist/fh6-radio/tidalapi"
+fi
 
 cp "$root/scripts/dist-readme.txt" "$dist/README.txt"
 

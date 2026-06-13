@@ -65,6 +65,7 @@ add_library(version SHARED
     src/sources/local_file_source.cpp
     src/sources/youtube_music_source.cpp
     src/sources/jellyfin_source.cpp
+    src/sources/tidal_source.cpp
     src/sources/external_audio_source.cpp
     src/sources/external_media_session.cpp
     src/sources/spotify_source.cpp

@@ -1,5 +1,6 @@
 import { el } from "../dom.js";
 import { changed } from "../store.js";
+import { toast } from "../toast.js";
 
 function detailLine(s) {
   if (s.name === "local_files" && s.details?.track_count != null) {
@@ -55,13 +56,26 @@ export function renderSources(node, state, cfg, onSwitch) {
         el("div", { class: "source-name" }, s.display_name),
         el("div", { class: "source-state " + stateCls }, stateText(s)),
       ];
-      if (showNote) children.push(el("div", { class: "source-note" }, s.auth_instructions));
+      if (showNote) children.push(el("div", { class: "source-note", html: s.auth_instructions }));
+
+      const isTidalUnauthed = s.name === "tidal" && s.auth_state !== "none_required" && s.auth_state !== "authenticated";
+      const classes = ["source"];
+      if (s.name === active) classes.push("active");
+      if (isTidalUnauthed) classes.push("unauthorized");
+
       const tile = el(
         "button",
-        { type: "button", class: "source" + (s.name === active ? " active" : "") },
+        { type: "button", class: classes.join(" ") },
         children,
       );
-      tile.addEventListener("click", () => onSwitch(s.name));
+      tile.addEventListener("click", (e) => {
+        if (e.target.tagName === "A") return;
+        if (isTidalUnauthed) {
+          toast("Please link your TIDAL account using the link below.", true);
+          return;
+        }
+        onSwitch(s.name);
+      });
       return tile;
     }),
   );

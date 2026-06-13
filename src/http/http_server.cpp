@@ -7,6 +7,7 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
+#include "fh6/sources/tidal_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/external_media_session.hpp"
 #include "fh6/sources/spotify_source.hpp"
@@ -110,6 +111,10 @@ json source_to_json(IAudioSource* s) {
         j["details"]["shuffle"] = yt->shuffle();
     if (auto* rd = dynamic_cast<sources::OnlineRadioSource*>(s))
         j["details"]["song_history"] = rd->song_history();
+    if (auto* td = dynamic_cast<sources::TidalSource*>(s)) {
+        j["details"]["track_count"]   = td->track_count();
+        j["details"]["current_index"] = td->current_index();
+    }
     return j;
 }
 
@@ -171,6 +176,18 @@ json config_to_json(const Config& c) {
              {"default_playlist", c.jellyfin.default_playlist},
              {"use_favorites", c.jellyfin.use_favorites},
              {"shuffle", c.jellyfin.shuffle},
+         }},
+        {"tidal",
+         json{
+             {"enabled", c.tidal.enabled},
+             {"client_id", c.tidal.client_id},
+             {"client_secret", c.tidal.client_secret.empty() ? "" : "********"},
+             {"has_access_token", !c.tidal.access_token.empty()},
+             {"has_refresh_token", !c.tidal.refresh_token.empty()},
+             {"expiry_time", c.tidal.expiry_time},
+             {"default_playlist", c.tidal.default_playlist},
+             {"shuffle", c.tidal.shuffle},
+             {"audio_quality", c.tidal.audio_quality},
          }},
         {"external_audio",
          json{
@@ -297,6 +314,24 @@ void apply_patch(Config& c, const json& j) {
         c.jellyfin.use_favorites    = pull(*it, "use_favorites", c.jellyfin.use_favorites);
         c.jellyfin.shuffle          = pull(*it, "shuffle", c.jellyfin.shuffle);
     }
+    if (auto it = j.find("tidal"); it != j.end()) {
+        c.tidal.enabled          = pull(*it, "enabled", c.tidal.enabled);
+        c.tidal.client_id        = pull(*it, "client_id", c.tidal.client_id);
+        std::string secret       = pull(*it, "client_secret", c.tidal.client_secret);
+        if (secret != "********") {
+            c.tidal.client_secret = secret;
+        }
+        c.tidal.access_token     = pull(*it, "access_token", c.tidal.access_token);
+        c.tidal.refresh_token    = pull(*it, "refresh_token", c.tidal.refresh_token);
+        int64_t expiry_tmp       = pull(*it, "expiry_time", static_cast<int64_t>(c.tidal.expiry_time));
+        if (expiry_tmp < 0) {
+            expiry_tmp = 0;
+        }
+        c.tidal.expiry_time      = static_cast<uint64_t>(expiry_tmp);
+        c.tidal.default_playlist = pull(*it, "default_playlist", c.tidal.default_playlist);
+        c.tidal.shuffle          = pull(*it, "shuffle", c.tidal.shuffle);
+        c.tidal.audio_quality    = pull(*it, "audio_quality", c.tidal.audio_quality);
+    }
     if (auto it = j.find("external_audio"); it != j.end()) {
         c.external_audio.enabled     = pull(*it, "enabled", c.external_audio.enabled);
         c.external_audio.endpoint_id = pull(*it, "endpoint_id", c.external_audio.endpoint_id);
@@ -372,6 +407,7 @@ constexpr std::string_view status_text(int code) noexcept {
     switch (code) {
         case 200: return "OK";
         case 400: return "Bad Request";
+        case 401: return "Unauthorized";
         case 404: return "Not Found";
         case 502: return "Bad Gateway";
         default: return "Internal Server Error";
@@ -475,6 +511,67 @@ bool serve_file(SOCKET client, const std::filesystem::path& file) {
     buf << f.rdbuf();
     send_response(client, 200, buf.str(), mime_for(file.string()));
     return true;
+}
+
+std::string url_decode(std::string_view str) {
+    std::string decoded;
+    decoded.reserve(str.size());
+    for (size_t i = 0; i < str.size(); ++i) {
+        if (str[i] == '%') {
+            if (i + 2 < str.size()) {
+                char hex1 = str[i + 1];
+                char hex2 = str[i + 2];
+                if (std::isxdigit(static_cast<unsigned char>(hex1)) &&
+                    std::isxdigit(static_cast<unsigned char>(hex2))) {
+                    auto hex_val = [](char c) -> int {
+                        if (c >= '0' && c <= '9') return c - '0';
+                        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                        return 0;
+                    };
+                    char decoded_char = static_cast<char>((hex_val(hex1) << 4) + hex_val(hex2));
+                    decoded += decoded_char;
+                    i += 2;
+                } else {
+                    return {}; // Invalid escape
+                }
+            } else {
+                return {}; // Invalid escape
+            }
+        } else if (str[i] == '+') {
+            decoded += ' ';
+        } else {
+            decoded += str[i];
+        }
+    }
+    return decoded;
+}
+
+std::string get_query_param(std::string_view path, std::string_view name) {
+    size_t q = path.find('?');
+    if (q == std::string_view::npos) return {};
+    std::string_view query = path.substr(q + 1);
+    
+    size_t pos = 0;
+    while (true) {
+        pos = query.find(name, pos);
+        if (pos == std::string_view::npos) return {};
+        
+        bool prefix_ok = (pos == 0 || query[pos - 1] == '&');
+        size_t next_idx = pos + name.size();
+        bool suffix_ok = (next_idx < query.size() && query[next_idx] == '=');
+        
+        if (prefix_ok && suffix_ok) {
+            size_t start = next_idx + 1;
+            size_t end = query.find('&', start);
+            if (end == std::string_view::npos) {
+                return url_decode(query.substr(start));
+            } else {
+                return url_decode(query.substr(start, end - start));
+            }
+        }
+        pos += 1;
+    }
 }
 
 } // namespace
@@ -655,6 +752,168 @@ struct HttpServer::Impl {
             deps.retry();
             return ok();
         }
+        if (m == "GET" && p.starts_with("/api/source/tidal/callback")) {
+            auto* td = find_typed<sources::TidalSource>("tidal");
+            if (!td) return fail(404, "TIDAL not registered");
+
+            std::string code = get_query_param(p, "code");
+            if (code.empty()) {
+                const char* html = R"html(<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TIDAL Link Failed</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #0b0c10;
+            color: #c5c6c7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 2.5rem;
+            background-color: #1f2833;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            max-width: 480px;
+        }
+        h1 {
+            color: #ff4d4d;
+            margin-bottom: 1rem;
+        }
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        .cross {
+            font-size: 4rem;
+            color: #ff4d4d;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="cross">✗</div>
+        <h1>TIDAL Link Failed</h1>
+        <p>No authorization code was found in the query parameters. Please restart the link process from the settings drawer.</p>
+    </div>
+</body>
+</html>)html";
+                return send_response(client, 400, html, "text/html");
+            }
+
+            if (td->exchange_authorization_code(code)) {
+                const char* html = R"html(<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TIDAL Link Successful</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #0b0c10;
+            color: #c5c6c7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 2.5rem;
+            background-color: #1f2833;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            max-width: 480px;
+        }
+        h1 {
+            color: #66fcf1;
+            margin-bottom: 1rem;
+        }
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        .checkmark {
+            font-size: 4rem;
+            color: #45f3ff;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="checkmark">✓</div>
+        <h1>TIDAL Linked Successfully!</h1>
+        <p>Your TIDAL account has been connected to FH6 Universal Radio. You can close this window and return to the game dashboard.</p>
+    </div>
+</body>
+</html>)html";
+                return send_response(client, 200, html, "text/html");
+            } else {
+                const char* html = R"html(<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TIDAL Link Failed</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #0b0c10;
+            color: #c5c6c7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 2.5rem;
+            background-color: #1f2833;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            max-width: 480px;
+        }
+        h1 {
+            color: #ff4d4d;
+            margin-bottom: 1rem;
+        }
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        .cross {
+            font-size: 4rem;
+            color: #ff4d4d;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="cross">✗</div>
+        <h1>TIDAL Link Failed</h1>
+        <p>Failed to exchange authorization code for tokens. Please check your developer credentials (Client ID and Secret) and try again.</p>
+    </div>
+</body>
+</html>)html";
+                return send_response(client, 400, html, "text/html");
+            }
+        }
         if (m == "GET" && p == "/api/source/local_files/queue") {
             auto* lf = find_typed<sources::LocalFileSource>("local_files");
             if (!lf) return fail(404, "local_files not registered");
@@ -745,6 +1004,13 @@ struct HttpServer::Impl {
         }
         if (m == "POST" && p == "/api/source/switch") {
             auto src = json::parse(req.body).at("source").get<std::string>();
+            if (src == "tidal") {
+                if (auto* td = find_typed<sources::TidalSource>("tidal")) {
+                    if (td->auth_state() != AuthState::authenticated) {
+                        return fail(400, "TIDAL is not authenticated. Please link your account.");
+                    }
+                }
+            }
             return mgr.switch_to(src) ? ok() : fail(404, "unknown source");
         }
         if (m == "GET" && p == "/api/external_audio/devices") {
@@ -843,6 +1109,42 @@ struct HttpServer::Impl {
             if (was_active) mgr.ring().drain();
             rd->play();
             mgr.switch_to("online_radio");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/tidal/cast") {
+            auto* td = find_typed<sources::TidalSource>("tidal");
+            if (!td) return fail(404, "tidal not registered");
+            if (td->auth_state() != AuthState::authenticated) {
+                return fail(401, "TIDAL is not authenticated. Please link your account first.");
+            }
+            auto playlist_id = json::parse(req.body).value("playlist_id", std::string{});
+            if (playlist_id.empty()) return fail(400, "playlist_id required");
+            const bool was_active = (mgr.active() == td);
+            if (!td->cast(std::move(playlist_id))) return fail(502, "TIDAL playlist cast failed");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("tidal");
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/tidal/queue") {
+            auto* td = find_typed<sources::TidalSource>("tidal");
+            if (!td) return fail(404, "tidal not registered");
+            auto snap   = td->queue_snapshot();
+            json tracks = json::array();
+            for (std::size_t i = 0; i < snap.entries.size(); ++i) {
+                const auto& e = snap.entries[i];
+                tracks.push_back(
+                    json{{"index", i}, {"title", e.title}, {"artist", e.artist}, {"album", e.album}, {"artwork_url", e.artwork_url}});
+            }
+            return ok(json{{"cursor", snap.cursor}, {"tracks", tracks}});
+        }
+        if (m == "POST" && p == "/api/source/tidal/play") {
+            auto* td = find_typed<sources::TidalSource>("tidal");
+            if (!td) return fail(404, "tidal not registered");
+            auto idx              = json::parse(req.body).value("index", std::size_t{0});
+            const bool was_active = (mgr.active() == td);
+            if (!td->jump_to(idx)) return fail(400, "index out of range");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("tidal");
             return ok();
         }
         if (m == "POST" && p == "/api/source/local_files/rescan") {

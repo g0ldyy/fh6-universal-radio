@@ -71,6 +71,25 @@
         </form>
       </section>
 
+      <section class="card" id="tidal-cast-card" hidden>
+        <h2>Play TIDAL Playlist</h2>
+        <p class="muted">
+          Enter a TIDAL Playlist or Mix ID. The radio will switch sources and start streaming immediately.
+        </p>
+        <form id="tidal-cast" class="row">
+          <input type="text" id="tidal-url" placeholder="e.g. 696db989-7a42-4513-bf7d-1e51958e4855" autocomplete="off" />
+          <button type="submit" class="btn filled">Play</button>
+        </form>
+        <div class="lf-queue" id="tidal-queue" style="margin-top: 1.5rem;" hidden>
+          <div class="lf-queue-head row">
+            <label class="field-label">Playlist Tracks</label>
+            <span class="muted" id="tidal-queue-count">0 tracks</span>
+          </div>
+          <input type="text" id="tidal-queue-search" placeholder="Search the playlist…" autocomplete="off" />
+          <ul class="lf-tracklist" id="tidal-track-list"></ul>
+        </div>
+      </section>
+
       <section class="card" id="output-card" hidden>
         <h2>Output</h2>
         <label class="slider">

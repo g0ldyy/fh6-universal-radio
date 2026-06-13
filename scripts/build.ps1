@@ -65,6 +65,10 @@ Copy-Item (Join-Path $build "Release\version.dll") $dist
 Copy-Item (Join-Path $build "Release\fh6-radio-worker.exe") (Join-Path $dist "fh6-radio")
 Copy-Item -Recurse (Join-Path $root "ui\dist") (Join-Path $dist "fh6-radio\ui")
 Copy-Item (Join-Path $root "config.example.toml") (Join-Path $dist "fh6-radio\config.toml")
+Copy-Item (Join-Path $root "src\sources\tidal_helper.py") (Join-Path $dist "fh6-radio\tidal_helper.py")
+if (Test-Path (Join-Path $root "python-tidal\tidalapi")) {
+    Copy-Item -Recurse -Force (Join-Path $root "python-tidal\tidalapi") (Join-Path $dist "fh6-radio\tidalapi")
+}
 
 Copy-Item (Join-Path $PSScriptRoot "dist-readme.txt") (Join-Path $dist "README.txt")
 

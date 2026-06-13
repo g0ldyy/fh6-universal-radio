@@ -117,6 +117,16 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.yt_dlp_path      = pick_path(ym, "yt_dlp_path");
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
     cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
+    const auto& td = section(root, "tidal");
+    cfg.tidal.enabled = pick<bool>(td, "enabled", cfg.tidal.enabled);
+    cfg.tidal.client_id = pick<std::string>(td, "client_id", cfg.tidal.client_id);
+    cfg.tidal.client_secret = pick<std::string>(td, "client_secret", cfg.tidal.client_secret);
+    cfg.tidal.access_token = pick<std::string>(td, "access_token", cfg.tidal.access_token);
+    cfg.tidal.refresh_token = pick<std::string>(td, "refresh_token", cfg.tidal.refresh_token);
+    cfg.tidal.expiry_time = static_cast<uint64_t>(pick<int64_t>(td, "expiry_time", cfg.tidal.expiry_time));
+    cfg.tidal.default_playlist = pick<std::string>(td, "default_playlist", cfg.tidal.default_playlist);
+    cfg.tidal.shuffle = pick<bool>(td, "shuffle", cfg.tidal.shuffle);
+    cfg.tidal.audio_quality = pick<std::string>(td, "audio_quality", cfg.tidal.audio_quality);
 
     const auto& sp             = section(root, "spotify");
     cfg.spotify.enabled        = pick<bool>(sp, "enabled", cfg.spotify.enabled);
@@ -331,6 +341,16 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv_path("yt_dlp_path", cfg.youtube_music.yt_dlp_path);
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
     e.kv("shuffle", cfg.youtube_music.shuffle);
+    e.header("tidal");
+    e.kv("enabled", cfg.tidal.enabled);
+    e.kv("client_id", cfg.tidal.client_id);
+    e.kv("client_secret", cfg.tidal.client_secret);
+    e.kv("access_token", cfg.tidal.access_token);
+    e.kv("refresh_token", cfg.tidal.refresh_token);
+    e.kv("expiry_time", (int64_t)cfg.tidal.expiry_time);
+    e.kv("default_playlist", cfg.tidal.default_playlist);
+    e.kv("shuffle", cfg.tidal.shuffle);
+    e.kv("audio_quality", cfg.tidal.audio_quality);
 
     e.header("jellyfin");
     e.kv("enabled", cfg.jellyfin.enabled);

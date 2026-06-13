@@ -4,6 +4,7 @@ export const SOURCE_SECTIONS = [
   ["local_files", "Local files"],
   ["youtube_music", "YouTube Music"],
   ["jellyfin", "Jellyfin"],
+  ["tidal", "Tidal Music"],
   ["external_audio", "External Audio"],
   ["spotify", "Spotify Connect"],
 ];
@@ -52,6 +53,18 @@ export const SCHEMA = [
       ["default_playlist", "Default Playlist", "text"],
       ["use_favorites", "Use Favorites", "checkbox"],
       ["shuffle", "Shuffle", "checkbox"],
+    ],
+  ],
+  [
+    "tidal",
+    "Tidal Music",
+    [
+      ["enabled", "Enabled", "checkbox"],
+      ["client_id", "Client ID (optional)", "text"],
+      ["client_secret", "Client Secret (optional)", "text"],
+      ["default_playlist", "Default Playlist ID", "text"],
+      ["shuffle", "Shuffle", "checkbox"],
+      ["audio_quality", "Audio Quality", "select", ["LOW", "HIGH", "LOSSLESS", "HI_RES"]],
     ],
   ],
   ["external_audio", "External Audio", [["enabled", "Enabled", "checkbox"]]],

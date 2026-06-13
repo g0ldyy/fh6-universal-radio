@@ -83,6 +83,18 @@ struct OnlineRadioConfig {
     size_t default_station_index = 0;
 };
 
+struct TidalConfig {
+    bool enabled = false;
+    std::string client_id;
+    std::string client_secret;
+    std::string access_token;
+    std::string refresh_token;
+    uint64_t expiry_time = 0;
+    std::string default_playlist;
+    bool shuffle = true;
+    std::string audio_quality = "HIGH";
+};
+
 struct AudioConfig {
     float output_gain = 1.0f;
 };
@@ -110,6 +122,7 @@ struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
     YouTubeMusicConfig youtube_music;
+    TidalConfig tidal;
     AudioConfig audio;
     JellyfinConfig jellyfin;
     ExternalAudioConfig external_audio;
