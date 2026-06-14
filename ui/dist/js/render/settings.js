@@ -1,6 +1,7 @@
 import { $$, el } from "../dom.js";
 import { db } from "../format.js";
 import { EQ_BAND_LABELS, SCHEMA, SOURCE_SECTIONS } from "../schema.js";
+import { t, setLang, getLang } from "../i18n.js";
 
 function buildField(section, spec, cfg) {
     const [key, label, type, a, b, c] = spec;
@@ -16,7 +17,7 @@ function buildField(section, spec, cfg) {
     }
 
     if (type === "source-select") {
-        const available = SOURCE_SECTIONS.filter(([s]) => cfg?.[s]?.enabled);
+        const available = SOURCE_SECTIONS().filter(([s]) => cfg?.[s]?.enabled);
         const options = [el("option", { value: "" }, "— None —")];
         for (const [value, name] of available) { options.push(el("option", { value, selected: cur === value }, name)); }
         if (cur && !available.some(([v]) => v === cur)) { options.push(el("option", { value: cur, selected: true }, cur)); }
@@ -80,18 +81,38 @@ export function renderSettings(form, cfg) {
     // Toggle couleur dynamique
     const dynamicColor = localStorage.getItem("fh6-dynamic-color") !== "false";
     const checkbox = el("input", { type: "checkbox", id: "f-dynamic-color" });
+    const browserLang = navigator.language?.slice(0, 2) || "en";
+    const supportedLangs = ["en", "fr", "de", "es", "it", "pt", "ja", "zh"];
+    const langSelect = el("select", { id: "f-language" }, [
+        el("option", { value: "en" }, "🇬🇧 English"),
+        el("option", { value: "fr" }, "🇫🇷 Français"),
+        el("option", { value: "de" }, "🇩🇪 Deutsch (AI Generate)"),
+        el("option", { value: "es" }, "🇪🇸 Español (AI Generate)"),
+        el("option", { value: "it" }, "🇮🇹 Italiano (AI Generate)"),
+        el("option", { value: "pt" }, "🇵🇹 Português (AI Generate)"),
+        el("option", { value: "ja" }, "🇯🇵 日本語 (AI Generate)"),
+        el("option", { value: "zh" }, "🇨🇳 中文 (AI Generate)"),
+    ]);
+
     checkbox.checked = dynamicColor;
+    langSelect.value = getLang();
+
     const interfaceFieldset = el("fieldset", {}, [
-        el("legend", {}, "Interface"),
+        el("legend", {}, t("settings.interface.title")),
         el("div", { class: "field checkbox" }, [
             checkbox,
-            el("label", { for: "f-dynamic-color" }, "Dynamic accent color"),
+            el("label", { for: "f-dynamic-color" }, t("settings.interface.dynamic_color")),
+        ]),
+        el("div", { class: "field" }, [
+            el("label", { for: "f-language" }, t("settings.interface.language")),
+            langSelect,
+            el("span", { class: "field-hint" }, t("settings.interface.language_hint")),
         ]),
     ]);
 
     form.replaceChildren(
         interfaceFieldset,
-        ...SCHEMA.map(([section, title, fields]) => {
+        ...SCHEMA().map(([section, title, fields]) => {
             const fieldset = el("fieldset", {}, [el("legend", {}, title)]);
             for (const spec of fields) fieldset.append(buildField(section, spec, cfg));
             return fieldset;

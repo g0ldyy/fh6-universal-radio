@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { $, el } from "../dom.js";
 import { icons } from "../icons.js";
 import { toast } from "../toast.js";
+import { t } from "../i18n.js";
 
 const ORDERS = [
 	["shuffle", "Shuffle"],
@@ -41,13 +42,13 @@ function createBrowser() {
 
 	const list = el("div", { class: "lf-browse-list" });
 	const crumb = el("div", { class: "lf-browse-crumb muted" });
-	const useBtn = el("button", { type: "button", class: "btn filled" }, "Use this folder");
-	const upBtn = el("button", { type: "button", class: "btn ghost" }, "Up");
-	const closeBtn = el("button", { type: "button", class: "btn ghost" }, "Cancel");
+	const useBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.browser.use"));
+	const upBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.browser.up"));
+	const closeBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.browser.cancel"));
 
 	const modal = el("div", { class: "lf-modal", hidden: true }, [
 		el("div", { class: "lf-modal-card" }, [
-			el("div", { class: "lf-modal-head" }, [el("h3", {}, "Choose a folder"), crumb]),
+			el("div", { class: "lf-modal-head" }, [el("h3", {}, t("local_files.browser.title")), crumb]),
 			list,
 			el("div", { class: "lf-modal-foot row" }, [closeBtn, upBtn, useBtn]),
 		]),
@@ -64,7 +65,7 @@ function createBrowser() {
 			return;
 		}
 		dir = r.path || "";
-		crumb.textContent = dir || "This PC";
+		crumb.textContent = dir || t("local_files.browser.crumb_root");
 		upBtn.disabled = false;
 		useBtn.disabled = !dir;
 		list.replaceChildren(
@@ -115,59 +116,58 @@ export function createLocalFiles(main, ctx) {
 	const browser = createBrowser();
 
 	const stationSelect = el("select", { id: "lf-station", "aria-label": "Station preset" });
-	const onAirBtn = el("button", { type: "button", class: "btn filled" }, "Set on air");
-	const newBtn = el("button", { type: "button", class: "btn ghost" }, "New");
-	const renameBtn = el("button", { type: "button", class: "btn ghost" }, "Rename");
-	const deleteBtn = el("button", { type: "button", class: "btn ghost" }, "Delete");
+	const onAirBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.on_air"));
+	const newBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.new"));
+	const renameBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.rename"));
+	const deleteBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.delete"));
 
 	const rootsBox = el("div", { class: "lf-roots" });
-	const addFolderBtn = el("button", { type: "button", class: "btn ghost" }, "Add folder");
+	const addFolderBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.add_folder"));
 	const treeBox = el("div", { class: "lf-tree" });
 	const orderSelect = el("select", { "aria-label": "Play order" },
-		ORDERS.map(([v, t]) => el("option", { value: v }, t)));
+		ORDERS.map(([v, label]) => el("option", { value: v }, label)));
 	const groupingSelect = el("select", { "aria-label": "Album grouping" },
-		GROUPINGS.map(([v, t]) => el("option", { value: v }, t)));
+		GROUPINGS.map(([v, label]) => el("option", { value: v }, label)));
 	const repeatSelect = el("select", { "aria-label": "Repeat mode" },
-		REPEATS.map(([v, t]) => el("option", { value: v }, t)));
-	const saveBtn = el("button", { type: "button", class: "btn filled" }, "Save");
+		REPEATS.map(([v, label]) => el("option", { value: v }, label)));
+	const saveBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.save"));
 
-	const searchInput = el("input", { type: "text", placeholder: "Search the queue…", autocomplete: "off" });
+	const searchInput = el("input", { type: "text", placeholder: t("local_files.search"), autocomplete: "off" });
 	const reshuffleBtn = el("button", { type: "button", class: "icon-btn", "aria-label": "Reshuffle", html: icons.shuffle });
 	const trackList = el("ul", { class: "lf-tracklist" });
 	const queueCount = el("span", { class: "muted" });
 
 	const card = el("section", { class: "card", id: "local-files-card", hidden: true }, [
-		el("h2", {}, "Local Files"),
+		el("h2", {}, t("local_files.title")),
 		el("div", { class: "lf-stationbar row" }, [stationSelect, onAirBtn]),
 		el("div", { class: "row lf-stationtools" }, [newBtn, renameBtn, deleteBtn]),
 		el("div", { class: "lf-editor" }, [
 			el("div", { class: "lf-editor-section lf-editor-section--folders" }, [
-				el("label", { class: "field-label lf-editor-section__label" }, "Source folders"),
+				el("label", { class: "field-label lf-editor-section__label" }, t("local_files.source_folders")),
 				el("div", { class: "lf-editor-section__body" }, [
 					rootsBox,
 					el("div", { class: "row lf-editor-section__actions" }, [addFolderBtn]),
 				]),
 			]),
 			el("div", { class: "lf-editor-section lf-editor-section--exclude" }, [
-				el("label", { class: "field-label lf-editor-section__label" }, "Exclude subfolders (uncheck to skip)"),
+				el("label", { class: "field-label lf-editor-section__label" }, t("local_files.exclude_subfolders")),
 				el("div", { class: "lf-editor-section__body" }, [
 					treeBox,
 				]),
 			]),
 			el("div", { class: "lf-editor-section lf-editor-section--modes" }, [
-				el("label", { class: "field-label lf-editor-section__label" }, "Playback options"),
+				el("label", { class: "field-label lf-editor-section__label" }, t("local_files.options")),
 				el("div", { class: "lf-modes row lf-editor-section__body" }, [
-					el("label", { class: "lf-mode" }, ["Order", orderSelect]),
-					el("label", { class: "lf-mode", id: "lf-grouping-field" }, ["Grouping", groupingSelect]),
-					el("label", { class: "lf-mode" }, ["Repeat", repeatSelect]),
+					el("label", { class: "lf-mode" }, [t("local_files.order"), orderSelect]),
+					el("label", { class: "lf-mode", id: "lf-grouping-field" }, [t("local_files.grouping"), groupingSelect]),
+					el("label", { class: "lf-mode" }, [t("local_files.repeat"), repeatSelect]),
 				]),
 			]),
-
 			el("div", { class: "row lf-editor-foot" }, [saveBtn]),
 		]),
 		el("div", { class: "lf-queue" }, [
 			el("div", { class: "lf-queue-head row" }, [
-				el("label", { class: "field-label" }, "Queue"),
+				el("label", { class: "field-label" }, t("local_files.queue")),
 				queueCount,
 				reshuffleBtn,
 			]),
@@ -219,7 +219,7 @@ export function createLocalFiles(main, ctx) {
 		);
 		deleteBtn.disabled = stations.length <= 1;
 		onAirBtn.disabled = cur()?.name === activeStation;
-		onAirBtn.textContent = cur()?.name === activeStation ? "On air" : "Set on air";
+		onAirBtn.textContent = cur()?.name === activeStation ? t("local_files.on_air") : t("local_files.on_air");
 	}
 
 	function renderRoots() {
@@ -236,40 +236,29 @@ export function createLocalFiles(main, ctx) {
 					});
 					return el("div", { class: "lf-root" }, [el("span", { class: "lf-root-path" }, root), remove]);
 				})
-				: [el("p", { class: "muted" }, "No folders yet — add one to build this station.")]),
+				: []),
 		);
 	}
 
-	function excludedState(s, path) {
-		const n = norm(path);
-		for (const ex of s.excluded) {
-			const e = norm(ex);
-			if (e === n) return "self";
-			if (n.startsWith(e + "/")) return "ancestor";
-		}
-		return "none";
-	}
-	const hasExcludedDescendant = (s, path) =>
-		s.excluded.some(ex => norm(ex) !== norm(path) && norm(ex).startsWith(norm(path) + "/"));
-
 	function treeRow(s, entry, depth) {
-		const state = excludedState(s, entry.path);
+		const state = s.excluded.some(ex => norm(ex) === norm(entry.path))
+			? "excluded"
+			: s.excluded.some(ex => within(entry.path, ex))
+				? "ancestor"
+				: "included";
+		const isOpen = expanded.has(norm(entry.path));
+
 		const box = el("input", { type: "checkbox" });
-		box.checked = state === "none";
-		box.disabled = state === "ancestor";
-		box.indeterminate = state === "none" && hasExcludedDescendant(s, entry.path);
+		box.checked = state !== "excluded";
+		box.indeterminate = state === "ancestor";
 		box.addEventListener("change", () => {
-			if (box.checked) {
-				s.excluded = s.excluded.filter(ex => norm(ex) !== norm(entry.path));
-			} else {
-				s.excluded = s.excluded.filter(ex => !within(ex, entry.path));
-				s.excluded.push(entry.path);
-			}
+			if (box.checked) s.excluded = s.excluded.filter(ex => norm(ex) !== norm(entry.path));
+			else s.excluded.push(entry.path);
 			renderTree();
 		});
 
-		const children = el("div", { class: "lf-tree-children" });
-		const isOpen = expanded.has(norm(entry.path));
+		const children = el("div", {});
+
 		const caret = el("button", {
 			type: "button",
 			class: "lf-caret" + (entry.has_children ? "" : " empty"),
@@ -331,27 +320,24 @@ export function createLocalFiles(main, ctx) {
 	}
 
 	function renderQueue() {
-		// Accent-insensitive, multi-word search: every word must appear somewhere
-		// in title + artist + folder, in any order or position.
 		const terms = fold(search).split(/\s+/).filter(Boolean);
-		const rows = (queue.tracks || []).filter(t => {
+		const rows = (queue.tracks || []).filter(track => {
 			if (!terms.length) return true;
-			const hay = fold(`${t.title} ${t.artist || ""} ${t.folder || ""}`);
+			const hay = fold(`${track.title} ${track.artist || ""} ${track.folder || ""}`);
 			return terms.every(w => hay.includes(w));
 		});
-		queueCount.textContent = `${queue.tracks?.length || 0} tracks`;
+		queueCount.textContent = `${queue.tracks?.length || 0} ${t("local_files.tracks")}`;
 		trackList.replaceChildren(
-			...rows.map(t => {
-				// Get cover (maybe for later) or add svg placeholder if not found, to avoid layout shift when it loads.
+			...rows.map(track => {
 				const coverImg = el("img", {
 					class: "lf-track-cover-img",
-					src: t.cover_url || "",
+					src: track.cover_url || "",
 					alt: "",
 					loading: "lazy",
 					"aria-hidden": "true",
 				});
 				const coverWrap = el("div", { class: "lf-track-cover" }, [coverImg]);
-				if (!t.cover_url) {
+				if (!track.cover_url) {
 					coverWrap.dataset.noart = "1";
 					coverWrap.append(
 						el("div", { class: "lf-eq" }, [
@@ -363,18 +349,18 @@ export function createLocalFiles(main, ctx) {
 				}
 
 				const infoWrap = el("div", { class: "lf-track-info" }, [
-					el("span", { class: "lf-track-title" }, t.title || "Titre inconnu"),
-					t.folder ? el("span", { class: "lf-track-folder muted" }, t.folder) : null,
+					el("span", { class: "lf-track-title" }, track.title || t("local_files.unknown_title")),
+					track.folder ? el("span", { class: "lf-track-folder muted" }, track.folder) : null,
 				]);
 
 				const li = el("li", {
-					class: "lf-track" + (t.index === queue.cursor ? " current" : ""),
+					class: "lf-track" + (track.index === queue.cursor ? " current" : ""),
 				}, [coverWrap, infoWrap]);
 
 				li.addEventListener("click", async () => {
 					try {
-						await api.playLocalIndex(t.index);
-						queue.cursor = t.index;
+						await api.playLocalIndex(track.index);
+						queue.cursor = track.index;
 						renderQueue();
 					} catch (e) {
 						toast(e.message, true);
@@ -385,7 +371,7 @@ export function createLocalFiles(main, ctx) {
 		);
 		if (!rows.length) {
 			trackList.append(
-				el("li", { class: "muted" }, terms.length ? "No matches." : "Queue is empty."),
+				el("li", { class: "muted" }, terms.length ? t("local_files.no_matches") : t("local_files.queue_empty")),
 			);
 		}
 
@@ -408,7 +394,7 @@ export function createLocalFiles(main, ctx) {
 	});
 	renameBtn.addEventListener("click", () => {
 		const s = cur();
-		const name = window.prompt("Station name", s.name)?.trim();
+		const name = window.prompt(t("local_files.station_name"), s.name)?.trim();
 		if (!name || name === s.name) return;
 		if (stations.some(x => x !== s && x.name === name)) return toast("A station with that name exists", true);
 		if (s.name === activeStation) activeStation = name;
@@ -441,7 +427,7 @@ export function createLocalFiles(main, ctx) {
 	saveBtn.addEventListener("click", async () => {
 		try {
 			const r = await api.putLocalStations(stations, activeStation);
-			toast(`Saved · ${r.track_count} tracks`);
+			toast(`${t("local_files.save")} · ${r.track_count} ${t("local_files.tracks")}`);
 			await ctx.onSaved?.();
 			loadQueue();
 		} catch (e) {
@@ -451,11 +437,11 @@ export function createLocalFiles(main, ctx) {
 	onAirBtn.addEventListener("click", async () => {
 		const name = cur().name;
 		try {
-			await api.putLocalStations(stations, name); // persist edits + set active
-			await api.activateLocalStation(name); // switch source + play
+			await api.putLocalStations(stations, name);
+			await api.activateLocalStation(name);
 			activeStation = name;
 			renderStations();
-			toast(`On air: ${name}`);
+			toast(`${t("local_files.on_air")}: ${name}`);
 			await ctx.onSaved?.();
 			loadQueue();
 		} catch (e) {

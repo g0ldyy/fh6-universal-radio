@@ -13,6 +13,7 @@ import { createExternalAudio } from "./render/externalAudio.js";
 import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
 import { extractDominantColor } from "./render/nowPlaying.js";
+import { initI18n, onLangChange, t, setLang } from "./i18n.js";
 
 let state = null;
 let cfg = null;
@@ -50,45 +51,12 @@ $("#yt-shuffle").innerHTML = icons.shuffle;
 
 const mainEl = $("main");
 
-const renderOutput = createOutput($("#vol"), $("#vol-out"), async gain => {
-    try {
-        await api.setGain(gain);
-    } catch (e) {
-        toast(e.message, true);
-    }
-});
-
-const deps = createDeps(mainEl);
-
-const externalAudio = createExternalAudio(mainEl, {
-    getState: () => state,
-    getConfig: () => cfg,
-    onSaved: async patch => {
-        cfg = { ...cfg, external_audio: { ...(cfg?.external_audio || {}), ...patch } };
-        state = await api.getState().catch(() => state);
-        render();
-    },
-});
-
-const localFiles = createLocalFiles(mainEl, {
-    getState: () => state,
-    getConfig: () => cfg,
-    onSaved: async () => {
-        cfg = await api.getConfig().catch(() => cfg);
-        state = await api.getState().catch(() => state);
-        render();
-    },
-});
-
-const onlineRadio = createOnlineRadio(mainEl, {
-    getState: () => state,
-    getConfig: () => cfg,
-    onSaved: async () => {
-        cfg = await api.getConfig().catch(() => cfg);
-        state = await api.getState().catch(() => state);
-        render();
-    },
-});
+// Composants initialisés dans boot() après initI18n()
+let renderOutput;
+let deps;
+let externalAudio;
+let localFiles;
+let onlineRadio;
 
 async function switchSource(name) {
     try {
@@ -112,7 +80,8 @@ async function transport(action) {
         state = await api.getState().catch(() => state);
         render();
         // Some transports may change the queue so refresh it if needed.
-        if (source === "local_files") localFiles.reloadQueue();
+        // Maybe fix the playback ??
+        if (source === "local_files" && (act === "next" || act === "previous")) localFiles.reloadQueue();
     } catch (e) {
         toast(e.message, true);
     }
@@ -156,12 +125,16 @@ function render() {
 
     const available = state.sources?.available || [];
     const active = state.sources?.active;
-    // Source-specific cards only show while that source is on air.
     refs.ytCard.hidden = active !== "youtube_music";
     refs.jfCard.hidden = active !== "jellyfin";
     const shuffleOn = !!available.find(s => s.name === "youtube_music")?.details?.shuffle;
     refs.ytShuffle.classList.toggle("toggled", shuffleOn);
     refs.ytShuffle.setAttribute("aria-pressed", String(shuffleOn));
+}
+
+function applyNpLayout(layout) {
+    refs.np.art.classList.remove("layout-split", "layout-vinyl", "layout-magazine");
+    if (layout !== "default") refs.np.art.classList.add(`layout-${layout}`);
 }
 
 $("#t-play").addEventListener("click", () => transport("play"));
@@ -175,7 +148,7 @@ $("#yt-cast").addEventListener("submit", async e => {
     try {
         await api.castYoutube(url);
         $("#yt-url").value = "";
-        toast("Casting…");
+        toast(t("yt.casting"));
     } catch (err) {
         toast(err.message, true);
     }
@@ -187,7 +160,7 @@ $("#yt-shuffle").addEventListener("click", async () => {
     const shuffle = !yt.details?.shuffle;
     try {
         await api.shuffleYoutube(shuffle);
-        toast(shuffle ? "Shuffle on" : "Shuffle off");
+        toast(shuffle ? t("yt.shuffle_on") : t("yt.shuffle_off"));
     } catch (err) {
         toast(err.message, true);
     }
@@ -200,7 +173,7 @@ $("#jf-cast").addEventListener("submit", async e => {
     try {
         await api.castJellyfin(playlistId);
         $("#jf-url").value = "";
-        toast("Playing playlist…");
+        toast(t("jellyfin.playing"));
     } catch (err) {
         toast(err.message, true);
     }
@@ -231,13 +204,17 @@ $("#save-config").addEventListener("click", async () => {
         onlineRadio.invalidate();
         state = await api.getState().catch(() => state);
         render();
-        toast("Saved");
+        toast(t("settings.saved"));
         closeDrawer();
 
         const dynamicCheckbox = document.querySelector("#f-dynamic-color");
         const enabled = dynamicCheckbox ? dynamicCheckbox.checked : true;
-        localStorage.setItem("fh6-dynamic-color", String(enabled));
+        const langSelect = document.querySelector("#f-language");
         const img = refs.np.img;
+
+        localStorage.setItem("fh6-dynamic-color", String(enabled));
+
+        if (langSelect) await setLang(langSelect.value);
         if (enabled && img?.complete && img?.naturalWidth) {
             const color = extractDominantColor(img);
             if (color) document.documentElement.style.setProperty("--accent", color);
@@ -257,22 +234,84 @@ $("#reload-config").addEventListener("click", async () => {
         onlineRadio.invalidate();
         renderSettings(refs.form, cfg);
         render();
-        toast("Reloaded from disk");
+        toast(t("settings.reloaded"));
     } catch (e) {
         toast(e.message, true);
     }
 });
 
+// Apply i18n to the entire page
+function applyI18n() {
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+        el.textContent = t(el.dataset.i18n);
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach(el => {
+        el.placeholder = t(el.dataset.i18nPlaceholder);
+    });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach(el => {
+        el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
+    });
+}
+
 async function boot() {
+    await initI18n();
+    applyI18n();
+    onLangChange(() => { applyI18n(); render(); });
+
+    // initialize the rest of the app after i18n is ready
+    renderOutput = createOutput($("#vol"), $("#vol-out"), async gain => {
+        try {
+            await api.setGain(gain);
+        } catch (e) {
+            toast(e.message, true);
+        }
+    });
+
+    deps = createDeps(mainEl);
+
+    externalAudio = createExternalAudio(mainEl, {
+        getState: () => state,
+        getConfig: () => cfg,
+        onSaved: async patch => {
+            cfg = { ...cfg, external_audio: { ...(cfg?.external_audio || {}), ...patch } };
+            state = await api.getState().catch(() => state);
+            render();
+        },
+    });
+
+    localFiles = createLocalFiles(mainEl, {
+        getState: () => state,
+        getConfig: () => cfg,
+        onSaved: async () => {
+            cfg = await api.getConfig().catch(() => cfg);
+            state = await api.getState().catch(() => state);
+            render();
+        },
+    });
+
+    onlineRadio = createOnlineRadio(mainEl, {
+        getState: () => state,
+        getConfig: () => cfg,
+        onSaved: async () => {
+            cfg = await api.getConfig().catch(() => cfg);
+            state = await api.getState().catch(() => state);
+            render();
+        },
+    });
+
+    applyNpLayout(localStorage.getItem("fh6-np-layout") || "default");
+
     try {
         cfg = await api.getConfig();
     } catch {
         cfg = {};
     }
+
     connect(next => {
         state = next;
         render();
     });
+
     deps.start();
 }
 

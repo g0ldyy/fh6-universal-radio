@@ -112,3 +112,9 @@
 .band output {
     font-size: 12px;
 }
+
+.field-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: var(--font-weight-light);
+}

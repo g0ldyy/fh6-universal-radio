@@ -13,18 +13,18 @@
         <div class="brand">
             <span class="mark" id="brand-mark" aria-hidden="true"></span>
             <div>
-                <h1>FH6 Universal Radio</h1>
-                <span class="status" id="status">Connecting&hellip;</span>
+                <h1 data-i18n="brand.title">FH6 Universal Radio</h1>
+                <span class="status" id="status" data-i18n="status.connecting">Connecting&hellip;</span>
             </div>
         </div>
-        <button class="icon-btn" id="open-settings" aria-label="Settings"></button>
+        <button class="icon-btn" id="open-settings" aria-label="Settings" data-i18n-aria-label="settings.open"></button>
     </header>
 
     <section class="hero" id="np-art">
         <div class="hero-backdrop" id="np-backdrop" aria-hidden="true"></div>
         <div class="hero-inner">
             <div class="cover" aria-hidden="true"><img id="np-art-img" alt="" /></div>
-            <div class="now-title" id="np-title">Nothing playing</div>
+            <div class="now-title" id="np-title" data-i18n="np.nothing_playing">Nothing playing</div>
             <div class="now-artist" id="np-artist"></div>
             <div class="progress">
                 <div class="bar">
@@ -33,49 +33,52 @@
                 <div class="times"><span id="np-pos">0:00</span><span id="np-dur">0:00</span></div>
             </div>
             <div class="transport">
-                <button class="icon-btn" id="t-prev" aria-label="Previous"></button>
-                <button class="icon-btn primary" id="t-play" aria-label="Play"></button>
-                <button class="icon-btn" id="t-next" aria-label="Next"></button>
+                <button class="icon-btn" id="t-prev" aria-label="Previous" data-i18n-aria-label="np.previous"></button>
+                <button class="icon-btn primary" id="t-play" aria-label="Play" data-i18n-aria-label="np.play"></button>
+                <button class="icon-btn" id="t-next" aria-label="Next" data-i18n-aria-label="np.next"></button>
             </div>
         </div>
     </section>
 
     <main>
         <section class="card" id="source-card" hidden>
-            <h2>Source</h2>
+            <h2 data-i18n="source.title">Source</h2>
             <div class="sources" id="sources"></div>
         </section>
 
         <section class="card" id="yt-cast-card" hidden>
-            <h2>Cast to YouTube Music</h2>
-            <p class="muted">
+            <h2 data-i18n="yt.title">Cast to YouTube Music</h2>
+            <p class="muted" data-i18n="yt.description">
                 Paste any YouTube or YouTube Music URL (single video or playlist). The radio switches
                 source and starts streaming immediately.
             </p>
             <form id="yt-cast" class="row">
-                <input type="text" id="yt-url" placeholder="https://music.youtube.com/playlist?list=&hellip;"
+                <input type="text" id="yt-url" data-i18n-placeholder="yt.url_placeholder"
+                    placeholder="https://music.youtube.com/playlist?list=&hellip;"
                     autocomplete="off" />
-                <button type="submit" class="btn filled">Cast</button>
-                <button type="button" id="yt-shuffle" class="icon-btn" aria-label="Shuffle playlist"
+                <button type="submit" class="btn filled" data-i18n="yt.cast">Cast</button>
+                <button type="button" id="yt-shuffle" class="icon-btn"
+                    aria-label="Shuffle playlist" data-i18n-aria-label="yt.shuffle"
                     aria-pressed="false"></button>
             </form>
         </section>
 
         <section class="card" id="jf-cast-card" hidden>
-            <h2>Play Jellyfin Playlist</h2>
-            <p class="muted">
+            <h2 data-i18n="jellyfin.title">Play Jellyfin Playlist</h2>
+            <p class="muted" data-i18n="jellyfin.description">
                 Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.
             </p>
             <form id="jf-cast" class="row">
-                <input type="text" id="jf-url" placeholder="Playlist ID" autocomplete="off" />
-                <button type="submit" class="btn filled">Play</button>
+                <input type="text" id="jf-url" data-i18n-placeholder="jellyfin.playlist_placeholder"
+                    placeholder="Playlist ID" autocomplete="off" />
+                <button type="submit" class="btn filled" data-i18n="jellyfin.play">Play</button>
             </form>
         </section>
 
         <section class="card" id="output-card" hidden>
-            <h2>Output</h2>
+            <h2 data-i18n="output.title">Output</h2>
             <label class="slider">
-                <span>Volume</span>
+                <span data-i18n="output.volume">Volume</span>
                 <input type="range" id="vol" min="0" max="1" step="0.01" value="1" />
                 <output id="vol-out">100%</output>
             </label>
@@ -92,7 +95,7 @@
             <a href="https://github.com/g0ldyy/fh6-universal-radio/blob/main/LICENSE" target="_blank"
                 rel="noopener noreferrer">GPLv3</a>.
         </p>
-        <p class="donate-line">If this mod makes your drives better, consider supporting development:</p>
+        <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider supporting development:</p>
         <div class="donate-links">
             <a class="donate-btn" href="https://github.com/sponsors/g0ldyy" target="_blank"
                 rel="noopener noreferrer"><span aria-hidden="true">&hearts;</span> GitHub Sponsors</a>
@@ -105,13 +108,13 @@
 
     <aside class="drawer" id="drawer" inert aria-label="Settings">
         <div class="drawer-head">
-            <h2>Settings</h2>
-            <button class="icon-btn" id="close-settings" aria-label="Close settings"></button>
+            <h2 data-i18n="settings.open">Settings</h2>
+            <button class="icon-btn" id="close-settings" aria-label="Close settings" data-i18n-aria-label="settings.close"></button>
         </div>
         <form id="settings-form" class="drawer-body"></form>
         <div class="drawer-foot">
-            <button class="btn ghost" id="reload-config" type="button">Reload from disk</button>
-            <button class="btn filled" id="save-config" type="button">Save</button>
+            <button class="btn ghost" id="reload-config" type="button" data-i18n="settings.reload">Reload from disk</button>
+            <button class="btn filled" id="save-config" type="button" data-i18n="settings.save">Save</button>
         </div>
     </aside>
     <div class="scrim" id="scrim" hidden></div>

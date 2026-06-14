@@ -72,4 +72,17 @@
         opacity: 1;
         margin-top: 4px;
     }
+
+    .drawer-body {
+        padding: var(--spacing-12)
+    }
+
+    .drawer {
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .drawer-body {
+        overflow-x: hidden;
+    }
 }
