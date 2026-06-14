@@ -1,0 +1,88 @@
+@media (max-width: 640px) {
+    header {
+        padding: var(--spacing-16) var(--spacing-20);
+    }
+
+    main {
+        padding: var(--spacing-24) var(--spacing-20);
+        gap: var(--spacing-24);
+    }
+
+    .hero {
+        min-height: clamp(300px, 58vh, 460px);
+        padding: var(--spacing-40) var(--spacing-20);
+    }
+
+    .credits {
+        padding: var(--spacing-24) var(--spacing-20);
+    }
+
+    .lf-stationtools {
+        flex-direction: column;
+    }
+
+    .lf-stationtools .btn {
+        width: 100%;
+    }
+
+    .lf-modes.lf-editor-section__body {
+        flex-direction: column;
+    }
+
+    .lf-mode {
+        width: 100%;
+    }
+
+    .lf-editor-section__body,
+    .lf-modal-foot {
+        flex-direction: column;
+    }
+
+    .lf-editor-section__body>*,
+    .lf-editor-section__body .lf-editor-section__actions .btn,
+    .lf-modal-foot .btn {
+        width: 100%;
+    }
+
+    .slider {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        gap: var(--spacing-8);
+    }
+
+    .slider span {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .slider output {
+        grid-column: 2;
+        grid-row: 1;
+        text-align: right;
+    }
+
+    .slider input[type="range"] {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        width: 100%;
+    }
+
+    .source-note {
+        max-height: none;
+        opacity: 1;
+        margin-top: 4px;
+    }
+
+    .drawer-body {
+        padding: var(--spacing-12)
+    }
+
+    .drawer {
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .drawer-body {
+        overflow-x: hidden;
+    }
+}

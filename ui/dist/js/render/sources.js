@@ -1,17 +1,31 @@
 import { el } from "../dom.js";
 import { changed } from "../store.js";
+import { t } from "../i18n.js";
 
 function detailLine(s) {
   if (s.name === "local_files" && s.details?.track_count != null) {
     const n = s.details.track_count;
-    return `${n} track${n === 1 ? "" : "s"} indexed`;
+    return `${n} ${t("local_files.tracks")} ${t("source.indexed")}`;
   }
   return null;
 }
 
 function stateText(s) {
-  const parts = [s.playback_state];
-  if (s.auth_state !== "none_required") parts.push(s.auth_state.replace("_", " "));
+  const rawState = s.playback_state;
+  const translatedState = t(`source.state.${rawState}`) !== `source.state.${rawState}`
+    ? t(`source.state.${rawState}`)
+    : rawState;
+
+  const parts = [translatedState];
+
+  if (s.auth_state !== "none_required") {
+    const rawAuth = s.auth_state.replace("_", " ");
+    const translatedAuth = t(`source.auth.${s.auth_state}`) !== `source.auth.${s.auth_state}`
+      ? t(`source.auth.${s.auth_state}`)
+      : rawAuth;
+    parts.push(translatedAuth);
+  }
+
   const detail = detailLine(s);
   if (detail) parts.push(detail);
   return parts.join(" · ");
@@ -36,11 +50,7 @@ export function renderSources(node, state, cfg, onSwitch) {
 
   if (!list.length) {
     node.replaceChildren(
-      el(
-        "p",
-        { class: "source-empty" },
-        "No source enabled yet. Open Settings to turn one on.",
-      ),
+      el("p", { class: "source-empty" }, t("source.no_source")),
     );
     return;
   }

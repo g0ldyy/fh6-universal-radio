@@ -1,0 +1,281 @@
+.or-history {
+    margin-top: var(--spacing-8);
+}
+
+.or-history .field-label {
+    margin-bottom: 4px;
+}
+
+.or-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.or-history-list li {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.or-history-list li:first-child {
+    color: var(--text);
+}
+
+.or-tabs {
+    display: flex;
+    gap: var(--spacing-8);
+    margin-top: var(--spacing-16);
+    border-bottom: 1px solid var(--line);
+}
+
+.or-tab {
+    padding: 8px 4px;
+    margin-bottom: -1px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.or-tab.on {
+    color: var(--text-strong);
+    border-bottom-color: var(--accent);
+}
+
+.or-panel {
+    margin-top: var(--spacing-16);
+}
+
+.or-panel > input[type="text"] {
+    margin-bottom: var(--spacing-12);
+    width: 100%;
+}
+
+.or-discover-form {
+    margin-bottom: var(--spacing-12);
+}
+
+.or-discover-form input[type="text"] {
+    flex: 1;
+}
+
+.or-chiprow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-8);
+}
+
+.or-genres {
+    margin-bottom: var(--spacing-12);
+}
+
+.or-chip {
+    padding: 5px 12px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--line-strong);
+    background: var(--surface-raise);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    text-transform: capitalize;
+}
+
+.or-chip:hover {
+    background: var(--surface-raise-hover);
+    border-color: var(--accent);
+}
+
+.or-recents {
+    margin-bottom: var(--spacing-16);
+}
+
+.or-recents .field-label {
+    margin-bottom: var(--spacing-8);
+}
+
+.or-recent {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-8);
+    padding: 4px 12px 4px 4px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--line);
+    background: var(--surface-raise);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    max-width: 220px;
+}
+
+.or-recent:hover {
+    background: var(--surface-raise-hover);
+}
+
+.or-recent-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.or-stations {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+    max-height: 420px;
+    overflow: auto;
+}
+
+.or-card {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-12);
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    background: var(--surface-raise);
+}
+
+.or-card:hover {
+    border-color: var(--line-strong);
+}
+
+.or-logo {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    object-fit: cover;
+    background: var(--surface-card);
+    border: 1px solid var(--line);
+}
+
+.or-logo.small {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+}
+
+.or-logo.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 18px;
+}
+
+.or-logo.small.placeholder {
+    font-size: 12px;
+}
+
+.or-card-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.or-name {
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.or-badges {
+    font-size: 11px;
+    text-transform: capitalize;
+}
+
+.or-card-actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.or-play {
+    padding: 6px 14px;
+}
+
+.or-icon {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.or-icon:hover:not(:disabled) {
+    background: var(--surface-raise-hover);
+    color: var(--text);
+}
+
+.or-icon.on {
+    color: var(--accent);
+}
+
+.or-icon:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.or-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-12);
+    padding: var(--spacing-16);
+    text-align: center;
+}
+
+.or-empty p {
+    margin: 0;
+}
+
+.or-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    animation: fade 0.2s ease;
+}
+
+.or-modal-card {
+    width: min(440px, 92vw);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+    padding: var(--spacing-16);
+    border-radius: var(--radius-xl);
+    background: var(--surface-card);
+    border: 1px solid var(--line-strong);
+    box-shadow: var(--shadow-xl);
+}
+
+.or-modal-head h3 {
+    margin: 0 0 var(--spacing-8);
+}
+
+.or-modal-foot {
+    margin-top: var(--spacing-12);
+    justify-content: flex-end;
+}

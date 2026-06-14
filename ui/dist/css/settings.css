@@ -1,0 +1,120 @@
+.drawer {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 10;
+    width: min(440px, 100%);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-card);
+    border-left: 1px solid var(--line);
+    box-shadow: var(--shadow-xl);
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.drawer.open {
+    transform: translateX(0);
+}
+
+.drawer-head,
+.drawer-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-20) var(--spacing-24);
+    border-bottom: 1px solid var(--line);
+}
+
+.drawer-head h2 {
+    margin: 0;
+    font-family: var(--font-editorial-new);
+    font-weight: var(--font-weight-regular);
+    font-size: 24px;
+    color: var(--text-strong);
+}
+
+.drawer-foot {
+    border-bottom: 0;
+    border-top: 1px solid var(--line);
+}
+
+.drawer-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-16);
+    padding: var(--spacing-24);
+    overflow-y: auto;
+}
+
+.drawer-body fieldset {
+    margin: 0;
+    padding: var(--spacing-16);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-12);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+}
+
+.drawer-body legend {
+    padding: 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.field label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.field.checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+
+.field.checkbox label {
+    font-size: 14px;
+    color: var(--text);
+}
+
+.field.checkbox input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+}
+
+.field.bands {
+    gap: var(--spacing-8);
+}
+
+.band {
+    display: grid;
+    grid-template-columns: 72px 1fr 64px;
+    align-items: center;
+    gap: 10px;
+}
+
+.band-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.band output {
+    font-size: 12px;
+}
+
+.field-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: var(--font-weight-light);
+}

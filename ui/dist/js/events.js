@@ -12,7 +12,7 @@ export function connect(onState) {
     try {
       onState(await api.getState());
     } catch {
-      /* keep last state */
+      // keep last state
     }
     timer = setTimeout(poll, 1000);
   };
