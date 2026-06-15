@@ -112,7 +112,7 @@ Requires **CMake** and **llvm-mingw**. On Arch: `sudo pacman -S llvm-mingw cmake
 
 The dashboard and language selection can be easily extended to support new languages. To add a language to the interface, you need to update the configuration array and create the corresponding translation file:
 
-1. Open the main UI source file: `ui\dist\js\i18n.js`.
+1. Open the main UI source file: `ui/dist/js/i18n.js`.
 2. Locate the `SUPPORTED` array.
 3. Add a new object containing the 2-letter ISO language code and the formatted label (with flag emoji) to the list:
 
@@ -127,8 +127,8 @@ const SUPPORTED = [
 ```
 
 4. Create the translation file in the language directory:
-   - Create a new JSON file named exactly after your 2-letter ISO code (e.g., `lang\it.json` or `lang\nl.json`).
-   - Copy the structure from `lang\en.json` and translate the values into your new language:
+   - Create a new JSON file named exactly after your 2-letter ISO code (e.g., `lang/it.json` or `lang/nl.json`).
+   - Copy the structure from `lang/en.json` and translate the values into your new language:
 
 ```json
 {
