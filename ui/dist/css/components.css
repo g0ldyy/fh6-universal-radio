@@ -63,11 +63,22 @@
     font-size: 15px;
     font-weight: var(--font-weight-medium);
     cursor: pointer;
-    transition:
-        background 0.15s ease,
-        border-color 0.15s ease,
-        transform 0.1s ease,
-        opacity 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease, opacity 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none !important;
+}
+
+.btn.filled:disabled {
+    background: rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.4);
+    border-color: transparent;
 }
 
 .btn:active {
@@ -251,7 +262,8 @@ output {
     font-size: 14px;
     border-radius: var(--radius-md);
     border: 1px solid var(--line-strong);
-    background: var(--surface-card);
+    background: rgba(var(--surface-card-rgb, 30, 30, 35), 0.85);
+    backdrop-filter: blur(8px);
     box-shadow: var(--shadow-xl);
     animation: rise 0.2s ease;
 }

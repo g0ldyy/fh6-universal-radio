@@ -5,5 +5,5 @@ export function toast(message, isError = false) {
   node.setAttribute("aria-live", isError ? "assertive" : "polite");
   node.textContent = message;
   document.body.appendChild(node);
-  setTimeout(() => node.remove(), 2400);
+  setTimeout(() => node.remove(), 3500);
 }

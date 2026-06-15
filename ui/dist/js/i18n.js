@@ -1,10 +1,30 @@
+import { toast } from "./toast.js";
+
 const STORAGE_KEY = "fh6-language";
-const SUPPORTED = ["en", "fr", "de", "es", "it", "pt", "ja", "zh"];
 const FALLBACK = "en";
+
+// To add a new language, simply add its object to this array:
+export const SUPPORTED = [
+    { code: "en", label: "🇬🇧 English" },
+    { code: "fr", label: "🇫🇷 Français" },
+    { code: "de", label: "🇩🇪 Deutsch (AI Generate)" },
+    { code: "es", label: "🇪🇸 Español (AI Generate)" },
+    { code: "it", label: "🇮🇹 Italiano (AI Generate)" },
+    { code: "pt", label: "🇵🇹 Português (AI Generate)" },
+    { code: "ja", label: "🇯🇵 日本語 (AI Generate)" },
+    { code: "zh", label: "🇨🇳 中文 (AI Generate)" }
+];
 
 let strings = {};
 let currentLang = FALLBACK;
 const listeners = new Set();
+
+/**
+ * Helper to check if a language code is supported
+ */
+function isSupported(langCode) {
+  return SUPPORTED.some(lang => lang.code === langCode);
+}
 
 /**
  * detect language in the following order:
@@ -14,10 +34,10 @@ const listeners = new Set();
  */
 function detectLang() {
   const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && SUPPORTED.includes(stored)) return stored;
+  if (stored && isSupported(stored)) return stored;
 
   const browser = navigator.language?.slice(0, 2).toLowerCase();
-  if (SUPPORTED.includes(browser)) return browser;
+  if (browser && isSupported(browser)) return browser;
 
   return FALLBACK;
 }
@@ -32,7 +52,11 @@ async function loadStrings(lang) {
     return await res.json();
   } catch (e) {
     console.warn(`[i18n] Failed to load "${lang}", falling back to "${FALLBACK}".`, e);
-    if (lang !== FALLBACK) return loadStrings(FALLBACK);
+    
+    if (lang !== FALLBACK) {
+      toast(`Language file "${lang}.json" not found. Falling back to English.`, true);
+      return loadStrings(FALLBACK);
+    }
     return {};
   }
 }
@@ -50,7 +74,7 @@ export async function initI18n() {
  * @param {string} lang — code ISO 639-1 ("en", "fr")
  */
 export async function setLang(lang) {
-  if (!SUPPORTED.includes(lang)) return;
+  if (!isSupported(lang)) return;
   localStorage.setItem(STORAGE_KEY, lang);
   window.location.reload();
 }

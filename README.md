@@ -108,6 +108,37 @@ Requires **CMake** and **llvm-mingw**. On Arch: `sudo pacman -S llvm-mingw cmake
 | External Audio plays in the background, not through the radio | You're capturing the same device the app plays on. Route the app's output to a **virtual audio cable** and select that cable as the **Capture device** (see [External audio](#external-audio)). |
 | External Audio has clicks / artifacts | Set the virtual cable to **48000 Hz** (2 ch). Other sample rates caused artifacts in testing. |
 
+## Adding a New Language
+
+The dashboard and language selection can be easily extended to support new languages. To add a language to the interface, you need to update the configuration array and create the corresponding translation file:
+
+1. Open the main UI source file: `ui\dist\js\i18n.js`.
+2. Locate the `SUPPORTED` array.
+3. Add a new object containing the 2-letter ISO language code and the formatted label (with flag emoji) to the list:
+
+```javascript
+// To add a new language, simply add its object to this array:
+const SUPPORTED = [
+    // ... existing languages ...
+    { code: "it", label: "🇮🇹 Italiano (AI Generate)" },
+    { code: "pt", label: "🇵🇹 Português (AI Generate)" },
+    { code: "fr", label: "🇫🇷 Français" }, // Example of a fully translated language
+];
+```
+
+4. Create the translation file in the language directory:
+   - Create a new JSON file named exactly after your 2-letter ISO code (e.g., `lang/it.json` or `lang/nl.json`).
+   - Copy the structure from `lang/en.json` and translate the values into your new language:
+
+```json
+{
+  "settings.interface.title": "Your Translated Title",
+  "settings.interface.language": "Your Translated Language Label"
+}
+```
+
+The web dashboard dynamically handles this array. It will automatically extract the language codes to validate backend requests, instantly generate the corresponding dropdown options in the settings UI, and fetch the appropriate JSON translation file upon selection.
+
 ## Why this exists
 
 [Big John](https://www.nexusmods.com/forzahorizon6/mods/95) released a great **Spotify** radio mod for FH6 that I drew a lot of inspiration from. The catch: it requires Spotify Premium, and the author chose to keep it closed-source. I built FH6 Universal Radio because I believe the project can go much further once the community is allowed to contribute: adding sources (TIDAL, etc.), polishing the UI, fixing edge cases, supporting more game builds. So this one is **fully open and GPLv3-licensed** to make that possible.

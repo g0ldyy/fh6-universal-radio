@@ -1,7 +1,7 @@
 import { $$, el } from "../dom.js";
 import { db } from "../format.js";
 import { EQ_BAND_LABELS, SCHEMA, SOURCE_SECTIONS } from "../schema.js";
-import { t, getLang } from "../i18n.js";
+import { t, getLang, SUPPORTED } from "../i18n.js";
 
 function buildField(section, spec, cfg) {
     const [key, label, type, a, b, c] = spec;
@@ -78,31 +78,33 @@ function buildField(section, spec, cfg) {
 }
 
 export function renderSettings(form, cfg) {
-    // Toggle couleur dynamique
+    // Dynamic Color Feature: Retrieve user preference (default to true if not explicitly disabled)
     const dynamicColor = localStorage.getItem("fh6-dynamic-color") !== "false";
     const checkbox = el("input", { type: "checkbox", id: "f-dynamic-color" });
-    const browserLang = navigator.language?.slice(0, 2) || "en";
-    const supportedLangs = ["en", "fr", "de", "es", "it", "pt", "ja", "zh"];
-    const langSelect = el("select", { id: "f-language" }, [
-        el("option", { value: "en" }, "🇬🇧 English"),
-        el("option", { value: "fr" }, "🇫🇷 Français"),
-        el("option", { value: "de" }, "🇩🇪 Deutsch (AI Generate)"),
-        el("option", { value: "es" }, "🇪🇸 Español (AI Generate)"),
-        el("option", { value: "it" }, "🇮🇹 Italiano (AI Generate)"),
-        el("option", { value: "pt" }, "🇵🇹 Português (AI Generate)"),
-        el("option", { value: "ja" }, "🇯🇵 日本語 (AI Generate)"),
-        el("option", { value: "zh" }, "🇨🇳 中文 (AI Generate)"),
-    ]);
 
+    // Language Selection: Map the central SUPPORTED array into dropdown option elements
+    const browserLang = navigator.language?.slice(0, 2) || "en";
+    const langSelect = el(
+        "select", 
+        { id: "f-language" }, 
+        SUPPORTED.map(lang => el("option", { value: lang.code }, lang.label))
+    );
+
+    // Hydrate Inputs: Set initial values from active configurations
     checkbox.checked = dynamicColor;
     langSelect.value = getLang();
 
+    // UI Layout: Construct the Interface fieldset with localized text
     const interfaceFieldset = el("fieldset", {}, [
         el("legend", {}, t("settings.interface.title")),
+        
+        // Dynamic Color Toggle
         el("div", { class: "field checkbox" }, [
             checkbox,
             el("label", { for: "f-dynamic-color" }, t("settings.interface.dynamic_color")),
         ]),
+        
+        // Language Picker Dropdown
         el("div", { class: "field" }, [
             el("label", { for: "f-language" }, t("settings.interface.language")),
             langSelect,
