@@ -127,8 +127,8 @@ const SUPPORTED = [
 ```
 
 4. Create the translation file in the language directory:
-   - Create a new JSON file named exactly after your 2-letter ISO code (e.g., `lang/it.json` or `lang/nl.json`).
-   - Copy the structure from `lang/en.json` and translate the values into your new language:
+   - Create a new JSON file named exactly after your 2-letter ISO code (e.g., `lang\it.json` or `lang\nl.json`).
+   - Copy the structure from `lang\en.json` and translate the values into your new language:
 
 ```json
 {
