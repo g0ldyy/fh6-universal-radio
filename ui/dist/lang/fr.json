@@ -17,7 +17,6 @@
   "settings.reload": "Recharger depuis le disque",
   "settings.saved": "Enregistré",
   "settings.reloaded": "Rechargé depuis le disque",
-
   "settings.interface.title": "Interface",
   "settings.interface.dynamic_color": "Couleur d'accent dynamique",
   "settings.interface.language": "Langue",
@@ -29,19 +28,8 @@
   "np.previous": "Précédent",
   "np.next": "Suivant",
 
-  "source.title": "SOURCE",
-  "source.stopped": "Arrêté",
-  "source.playing": "En lecture",
-  "source.no_source": "Aucune source configurée",
-  "source.local_files": "Fichiers locaux",
-  "source.online_radio": "Radio en ligne",
-  "source.external_audio": "Audio externe",
-  "source.needs_auth": "Authentification requise",
-
   "output.title": "Sortie audio",
   "output.volume": "Volume",
-
-  "deps.title": "Dépendances",
 
   "local_files.title": "Fichiers locaux",
   "local_files.on_air": "En direct",
@@ -70,7 +58,6 @@
   "local_files.no_stations": "Aucune station. Créez-en une pour commencer.",
   "local_files.station_renamed": "Station renommée",
   "local_files.station_deleted": "Station supprimée",
-
   "local_files.browser.title": "Choisir un dossier",
   "local_files.browser.up": "Remonter",
   "local_files.browser.use": "Utiliser ce dossier",
@@ -114,6 +101,16 @@
   "online_radio.delete": "Supprimer",
   "online_radio.move_up": "Monter",
   "online_radio.move_down": "Descendre",
+  "online_radio.any_country": "Tous les pays",
+
+  "genre.lofi": "lofi",
+  "genre.jazz": "jazz",
+  "genre.rock": "rock",
+  "genre.electronic": "électronique",
+  "genre.classical": "classique",
+  "genre.news": "actualités",
+  "genre.pop": "pop",
+  "genre.hip_hop": "hip hop",
 
   "yt.title": "YouTube Music",
   "yt.url_placeholder": "Collez une URL YouTube ou YouTube Music…",
@@ -122,32 +119,37 @@
   "yt.casting": "Lecture en cours…",
   "yt.shuffle_on": "Aléatoire activé",
   "yt.shuffle_off": "Aléatoire désactivé",
+  "yt.description": "Collez n'importe quelle URL YouTube ou YouTube Music (vidéo ou playlist). La radio change de source et commence à diffuser immédiatement.",
 
   "jellyfin.title": "Jellyfin",
   "jellyfin.playlist_placeholder": "ID de la playlist…",
   "jellyfin.play": "Lire",
   "jellyfin.playing": "Lecture de la playlist…",
+  "jellyfin.description": "Entrez un ID de playlist Jellyfin. La radio change de source et commence à diffuser immédiatement.",
 
-  "credits.built_with": "Construit avec",
-  "credits.by": "par",
-  "credits.contribute": "Contribuer sur GitHub",
   "credits.support": "Soutenir le projet",
+  "credits.support_text": "Si ce mod améliore vos courses, soutenez le développement :",
 
   "error.url_required": "Une URL de flux est requise.",
   "error.enter_url": "Entrez d'abord une URL pour sauvegarder.",
   "error.station_exists": "Cette station est déjà sauvegardée.",
   "error.unknown": "Une erreur inconnue est survenue.",
 
-  "yt.description": "Collez n'importe quelle URL YouTube ou YouTube Music (vidéo ou playlist). La radio change de source et commence à diffuser immédiatement.",
-  "jellyfin.description": "Entrez un ID de playlist Jellyfin. La radio change de source et commence à diffuser immédiatement.",
-  "credits.support_text": "Si ce mod améliore vos courses, soutenez le développement :",
-
+  "source.title": "SOURCE",
   "source.indexed": "indexées",
   "source.state.playing": "En lecture",
   "source.state.stopped": "Arrêté",
   "source.state.paused": "En pause",
   "source.auth.needs_auth": "Auth. requise",
   "source.auth.error": "Erreur",
+  "source.stopped": "Arrêté",
+  "source.playing": "En lecture",
+  "source.no_source": "Aucune source configurée",
+  "source.local_files": "Fichiers locaux",
+  "source.online_radio": "Radio en ligne",
+  "source.external_audio": "Audio externe",
+  "source.needs_auth": "Authentification requise",
+  "source.auth_instructions.spotify": "1. Assurez-vous que votre PC et votre téléphone sont sur le même réseau Wi-Fi.\n2. Ouvrez l'application Spotify sur votre téléphone.\n3. Appuyez sur l'icône 'Appareils' et sélectionnez 'FH6 Universal Radio'.\nUne fois connecté, les identifiants seront automatiquement sauvegardés dans le dossier de cache.",
 
   "schema.general": "Général",
   "schema.general.port": "Port",
@@ -179,6 +181,11 @@
   "schema.playback.eq_bands": "Bandes de l'égaliseur",
   "schema.playback.force_stereo": "Forcer l'audio stéréo",
   "schema.playback.prebuffer": "Pré-charger la piste suivante",
+  "schema.playback.race_start.next": "Suivant",
+  "schema.playback.race_start.restart": "Redémarrer",
+  "schema.playback.race_start.ignore": "Ignorer",
+  "schema.select.none": "— Aucun —",
+  "schema.select.no_stations": "— Aucune station enregistrée —",
 
   "ext.device_label": "Périphérique de capture audio externe",
   "ext.session_label": "Session média audio externe",
@@ -197,8 +204,19 @@
   "ext.hint.active": "Actif et en direct.",
   "ext.hint.ready": "Prêt. Passez sur Audio externe dans Sources pour aller en direct.",
 
+  "deps.title": "Dépendances",
   "deps.description": "Téléchargement des outils nécessaires (ffmpeg, yt-dlp, librespot) dans <code>fh6-radio/bin</code>.",
   "deps.ready": "prêt",
   "deps.downloading_mb": "téléchargement {mb} Mo",
-  "deps.downloading_pct": "téléchargement {pct}%"
+  "deps.downloading_pct": "téléchargement {pct}%",
+
+  "lf.order.shuffle": "Aléatoire",
+  "lf.order.album": "Albums",
+  "lf.order.name": "Nom (A-Z)",
+  "lf.order.folder": "Dossier",
+  "lf.grouping.folder": "Par dossier",
+  "lf.grouping.tags": "Par tags",
+  "lf.repeat.all": "Tout répéter",
+  "lf.repeat.one": "Répéter un",
+  "lf.repeat.off": "Pas de répétition"
 }

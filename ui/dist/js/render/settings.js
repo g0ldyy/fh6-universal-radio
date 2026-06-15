@@ -1,7 +1,7 @@
 import { $$, el } from "../dom.js";
 import { db } from "../format.js";
 import { EQ_BAND_LABELS, SCHEMA, SOURCE_SECTIONS } from "../schema.js";
-import { t, setLang, getLang } from "../i18n.js";
+import { t, getLang } from "../i18n.js";
 
 function buildField(section, spec, cfg) {
     const [key, label, type, a, b, c] = spec;
@@ -18,7 +18,7 @@ function buildField(section, spec, cfg) {
 
     if (type === "source-select") {
         const available = SOURCE_SECTIONS().filter(([s]) => cfg?.[s]?.enabled);
-        const options = [el("option", { value: "" }, "— None —")];
+        const options = [el("option", { value: "" }, t("schema.select.none"))];
         for (const [value, name] of available) { options.push(el("option", { value, selected: cur === value }, name)); }
         if (cur && !available.some(([v]) => v === cur)) { options.push(el("option", { value: cur, selected: true }, cur)); }
         return el("div", { class: "field" }, [
@@ -31,7 +31,7 @@ function buildField(section, spec, cfg) {
         const list = cfg?.online_radio?.stations || [];
         const options = list.length
             ? list.map((s, i) => el("option", { value: String(i), selected: Number(cur) === i }, s.name || `Station ${i + 1}`))
-            : [el("option", { value: "0" }, "— no stations saved —")];
+            : [el("option", { value: "0" }, t("schema.select.no_stations"))];
         return el("div", { class: "field" }, [
             el("label", { for: id }, label),
             el("select", { id, dataset: { ...dataset, numeric: "1" } }, options),

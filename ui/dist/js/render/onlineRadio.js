@@ -8,11 +8,20 @@ import { t } from "../i18n.js";
 const fold = s => (s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 // Genre chips shown on the empty state and above the directory search.
-const GENRES = ["lofi", "jazz", "rock", "electronic", "classical", "news", "pop", "hip hop"];
+const GENRES = () => [
+    t("genre.lofi"),
+    t("genre.jazz"),
+    t("genre.rock"),
+    t("genre.electronic"),
+    t("genre.classical"),
+    t("genre.news"),
+    t("genre.pop"),
+    t("genre.hip_hop"),
+];
 
 // A small curated country list for the directory filter (ISO 3166-1 alpha-2).
-const COUNTRIES = [
-  ["", "Any country"],
+const COUNTRIES = () => [
+  ["", t("online_radio.any_country")],
   ["US", "United States"],
   ["GB", "United Kingdom"],
   ["FR", "France"],
@@ -94,10 +103,10 @@ export function createOnlineRadio(main, ctx) {
 
   // --- discover panel -------------------------------------------------------
   const dq = el("input", { type: "text", placeholder: t("online_radio.search_placeholder"), autocomplete: "off" });
-  const dCountry = el("select", { "aria-label": "Country" }, COUNTRIES.map(([v, label]) => el("option", { value: v }, label)));
+  const dCountry = el("select", { "aria-label": "Country" }, COUNTRIES().map(([v, label]) => el("option", { value: v }, label)));
   const dSearchBtn = el("button", { type: "submit", class: "btn filled" }, t("online_radio.search"));
   const dForm = el("form", { class: "row or-discover-form" }, [dq, dCountry, dSearchBtn]);
-  const genreRow = el("div", { class: "or-chiprow or-genres" }, genreChips(GENRES));
+  const genreRow = el("div", { class: "or-chiprow or-genres" }, genreChips(GENRES()));
   const dResults = el("div", { class: "or-stations" });
 
   function genreChips(list) {
@@ -241,7 +250,7 @@ export function createOnlineRadio(main, ctx) {
     return el("div", { class: "or-empty" }, [
       el("p", {}, t("online_radio.no_stations")),
       el("p", { class: "muted" }, t("online_radio.no_stations_hint")),
-      el("div", { class: "or-chiprow" }, genreChips(GENRES.slice(0, 6))),
+      el("div", { class: "or-chiprow" }, genreChips(GENRES().slice(0, 6))),
     ]);
   }
 

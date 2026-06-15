@@ -10,7 +10,7 @@
 
     .hero {
         min-height: clamp(300px, 58vh, 460px);
-        padding: var(--spacing-40) var(--spacing-20);
+        padding: var(--spacing-120) var(--spacing-20) var(--spacing-20);
     }
 
     .credits {
@@ -84,5 +84,36 @@
 
     .drawer-body {
         overflow-x: hidden;
+    }
+
+    form.row:not([id="yt-cast"]) {
+        flex-direction: column;
+    }
+
+    form.row:not([id="yt-cast"]) > * {
+        width: 100%;
+    }
+
+    .or-card {
+        flex-wrap: wrap;
+        gap: var(--spacing-8);
+    }
+
+    .or-card-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .or-card-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .or-play {
+        flex: 1;
+    }
+
+    .or-stations {
+        max-height: none;
     }
 }

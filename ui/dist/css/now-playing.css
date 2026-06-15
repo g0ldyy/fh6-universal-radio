@@ -240,7 +240,7 @@
 }
 
 .source:hover .source-note {
-    max-height: 120px;
+    max-height: calc(1.4em * 20);
     opacity: 1;
     margin-top: 4px;
 }

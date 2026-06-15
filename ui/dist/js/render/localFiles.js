@@ -4,20 +4,20 @@ import { icons } from "../icons.js";
 import { toast } from "../toast.js";
 import { t } from "../i18n.js";
 
-const ORDERS = [
-	["shuffle", "Shuffle"],
-	["album", "Albums"],
-	["name", "Name (A–Z)"],
-	["folder", "Folder"],
+const ORDERS = () => [
+    ["shuffle", t("lf.order.shuffle")],
+    ["album", t("lf.order.album")],
+    ["name", t("lf.order.name")],
+    ["folder", t("lf.order.folder")],
 ];
-const GROUPINGS = [
-	["folder", "By folder"],
-	["tags", "By tags"],
+const GROUPINGS = () => [
+    ["folder", t("lf.grouping.folder")],
+    ["tags", t("lf.grouping.tags")],
 ];
-const REPEATS = [
-	["all", "Repeat all"],
-	["one", "Repeat one"],
-	["off", "No repeat"],
+const REPEATS = () => [
+    ["all", t("lf.repeat.all")],
+    ["one", t("lf.repeat.one")],
+    ["off", t("lf.repeat.off")],
 ];
 
 // Lowercase + strip diacritics, so "ete" matches "Été" in queue search.
@@ -125,11 +125,11 @@ export function createLocalFiles(main, ctx) {
 	const addFolderBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.add_folder"));
 	const treeBox = el("div", { class: "lf-tree" });
 	const orderSelect = el("select", { "aria-label": "Play order" },
-		ORDERS.map(([v, label]) => el("option", { value: v }, label)));
+		ORDERS().map(([v, label]) => el("option", { value: v }, label)));
 	const groupingSelect = el("select", { "aria-label": "Album grouping" },
-		GROUPINGS.map(([v, label]) => el("option", { value: v }, label)));
+		GROUPINGS().map(([v, label]) => el("option", { value: v }, label)));
 	const repeatSelect = el("select", { "aria-label": "Repeat mode" },
-		REPEATS.map(([v, label]) => el("option", { value: v }, label)));
+		REPEATS().map(([v, label]) => el("option", { value: v }, label)));
 	const saveBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.save"));
 
 	const searchInput = el("input", { type: "text", placeholder: t("local_files.search"), autocomplete: "off" });
@@ -214,7 +214,7 @@ export function createLocalFiles(main, ctx) {
 		stationSelect.replaceChildren(
 			...stations.map((s, i) =>
 				el("option", { value: String(i), selected: i === selected },
-					s.name + (s.name === activeStation ? "  • on air" : "")),
+					s.name + (s.name === activeStation ? `  • ${t("local_files.on_air")}` : "")),
 			),
 		);
 		deleteBtn.disabled = stations.length <= 1;

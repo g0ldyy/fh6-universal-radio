@@ -1,9 +1,13 @@
 .or-history {
     margin-top: var(--spacing-8);
+    padding: var(--spacing-12);
+    border-radius: var(--radius-md);
+    background: var(--surface-raise);
+    border: 1px solid var(--line);
 }
 
 .or-history .field-label {
-    margin-bottom: 4px;
+    margin: 0 0 var(--spacing-8) 0;
 }
 
 .or-history-list {
@@ -12,7 +16,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
 }
 
 .or-history-list li {
@@ -21,10 +25,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 4px 8px;
+    border-left: 2px solid transparent;
+    cursor: default;
+    opacity: 0.5;
 }
 
-.or-history-list li:first-child {
+.or-history-list li:first-child,
+.or-history-list li:hover {
     color: var(--text);
+    border-left-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    opacity: 1;
 }
 
 .or-tabs {
@@ -233,6 +245,11 @@
 .or-icon:disabled {
     opacity: 0.3;
     cursor: default;
+}
+
+.or-icon:last-child,
+.or-icon:last-child:hover {
+    color: var(--alert);
 }
 
 .or-empty {

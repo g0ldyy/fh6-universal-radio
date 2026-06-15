@@ -42,11 +42,10 @@
   "source.online_radio": "Online Radio",
   "source.external_audio": "External Audio",
   "source.needs_auth": "Needs Auth",
+  "source.auth_instructions.spotify": "1. Ensure your PC and phone are on the same Wi-Fi network.\n2. Open the Spotify app on your phone.\n3. Tap the 'Devices' icon and select 'FH6 Universal Radio'.\nOnce connected, credentials will automatically save to the cache folder.",
 
   "output.title": "Output",
   "output.volume": "Volume",
-
-  "deps.title": "Dependencies",
 
   "local_files.title": "Local Files",
   "local_files.on_air": "On air",
@@ -119,6 +118,16 @@
   "online_radio.delete": "Delete",
   "online_radio.move_up": "Move up",
   "online_radio.move_down": "Move down",
+  "online_radio.any_country": "— Any country —",
+  
+  "genre.lofi": "lofi",
+  "genre.jazz": "jazz",
+  "genre.rock": "rock",
+  "genre.electronic": "electronic",
+  "genre.classical": "classical",
+  "genre.news": "news",
+  "genre.pop": "pop",
+  "genre.hip_hop": "hip hop",
 
   "yt.title": "YouTube Music",
   "yt.url_placeholder": "Paste a YouTube or YT Music URL…",
@@ -184,6 +193,11 @@
   "schema.playback.eq_bands": "Equalizer bands",
   "schema.playback.force_stereo": "Force stereo audio",
   "schema.playback.prebuffer": "Pre-buffer next track",
+  "schema.playback.race_start.next": "Next",
+  "schema.playback.race_start.restart": "Restart",
+  "schema.playback.race_start.ignore": "Ignore",
+  "schema.select.none": "— None —",
+  "schema.select.no_stations": "— No stations saved —",
 
   "ext.device_label": "External Audio capture device",
   "ext.session_label": "External Audio media session",
@@ -202,8 +216,19 @@
   "ext.hint.active": "Active and on air.",
   "ext.hint.ready": "Ready. Switch to External Audio in Sources to go on air.",
 
+  "deps.title": "Dependencies",
   "deps.description": "Fetching the tools the providers need (ffmpeg, yt-dlp, librespot) into <code>fh6-radio/bin</code>.",
   "deps.ready": "ready",
   "deps.downloading_mb": "downloading {mb} MB",
-  "deps.downloading_pct": "downloading {pct}%"
+  "deps.downloading_pct": "downloading {pct}%",
+
+  "lf.order.shuffle": "Shuffle",
+  "lf.order.album": "Albums",
+  "lf.order.name": "Name (A-Z)",
+  "lf.order.folder": "Folder",
+  "lf.grouping.folder": "By folder",
+  "lf.grouping.tags": "By tags",
+  "lf.repeat.all": "Repeat all",
+  "lf.repeat.one": "Repeat one",
+  "lf.repeat.off": "No repeat"
 }
