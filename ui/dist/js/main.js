@@ -13,7 +13,7 @@ import { createExternalAudio } from "./render/externalAudio.js";
 import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
 import { extractDominantColor } from "./render/nowPlaying.js";
-import { initI18n, onLangChange, t, setLang } from "./i18n.js";
+import { initI18n, onLangChange, t, setLang, getLang } from "./i18n.js";
 
 let state = null;
 let cfg = null;
@@ -214,7 +214,7 @@ $("#save-config").addEventListener("click", async () => {
 
         localStorage.setItem("fh6-dynamic-color", String(enabled));
 
-        if (langSelect) await setLang(langSelect.value);
+        if (langSelect && langSelect.value !== getLang()) await setLang(langSelect.value);
         if (enabled && img?.complete && img?.naturalWidth) {
             const color = extractDominantColor(img);
             if (color) document.documentElement.style.setProperty("--accent", color);
@@ -256,7 +256,6 @@ function applyI18n() {
 async function boot() {
     await initI18n();
     applyI18n();
-    onLangChange(() => { applyI18n(); render(); });
 
     // initialize the rest of the app after i18n is ready
     renderOutput = createOutput($("#vol"), $("#vol-out"), async gain => {

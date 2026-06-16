@@ -54,7 +54,8 @@
   "output.volume": "Lautst\u00e4rke",
 
   "local_files.title": "Lokale Dateien",
-  "local_files.on_air": "On Air",
+  "local_files.on_air": "Auf Sendung schalten",
+  "local_files.already_on_air": "Station aktiv",
   "local_files.new": "Neu",
   "local_files.rename": "Umbenennen",
   "local_files.delete": "L\u00f6schen",

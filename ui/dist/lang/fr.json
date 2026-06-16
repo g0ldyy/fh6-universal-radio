@@ -32,7 +32,8 @@
   "output.volume": "Volume",
 
   "local_files.title": "Fichiers locaux",
-  "local_files.on_air": "En direct",
+  "local_files.on_air": "Mettre en écoute",
+  "local_files.already_on_air": "Station active",
   "local_files.new": "Nouveau",
   "local_files.rename": "Renommer",
   "local_files.delete": "Supprimer",

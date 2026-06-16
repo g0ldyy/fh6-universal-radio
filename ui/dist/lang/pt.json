@@ -54,7 +54,8 @@
   "output.volume": "Volume",
 
   "local_files.title": "Ficheiros locais",
-  "local_files.on_air": "No ar",
+  "local_files.on_air": "Colocar no ar",
+  "local_files.already_on_air": "Estação ativa",
   "local_files.new": "Novo",
   "local_files.rename": "Renomear",
   "local_files.delete": "Eliminar",

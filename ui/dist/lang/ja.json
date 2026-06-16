@@ -54,7 +54,8 @@
   "output.volume": "音量",
 
   "local_files.title": "ローカルファイル",
-  "local_files.on_air": "放送中",
+  "local_files.on_air": "放送開始",
+  "local_files.already_on_air": "放送中",
   "local_files.new": "新規",
   "local_files.rename": "名前変更",
   "local_files.delete": "削除",

@@ -29,6 +29,16 @@
     background: rgba(255, 50, 50, 0.05);
 }
 
+.lf-stationtools .btn:first-child:hover {
+    background: rgba(2, 217, 92, 0.12);
+    border-color: var(--ok);
+}
+
+.lf-stationtools .btn:last-child:hover {
+    background: rgba(255, 50, 50, 0.12);
+    border-color: var(--alert);
+}
+
 .lf-editor {
     margin-top: var(--spacing-16);
     padding-top: var(--spacing-16);
@@ -374,10 +384,9 @@
     background: rgba(255, 50, 50, 0.05);
 }
 
-.lf-modal-foot .btn:nth-child(2) {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
+.lf-modal-foot .btn:first-child:hover {
+    background: rgba(255, 50, 50, 0.12);
+    border-color: var(--alert);
 }
 
 .lf-eq {

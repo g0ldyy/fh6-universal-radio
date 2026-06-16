@@ -48,7 +48,8 @@
   "output.volume": "音量",
 
   "local_files.title": "本地文件",
-  "local_files.on_air": "正在广播",
+  "local_files.on_air": "开始播出",
+  "local_files.already_on_air": "播出中",
   "local_files.new": "新建",
   "local_files.rename": "重命名",
   "local_files.delete": "删除",

@@ -69,16 +69,17 @@
 }
 
 .btn:disabled {
-    opacity: 0.4;
+    opacity: 0.5;
     cursor: not-allowed;
-    pointer-events: none;
     transform: none !important;
+    filter: saturate(0.3);
 }
 
 .btn.filled:disabled {
-    background: rgba(255, 255, 255, 0.2);
-    color: rgba(255, 255, 255, 0.4);
-    border-color: transparent;
+    cursor: not-allowed;
+    background: var(--surface-raise);
+    color: var(--text-muted);
+    border-color: var(--line);
 }
 
 .btn:active {
@@ -90,7 +91,7 @@
     color: var(--color-pitch-black);
 }
 
-.btn.filled:hover {
+.btn.filled:hover:not(:disabled) {
     background: var(--color-pure-white);
 }
 

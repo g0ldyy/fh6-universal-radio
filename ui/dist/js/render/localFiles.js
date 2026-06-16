@@ -5,19 +5,19 @@ import { toast } from "../toast.js";
 import { t } from "../i18n.js";
 
 const ORDERS = () => [
-    ["shuffle", t("lf.order.shuffle")],
-    ["album", t("lf.order.album")],
-    ["name", t("lf.order.name")],
-    ["folder", t("lf.order.folder")],
+	["shuffle", t("lf.order.shuffle")],
+	["album", t("lf.order.album")],
+	["name", t("lf.order.name")],
+	["folder", t("lf.order.folder")],
 ];
 const GROUPINGS = () => [
-    ["folder", t("lf.grouping.folder")],
-    ["tags", t("lf.grouping.tags")],
+	["folder", t("lf.grouping.folder")],
+	["tags", t("lf.grouping.tags")],
 ];
 const REPEATS = () => [
-    ["all", t("lf.repeat.all")],
-    ["one", t("lf.repeat.one")],
-    ["off", t("lf.repeat.off")],
+	["all", t("lf.repeat.all")],
+	["one", t("lf.repeat.one")],
+	["off", t("lf.repeat.off")],
 ];
 
 // Lowercase + strip diacritics, so "ete" matches "Été" in queue search.
@@ -218,8 +218,9 @@ export function createLocalFiles(main, ctx) {
 			),
 		);
 		deleteBtn.disabled = stations.length <= 1;
-		onAirBtn.disabled = cur()?.name === activeStation;
-		onAirBtn.textContent = cur()?.name === activeStation ? t("local_files.on_air") : t("local_files.on_air");
+		const isOnAir = cur()?.name === activeStation;
+		onAirBtn.disabled = isOnAir;
+		onAirBtn.textContent = isOnAir ? t("local_files.already_on_air") : t("local_files.on_air");
 	}
 
 	function renderRoots() {

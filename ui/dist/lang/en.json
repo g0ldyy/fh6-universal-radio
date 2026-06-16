@@ -48,7 +48,8 @@
   "output.volume": "Volume",
 
   "local_files.title": "Local Files",
-  "local_files.on_air": "On air",
+  "local_files.on_air": "Set on air",
+  "local_files.already_on_air": "Currently on air",
   "local_files.new": "New",
   "local_files.rename": "Rename",
   "local_files.delete": "Delete",

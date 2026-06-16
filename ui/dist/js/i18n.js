@@ -74,9 +74,10 @@ export async function initI18n() {
  * @param {string} lang — code ISO 639-1 ("en", "fr")
  */
 export async function setLang(lang) {
-  if (!isSupported(lang)) return;
-  localStorage.setItem(STORAGE_KEY, lang);
-  window.location.reload();
+    if (!isSupported(lang)) return;
+    if (lang === currentLang) return;
+    localStorage.setItem(STORAGE_KEY, lang);
+    window.location.reload();
 }
 
 /** return the current language code (ISO 639-1) */
