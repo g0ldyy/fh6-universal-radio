@@ -159,10 +159,17 @@ void run_bridge(HMODULE self) noexcept {
         auto worker_exe = data_dir / "fh6-radio-worker.exe";
         if (!std::filesystem::exists(worker_exe))
             worker_exe = dir / "fh6-radio" / "fh6-radio-worker.exe";
+        
+        // inherit the flag
+        SetEnvironmentVariableW(L"RUST_LOG", L"librespot_playback::player=debug,librespot_metadata=trace");
+        
         if (worker.start(worker_exe))
             log::info("[bridge] worker process started");
         else
             log::warn("[bridge] worker process unavailable -- falling back to direct spawn");
+    
+        // clear the flag
+        SetEnvironmentVariableW(L"RUST_LOG", nullptr);
     }
 
     // Register/unregister sources to match the enabled flags. Called at
@@ -207,7 +214,7 @@ void run_bridge(HMODULE self) noexcept {
         }
         if (c.spotify.enabled && !mgr.find("spotify")) {
             auto src = std::make_unique<sources::SpotifySource>(anchor_spotify(c.spotify, data_dir),
-                                                                c.general.ffmpeg_path);
+                                                                c.general.ffmpeg_path, &worker);
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.spotify.enabled && mgr.find("spotify")) {
             mgr.unregister_source("spotify");
