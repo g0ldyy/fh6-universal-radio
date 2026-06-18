@@ -44,12 +44,15 @@
   "source.vanilla_radio": "Vanilla Radio",
   "source.needs_auth": "Needs Auth",
   "source.auth_instructions.spotify": "1. Ensure your PC and phone are on the same Wi-Fi network.\n2. Open the Spotify app on your phone.\n3. Tap the 'Devices' icon and select 'FH6 Universal Radio'.\nOnce connected, credentials will automatically save to the cache folder.",
+  "source.auth_instructions.local_files": "Add a music folder to this station in the Local Files card, then Save.",
+  "source.auth.authenticated": "Authenticated",
 
   "output.title": "Output",
   "output.volume": "Volume",
 
   "local_files.title": "Local Files",
   "local_files.on_air": "Set on air",
+  "local_files.on_air_title": "On air",
   "local_files.already_on_air": "Currently on air",
   "local_files.new": "New",
   "local_files.rename": "Rename",

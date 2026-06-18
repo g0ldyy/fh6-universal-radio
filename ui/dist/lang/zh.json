@@ -44,12 +44,15 @@
   "source.vanilla_radio": "原版电台",
   "source.needs_auth": "需要身份验证",
   "source.auth_instructions.spotify": "1. 确保PC和手机在同一Wi-Fi网络。\n2. 在手机上打开Spotify。\n3. 点击\"设备\"并选择\"FH6 Universal Radio\"。\n连接后，凭据将自动保存到缓存文件夹。",
+  "source.auth_instructions.local_files": "在本地文件卡片中为此电台添加音乐文件夹，然后保存。",
+  "source.auth.authenticated": "已认证",
 
   "output.title": "输出",
   "output.volume": "音量",
 
   "local_files.title": "本地文件",
   "local_files.on_air": "开始播出",
+  "local_files.on_air_title": "正在播出",
   "local_files.already_on_air": "播出中",
   "local_files.new": "新建",
   "local_files.rename": "重命名",

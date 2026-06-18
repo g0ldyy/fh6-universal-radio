@@ -385,11 +385,15 @@ export function createOnlineRadio(main, ctx) {
 }
 
 function stationLogo(url, small = false) {
-  const cls = "or-logo" + (small ? " small" : "");
-  if (!url) return el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪");
-  const img = el("img", { class: cls, alt: "", loading: "lazy", src: `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=64&h=64&fit=cover` });
-  img.addEventListener("error", () => img.replaceWith(el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪")));
-  return img;
+    const cls = "or-logo" + (small ? " small" : "");
+    if (!url) return el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪");
+
+    const isLocalUrl = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url);
+    const src = isLocalUrl ? url : `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=64&h=64&fit=cover`;
+
+    const img = el("img", { class: cls, alt: "", loading: "lazy", src });
+    img.addEventListener("error", () => img.replaceWith(el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪")));
+    return img;
 }
 
 // Modal for adding / editing a station (name + URL). Replaces window.prompt().

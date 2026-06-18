@@ -10,7 +10,9 @@ const DISPLAY_NAME_MAP = () => ({
 
 const AUTH_INSTRUCTIONS_MAP = () => ({
     [t("source.auth_instructions.spotify")]:
-        "1. Ensure your PC and phone are on the same Wi-Fi network. 2. Open the Spotify app on your phone. 3. Tap the 'Devices' icon and select 'FH6 Universal Radio'. Once connected, credentials will automatically save to the cache folder.",
+        "1. Ensure your PC and phone are on the same Wi-Fi network.\n2. Open the Spotify app on your phone.\n3. Tap the 'Devices' icon and select 'FH6 Universal Radio'.\nOnce connected, credentials will automatically save to the cache folder.",
+    [t("source.auth_instructions.local_files")]:
+        "Add a music folder to this station in the Local Files card, then Save.",
 });
 
 function translateAuthInstructions(text) {

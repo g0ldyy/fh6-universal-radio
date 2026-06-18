@@ -214,7 +214,7 @@ export function createLocalFiles(main, ctx) {
 		stationSelect.replaceChildren(
 			...stations.map((s, i) =>
 				el("option", { value: String(i), selected: i === selected },
-					s.name + (s.name === activeStation ? `  • ${t("local_files.on_air")}` : "")),
+					s.name + (s.name === activeStation ? `  • ${t("local_files.on_air_title")}` : "")),
 			),
 		);
 		deleteBtn.disabled = stations.length <= 1;

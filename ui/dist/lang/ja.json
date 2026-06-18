@@ -50,12 +50,15 @@
   "source.auth.needs_auth": "認証必要",
   "source.auth.error": "エラー",
   "source.auth_instructions.spotify": "1. PCとスマートフォンが同じWi-Fiに接続されていることを確認してください。\n2. スマートフォンでSpotifyを開きます。\n3. 「デバイス」をタップし「FH6 Universal Radio」を選択します。\n接続後、認証情報は自動的にキャッシュフォルダーに保存されます。",
+  "source.auth_instructions.local_files": "ローカルファイルカードでこのステーションに音楽フォルダーを追加し、保存してください。",
+  "source.auth.authenticated": "認証済み",
 
   "output.title": "出力",
   "output.volume": "音量",
 
   "local_files.title": "ローカルファイル",
   "local_files.on_air": "放送開始",
+  "local_files.on_air_title": "放送中",
   "local_files.already_on_air": "放送中",
   "local_files.new": "新規",
   "local_files.rename": "名前変更",

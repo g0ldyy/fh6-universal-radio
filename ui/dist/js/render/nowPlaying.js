@@ -15,7 +15,8 @@ export function renderNowPlaying(refs, state) {
     const hasArt = !!track.artwork_url;
     refs.art.classList.toggle("has-art", hasArt);
     if (hasArt && refs.img.getAttribute("src") !== track.artwork_url) {
-        const isExternal = track.artwork_url.startsWith("http");
+        const isLocalUrl = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(track.artwork_url);
+        const isExternal = track.artwork_url.startsWith("http") && !isLocalUrl;
         const src = isExternal
             ? `https://wsrv.nl/?url=${encodeURIComponent(track.artwork_url)}`
             : track.artwork_url;

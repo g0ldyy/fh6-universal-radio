@@ -50,12 +50,15 @@
   "source.auth.needs_auth": "Auth. requerida",
   "source.auth.error": "Error",
   "source.auth_instructions.spotify": "1. Asegúrese de que su PC y teléfono estén en la misma red Wi-Fi.\n2. Abra la aplicación Spotify en su teléfono.\n3. Toque 'Dispositivos' y seleccione 'FH6 Universal Radio'.\nUna vez conectado, las credenciales se guardarán automáticamente en la caché.",
+  "source.auth_instructions.local_files": "Añade una carpeta de música a esta estación en la tarjeta Archivos locales y luego guarda.",
+  "source.auth.authenticated": "Autenticado",
 
   "output.title": "Salida",
   "output.volume": "Volumen",
 
   "local_files.title": "Archivos locales",
   "local_files.on_air": "Poner en antena",
+  "local_files.on_air_title": "En antena",
   "local_files.already_on_air": "Estación activa",
   "local_files.new": "Nuevo",
   "local_files.rename": "Renombrar",

@@ -33,6 +33,7 @@
 
   "local_files.title": "Fichiers locaux",
   "local_files.on_air": "Mettre en écoute",
+  "local_files.on_air_title": "En écoute",
   "local_files.already_on_air": "Station active",
   "local_files.new": "Nouveau",
   "local_files.rename": "Renommer",
@@ -152,6 +153,8 @@
   "source.vanilla_radio": "Radio originale",
   "source.needs_auth": "Authentification requise",
   "source.auth_instructions.spotify": "1. Assurez-vous que votre PC et votre téléphone sont sur le même réseau Wi-Fi.\n2. Ouvrez l'application Spotify sur votre téléphone.\n3. Appuyez sur l'icône 'Appareils' et sélectionnez 'FH6 Universal Radio'.\nUne fois connecté, les identifiants seront automatiquement sauvegardés dans le dossier de cache.",
+  "source.auth_instructions.local_files": "Ajoutez un dossier de musique à cette station dans la carte Fichiers locaux, puis enregistrez.",
+  "source.auth.authenticated": "Authentifié",
 
   "schema.general": "Général",
   "schema.general.port": "Port",
