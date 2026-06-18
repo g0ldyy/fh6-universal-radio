@@ -34,6 +34,7 @@ const refs = {
   outputCard: $("#output-card"),
   ytCard: $("#yt-cast-card"),
   jfCard: $("#jf-cast-card"),
+  koelCard: $("#koel-cast-card"),
   ytShuffle: $("#yt-shuffle"),
   drawer: $("#drawer"),
   scrim: $("#scrim"),
@@ -151,6 +152,7 @@ function render() {
   // Source-specific cards only show while that source is on air.
   refs.ytCard.hidden = active !== "youtube_music";
   refs.jfCard.hidden = active !== "jellyfin";
+  refs.koelCard.hidden = active !== "koel";
   const shuffleOn = !!available.find(s => s.name === "youtube_music")?.details?.shuffle;
   refs.ytShuffle.classList.toggle("toggled", shuffleOn);
   refs.ytShuffle.setAttribute("aria-pressed", String(shuffleOn));
@@ -180,6 +182,83 @@ $("#yt-shuffle").addEventListener("click", async () => {
   try {
     await api.shuffleYoutube(shuffle);
     toast(shuffle ? "Shuffle on" : "Shuffle off");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+let koelItems = [];
+
+function populateKoelDatalist(items) {
+  const dl = $("#koel-datalist");
+  dl.innerHTML = "";
+  items.forEach(item => {
+    const opt = document.createElement("option");
+    opt.value = item.name;
+    dl.appendChild(opt);
+  });
+}
+
+function koelLookupId(name) {
+  const match = koelItems.find(i => i.name === name);
+  return match ? match.id : "";
+}
+
+$("#koel-source-type").addEventListener("change", async () => {
+  const type = $("#koel-source-type").value;
+  const input = $("#koel-source-id");
+  if (type === "favorites" || type === "random") {
+    input.disabled = true;
+    input.value = "";
+    input.placeholder = "—";
+    koelItems = [];
+    populateKoelDatalist([]);
+    return;
+  }
+  input.disabled = false;
+  input.value = "";
+  input.placeholder = "Loading…";
+  try {
+    const data = await api.browseKoel(type === "playlist" ? "playlists" : type + "s");
+    koelItems = data.items || [];
+    populateKoelDatalist(koelItems);
+    input.placeholder = "Search and select…";
+  } catch (err) {
+    input.placeholder = "Error loading";
+    toast(err.message, true);
+  }
+});
+
+let koelSearchTimer = null;
+
+$("#koel-source-id").addEventListener("input", () => {
+  const type = $("#koel-source-type").value;
+  if (type === "favorites" || type === "random") return;
+  clearTimeout(koelSearchTimer);
+  const q = $("#koel-source-id").value.trim();
+  koelSearchTimer = setTimeout(async () => {
+    const browseType = type === "playlist" ? "playlists" : type + "s";
+    try {
+      const suffix = q ? "?q=" + encodeURIComponent(q) : "";
+      const data = await api.browseKoel(browseType + suffix);
+      koelItems = data.items || [];
+      populateKoelDatalist(koelItems);
+    } catch (_) { /* keep previous list on error */ }
+  }, 300);
+});
+
+$("#koel-cast").addEventListener("submit", async e => {
+  e.preventDefault();
+  const sourceType = $("#koel-source-type").value;
+  const input = $("#koel-source-id");
+  const sourceId = input.disabled ? "" : koelLookupId(input.value.trim());
+  if (!input.disabled && !sourceId) {
+    toast("Pick a valid item from the list", true);
+    return;
+  }
+  try {
+    await api.castKoel(sourceType, sourceId);
+    toast("Playing…");
   } catch (err) {
     toast(err.message, true);
   }

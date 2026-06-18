@@ -25,6 +25,9 @@ export const api = {
     request("/api/source/youtube_music/shuffle", { method: "POST", body: { shuffle } }),
   castJellyfin: playlistId =>
     request("/api/source/jellyfin/cast", { method: "POST", body: { playlist_id: playlistId } }),
+  castKoel: (sourceType, sourceId) =>
+    request("/api/source/koel/cast", { method: "POST", body: { source_type: sourceType, source_id: sourceId } }),
+  browseKoel: type => request("/api/source/koel/browse/" + type),
   setGain: gain => request("/api/options", { method: "POST", body: { output_gain: gain } }),
   getExternalAudio: () => request("/api/external_audio/devices"),
   putExternalAudio: config => request("/api/external_audio/config", { method: "PUT", body: config }),

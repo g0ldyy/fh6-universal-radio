@@ -49,13 +49,14 @@ export function renderSources(node, state, cfg, onSwitch) {
     ...list.map(s => {
       const stateCls =
         s.auth_state === "needs_auth" ? "warn" : s.auth_state === "error" ? "err" : "";
-      const showNote =
-        (s.auth_state === "needs_auth" || s.auth_state === "error") && s.auth_instructions;
+      const note =
+        s.auth_state === "error" && s.details?.auth_error ? s.details.auth_error :
+        s.auth_state === "needs_auth" ? s.auth_instructions : "";
       const children = [
         el("div", { class: "source-name" }, s.display_name),
         el("div", { class: "source-state " + stateCls }, stateText(s)),
       ];
-      if (showNote) children.push(el("div", { class: "source-note" }, s.auth_instructions));
+      if (note) children.push(el("div", { class: "source-note" }, note));
       const tile = el(
         "button",
         { type: "button", class: "source" + (s.name === active ? " active" : "") },

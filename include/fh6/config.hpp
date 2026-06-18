@@ -100,6 +100,17 @@ struct ExternalAudioConfig {
     std::string media_session_id;
 };
 
+struct KoelConfig {
+    bool enabled = false;
+    std::string server_url;    // e.g. 'http://192.168.1.100:8080'
+    std::string username;      // Subsonic username (default: "subsonic")
+    std::string password;      // Subsonic password or API key
+    std::string source_type;   // "favorites" | "playlist" | "album" | "artist" | "random"
+    std::string source_id;     // ID for playlist/album/artist
+    bool shuffle   = true;
+    int random_count = 25;
+};
+
 struct SpotifyConfig {
     bool enabled = false;
     std::filesystem::path librespot_path; // empty = look up on PATH
@@ -116,6 +127,7 @@ struct Config {
     YouTubeMusicConfig youtube_music;
     AudioConfig audio;
     JellyfinConfig jellyfin;
+    KoelConfig koel;
     ExternalAudioConfig external_audio;
     SpotifyConfig spotify;
     OnlineRadioConfig online_radio;
