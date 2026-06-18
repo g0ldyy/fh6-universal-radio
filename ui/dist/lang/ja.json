@@ -41,6 +41,7 @@
   "source.local_files": "ローカルファイル",
   "source.online_radio": "オンラインラジオ",
   "source.external_audio": "外部オーディオ",
+  "source.vanilla_radio": "オリジナルラジオ",
   "source.needs_auth": "認証が必要",
   "source.indexed": "インデックス済み",
   "source.state.playing": "再生中",

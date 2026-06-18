@@ -41,6 +41,7 @@
   "source.local_files": "本地文件",
   "source.online_radio": "网络电台",
   "source.external_audio": "外部音频",
+  "source.vanilla_radio": "原版电台",
   "source.needs_auth": "需要身份验证",
   "source.auth_instructions.spotify": "1. 确保PC和手机在同一Wi-Fi网络。\n2. 在手机上打开Spotify。\n3. 点击\"设备\"并选择\"FH6 Universal Radio\"。\n连接后，凭据将自动保存到缓存文件夹。",
 

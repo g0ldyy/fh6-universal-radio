@@ -41,6 +41,7 @@
   "source.local_files": "Archivos locales",
   "source.online_radio": "Radio en línea",
   "source.external_audio": "Audio externo",
+  "source.vanilla_radio": "Radio original",
   "source.needs_auth": "Requiere autenticación",
   "source.indexed": "indexadas",
   "source.state.playing": "Reproduciendo",

@@ -149,6 +149,7 @@
   "source.local_files": "Fichiers locaux",
   "source.online_radio": "Radio en ligne",
   "source.external_audio": "Audio externe",
+  "source.vanilla_radio": "Radio originale",
   "source.needs_auth": "Authentification requise",
   "source.auth_instructions.spotify": "1. Assurez-vous que votre PC et votre téléphone sont sur le même réseau Wi-Fi.\n2. Ouvrez l'application Spotify sur votre téléphone.\n3. Appuyez sur l'icône 'Appareils' et sélectionnez 'FH6 Universal Radio'.\nUne fois connecté, les identifiants seront automatiquement sauvegardés dans le dossier de cache.",
 

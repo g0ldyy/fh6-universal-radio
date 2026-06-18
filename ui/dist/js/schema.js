@@ -8,6 +8,7 @@ export const SOURCE_SECTIONS = () => [
   ["jellyfin", "Jellyfin"],
   ["external_audio", t("source.external_audio")],
   ["spotify", "Spotify Connect"],
+  ["vanilla_radio", t("source.vanilla_radio")],
 ];
 
 // [field, label, type, ...args]. type: checkbox | text | number | select | bands.
@@ -70,6 +71,13 @@ export const SCHEMA = () => [
     [
       ["enabled", t("schema.online_radio.enabled"), "checkbox"],
       ["default_station_index", t("schema.online_radio.default_station"), "station-select"],
+    ],
+  ],
+  [
+    "vanilla_radio",
+    t("source.vanilla_radio"),
+    [
+      ["enabled", t("schema.enabled"), "checkbox"],
     ],
   ],
   ["audio", t("schema.audio"), [["output_gain", t("schema.audio.output_gain"), "number", 0, 1, 0.01]]],
