@@ -118,7 +118,7 @@ The dashboard and language selection can be easily extended to support new langu
 
 ```javascript
 // To add a new language, simply add its object to this array:
-const SUPPORTED = [
+export const SUPPORTED = [
     // ... existing languages ...
     { code: "it", label: "🇮🇹 Italiano (AI Generate)" },
     { code: "pt", label: "🇵🇹 Português (AI Generate)" },
