@@ -6,6 +6,7 @@ const DISPLAY_NAME_MAP = () => ({
     "local_files": t("source.local_files"),
     "online_radio": t("source.online_radio"),
     "external_audio": t("source.external_audio"),
+    "vanilla_radio": t("source.vanilla_radio"),
 });
 
 const AUTH_INSTRUCTIONS_MAP = () => ({
