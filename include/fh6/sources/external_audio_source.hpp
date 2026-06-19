@@ -75,6 +75,8 @@ private:
     mutable std::string art_key_;
     mutable ArtworkImage art_;
 
+    TrackInfo cached_track_;
+
     std::mutex queue_mu_;
     std::vector<int16_t> pcm_queue_;
     std::size_t queue_offset_ = 0;

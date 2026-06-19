@@ -543,21 +543,47 @@ void ExternalAudioSource::on_radio_audible(bool audible) {
 void ExternalAudioSource::set_media_transport(bool play) {
     if (media_active_.exchange(play) == play) return;
     const auto session = configured_media_session();
-    if (play) {
-        external_audio_media_session_play(session);
-    } else {
-        external_audio_media_session_pause(session);
-    }
+    
+    // dispatch to a background thread so the FMOD DSP control loop never blocks
+    std::thread([session, play]() {
+        // initialize COM for this new background thread
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        
+        if (play) {
+            external_audio_media_session_play(session);
+        } else {
+            external_audio_media_session_pause(session);
+        }
+        
+        // cleanup COM
+        if (SUCCEEDED(hr)) {
+            CoUninitialize();
+        }
+    }).detach();
 }
 
 void ExternalAudioSource::next() { (void)skip_next(); }
 
 void ExternalAudioSource::previous() {
-    (void)external_audio_media_session_previous(configured_media_session());
+    position_ms_.store(0, std::memory_order_release);
+    const auto session = configured_media_session();
+    std::thread([session]() {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        external_audio_media_session_previous(session);
+        if (SUCCEEDED(hr)) CoUninitialize();
+    }).detach();
 }
 
 bool ExternalAudioSource::skip_next() {
-    return external_audio_media_session_next(configured_media_session());
+    position_ms_.store(0, std::memory_order_release);
+    const auto session = configured_media_session();
+    std::thread([session]() {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        external_audio_media_session_next(session);
+        if (SUCCEEDED(hr)) CoUninitialize();
+    }).detach();
+
+    return true; 
 }
 
 void ExternalAudioSource::pump(RingBuffer& ring) {
@@ -603,36 +629,12 @@ void ExternalAudioSource::pump(RingBuffer& ring) {
 }
 
 TrackInfo ExternalAudioSource::current_track() const {
-    const auto fallback_position = position_ms_.load(std::memory_order_acquire);
-    const auto selected_session  = configured_media_session();
-    if (auto t = external_audio_media_session_track(selected_session, fallback_position)) {
-        if (t->album.empty()) t->album = "External Audio";
-
-        const std::string key = t->title + '\x1f' + t->artist;
-        bool need_fetch;
-        {
-            std::scoped_lock lk{meta_mu_};
-            need_fetch = (key != art_key_);
-        }
-        std::optional<ArtworkImage> fetched;
-        if (need_fetch) fetched = external_audio_media_session_thumbnail(selected_session);
-
-        std::scoped_lock lk{meta_mu_};
-        if (need_fetch) {
-            art_key_ = key;
-            art_     = fetched ? std::move(*fetched) : ArtworkImage{};
-        }
-        if (!art_.bytes.empty())
-            t->artwork_url = "/api/artwork?v=" + std::to_string(std::hash<std::string>{}(key));
-        return *t;
-    }
-
     std::scoped_lock lk{meta_mu_};
-    TrackInfo t;
-    t.title       = "External Audio";
-    t.artist      = device_name_.empty() ? "No media session metadata" : device_name_;
-    t.album       = "External Audio";
-    t.position_ms = fallback_position;
+    TrackInfo t = cached_track_;
+    
+    // override the cached position_ms with the live position_ms_ 
+    // so the progress bar in the UI remains smooth between polls
+    t.position_ms = position_ms_.load(std::memory_order_acquire);
     return t;
 }
 
@@ -818,7 +820,66 @@ void ExternalAudioSource::capture_loop() noexcept {
     Resampler resampler;
     resampler.fmt = input;
 
+    // force an immediate poll on the first loop iteration
+    auto last_meta_poll = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+
     while (!had_error && !stop_requested_.load(std::memory_order_acquire)) {
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_meta_poll >= std::chrono::seconds(1)) {
+            last_meta_poll = now;
+            
+            const auto selected_session = configured_media_session();
+            TrackInfo next_track;
+            
+            if (auto t = external_audio_media_session_track(selected_session, position_ms_.load(std::memory_order_acquire))) {
+                next_track = std::move(*t);
+                if (next_track.album.empty()) next_track.album = "External Audio";
+                
+                const std::string key = next_track.title + '\x1f' + next_track.artist;
+                
+                bool track_changed = false;
+                {
+                    std::scoped_lock lk{meta_mu_};
+                    track_changed = (key != art_key_);
+                }
+                
+                if (track_changed) {
+                    position_ms_.store(0, std::memory_order_release);
+                    next_track.position_ms = 0;
+                    
+                    auto fetched = external_audio_media_session_thumbnail(selected_session);
+                    std::scoped_lock lk{meta_mu_};
+                    art_key_ = key;
+                    art_ = fetched ? std::move(*fetched) : ArtworkImage{};
+                } else {
+                    const uint64_t smooth_time = position_ms_.load(std::memory_order_acquire);
+                    const uint64_t smtc_time = next_track.position_ms;
+                    
+                    // calculate absolute difference
+                    const uint64_t diff = (smooth_time > smtc_time) 
+                        ? (smooth_time - smtc_time) 
+                        : (smtc_time - smooth_time);
+
+                    if (diff > 4000) {
+                        position_ms_.store(smtc_time, std::memory_order_release);
+                    }
+                }
+                
+                std::scoped_lock lk{meta_mu_};
+                if (!art_.bytes.empty()) {
+                    next_track.artwork_url = "/api/artwork?v=" + std::to_string(std::hash<std::string>{}(key));
+                }
+                cached_track_ = next_track;
+            } else {
+                std::scoped_lock lk{meta_mu_};
+                next_track.title = "External Audio";
+                next_track.artist = device_name_.empty() ? "No media session metadata" : device_name_;
+                next_track.album = "External Audio";
+                next_track.position_ms = position_ms_.load(std::memory_order_acquire);
+                cached_track_ = next_track;
+            }
+        }
+
         UINT32 next_packet_frames = 0;
         hr                        = capture->GetNextPacketSize(&next_packet_frames);
         if (FAILED(hr)) {

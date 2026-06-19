@@ -106,6 +106,10 @@ struct SpotifyConfig {
     std::filesystem::path cache_dir = "spotify_cache";
 };
 
+struct VanillaRadioConfig {
+    bool enabled = false;
+};
+
 struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
@@ -115,6 +119,7 @@ struct Config {
     ExternalAudioConfig external_audio;
     SpotifyConfig spotify;
     OnlineRadioConfig online_radio;
+    VanillaRadioConfig vanilla_radio;
     PlaybackConfig playback;
 };
 

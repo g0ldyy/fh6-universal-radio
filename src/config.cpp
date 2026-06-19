@@ -163,6 +163,10 @@ Config load_config(const std::filesystem::path& path) {
     cfg.external_audio.media_session_id =
         pick<std::string>(ea, "media_session_id", cfg.external_audio.media_session_id);
 
+
+    const auto& vr = section(root, "vanilla_radio");
+    cfg.vanilla_radio.enabled = pick<bool>(vr, "enabled", cfg.vanilla_radio.enabled);
+
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
@@ -345,6 +349,9 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("enabled", cfg.external_audio.enabled);
     e.kv("endpoint_id", cfg.external_audio.endpoint_id);
     e.kv("media_session_id", cfg.external_audio.media_session_id);
+
+    e.header("vanilla_radio");
+    e.kv("enabled", cfg.vanilla_radio.enabled);
 
     e.header("spotify");
     e.kv("enabled", cfg.spotify.enabled);

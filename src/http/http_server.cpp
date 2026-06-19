@@ -204,6 +204,10 @@ json config_to_json(const Config& c) {
                   return arr;
               }()}
          }},
+        {"vanilla_radio",
+         json{
+             {"enabled", c.vanilla_radio.enabled},
+         }},
         {"audio",
          json{
              {"output_gain", c.audio.output_gain},
@@ -333,6 +337,9 @@ void apply_patch(Config& c, const json& j) {
         } else if (c.online_radio.default_station_index >= c.online_radio.stations.size()) {
             c.online_radio.default_station_index = 0; // or last valid index
         }
+    }
+    if (auto it = j.find("vanilla_radio"); it != j.end()) {
+        c.vanilla_radio.enabled = pull(*it, "enabled", c.vanilla_radio.enabled);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
