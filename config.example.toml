@@ -33,8 +33,14 @@ repeat    = "all"                      # "all" | "one" | "off"
 enabled            = false
 cookies_path       = ''                # optional Netscape cookies.txt
 yt_dlp_path        = ''                # blank = auto-download to fh6-radio/bin (else `yt-dlp` on PATH)
-default_playlist   = ""
+active_station     = ""     # which station is currently active
 shuffle            = true
+
+# you can add as many stations as you want below. name + url are required; the
+# rest are filled in automatically when you save a station from the dashboard
+#[[youtube_music.stations]]
+#name = "My Playlist"
+#url = ""
 
 [jellyfin]
 enabled            = false
@@ -44,7 +50,6 @@ user_id            = ''                # the ID of the user to track playback ag
 default_playlist   = ''                # jellyfin playlist ID goes here
 use_favorites      = false             # set to true to play your favorites instead of a playlist
 shuffle            = true              # true or false
-
 
 [external_audio]
 # Off by default. Enable from the dashboard Settings drawer before using External Audio.
@@ -64,12 +69,6 @@ cache_dir          = 'spotify_cache'   # folder to save the Spotify Connect auth
 enabled               = true
 default_station_index = 0 # index of radio station in list (0 refers to start of the list)
 
-# when selected as the active source, this puts the DSP into passthrough mode
-# it bypasses the mod's custom audio injection, allowing the game's original radio stations to play normally
-# requires streamer mode off
-[vanilla_radio]
-enabled               = false
-
 # you can add as many stations as you want below. name + url are required; the
 # rest are filled in automatically when you save a station from the dashboard's
 # Discover tab (radio-browser.info) and are optional when adding by hand.
@@ -83,6 +82,12 @@ enabled               = false
 #bitrate  = 0  # kbps
 #uuid     = "" # radio-browser station id
 #favorite = false
+
+# when selected as the active source, this puts the DSP into passthrough mode
+# it bypasses the mod's custom audio injection, allowing the game's original radio stations to play normally
+# requires streamer mode off
+[vanilla_radio]
+enabled               = false
 
 [audio]
 output_gain = 1.0

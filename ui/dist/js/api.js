@@ -18,11 +18,22 @@ export const api = {
   reloadConfig: () => request("/api/config/reload", { method: "POST" }),
   switchSource: source => request("/api/source/switch", { method: "POST", body: { source } }),
   transport: (source, action) => request(`/api/source/${source}/${action}`, { method: "POST" }),
-  castYoutube: url => request("/api/source/youtube_music/cast", { method: "POST", body: { url } }),
   castOnlineRadio: (url, opts = {}) =>
     request("/api/source/online_radio/cast", { method: "POST", body: { url, ...opts } }),
+  castYoutube: url => request("/api/source/youtube_music/cast", { method: "POST", body: { url } }),
   shuffleYoutube: shuffle =>
     request("/api/source/youtube_music/shuffle", { method: "POST", body: { shuffle } }),
+  getYoutubeStations: () => request("/api/source/youtube_music/stations"),
+  putYoutubeStations: (stations, activeStation) =>
+    request("/api/source/youtube_music/stations", {
+      method: "PUT",
+      body: { stations, active_station: activeStation },
+    }),
+  activateYoutubeStation: name =>
+    request("/api/source/youtube_music/activate", { method: "POST", body: { name } }),
+  getYoutubeQueue: () => request("/api/source/youtube_music/queue"),
+  playYoutubeIndex: index =>
+    request("/api/source/youtube_music/play", { method: "POST", body: { index } }),
   castJellyfin: playlistId =>
     request("/api/source/jellyfin/cast", { method: "POST", body: { playlist_id: playlistId } }),
   setGain: gain => request("/api/options", { method: "POST", body: { output_gain: gain } }),

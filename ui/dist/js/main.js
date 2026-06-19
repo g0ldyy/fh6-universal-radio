@@ -12,8 +12,7 @@ import { createDeps } from "./render/deps.js";
 import { createExternalAudio } from "./render/externalAudio.js";
 import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
-import { extractDominantColor } from "./render/nowPlaying.js";
-import { initI18n, onLangChange, t, setLang, getLang } from "./i18n.js";
+import { createYoutubeMusic } from "./render/youtubeMusic.js";
 
 let state = null;
 let cfg = null;
@@ -47,7 +46,6 @@ $("#open-settings").innerHTML = icons.gear;
 $("#close-settings").innerHTML = icons.close;
 $("#t-prev").innerHTML = icons.prev;
 $("#t-next").innerHTML = icons.next;
-$("#yt-shuffle").innerHTML = icons.shuffle;
 
 const mainEl = $("main");
 
@@ -57,6 +55,16 @@ let deps;
 let externalAudio;
 let localFiles;
 let onlineRadio;
+
+const youtubeMusic = createYoutubeMusic(mainEl, {
+  getState: () => state,
+  getConfig: () => cfg,
+  onSaved: async () => {
+    cfg = await api.getConfig().catch(() => cfg);
+    state = await api.getState().catch(() => state);
+    render();
+  },
+});
 
 async function switchSource(name) {
     try {
@@ -111,14 +119,15 @@ function closeDrawer() {
 }
 
 function render() {
-    if (!state) return;
-    renderStatus(refs.status, state);
-    renderNowPlaying(refs.np, state);
-    renderSources(refs.sources, state, cfg, switchSource);
-    renderOutput(state);
-    externalAudio.render();
-    localFiles.render();
-    onlineRadio.render();
+  if (!state) return;
+  renderStatus(refs.status, state);
+  renderNowPlaying(refs.np, state);
+  renderSources(refs.sources, state, cfg, switchSource);
+  renderOutput(state);
+  externalAudio.render();
+  localFiles.render();
+  onlineRadio.render();
+  youtubeMusic.render();
 
     refs.sourceCard.hidden = false;
     refs.outputCard.hidden = !state.sources?.active;

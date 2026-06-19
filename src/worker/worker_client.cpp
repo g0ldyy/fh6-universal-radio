@@ -4,7 +4,7 @@
 #include "fh6/subprocess.hpp"
 
 #include <nlohmann/json.hpp>
-
+#include <map>
 #include <bcrypt.h>
 
 namespace fh6::worker {
@@ -27,6 +27,58 @@ std::wstring make_session_token() {
         out += hex[b & 0x0F];
     }
     return out;
+}
+
+
+// helper to construct a custom environment block for CreateProcessW
+std::vector<wchar_t> build_environment_block(const std::vector<std::pair<std::wstring, std::wstring>>& overrides) {
+    // case-insensitive map for Windows environment variables
+    struct WStringCmpI {
+        bool operator()(const std::wstring& a, const std::wstring& b) const {
+            return _wcsicmp(a.c_str(), b.c_str()) < 0;
+        }
+    };
+    std::map<std::wstring, std::wstring, WStringCmpI> env_map;
+
+    // fetch current process environment
+    LPWCH curr_env = GetEnvironmentStringsW();
+    if (!curr_env) return {};
+    
+    for (LPWCH p = curr_env; *p; ) {
+        std::wstring entry(p);
+        p += entry.length() + 1;
+
+        if (entry.empty()) continue;
+
+        // start searching for '=' after index 0 to correctly parse variables
+        size_t pos = entry.find(L'=', entry[0] == L'=' ? 1 : 0);
+        
+        if (pos != std::wstring::npos) {
+            env_map[entry.substr(0, pos)] = entry.substr(pos + 1);
+        }
+    }
+    FreeEnvironmentStringsW(curr_env);
+
+    // apply overrides
+    for (const auto& kv : overrides) {
+        if (kv.first.empty() || kv.first.find(L'=') != std::wstring::npos ||
+            kv.first.find(L'\0') != std::wstring::npos ||
+            kv.second.find(L'\0') != std::wstring::npos) {
+            log::warn("[worker] ignoring invalid environment override");
+            continue;
+        }
+        env_map[kv.first] = kv.second;
+    }
+
+    // flatten map into a contiguous buffer of null-terminated strings
+    std::vector<wchar_t> block;
+    for (const auto& kv : env_map) {
+        std::wstring entry = kv.first + L"=" + kv.second;
+        block.insert(block.end(), entry.begin(), entry.end());
+        block.push_back(L'\0');
+    }
+    block.push_back(L'\0'); // final terminator
+    return block;
 }
 
 // Block until an instance of `name` is available, or the deadline passes.
@@ -62,7 +114,8 @@ HANDLE connect_to_stream(const std::wstring& pipe_name) {
 
 WorkerClient::~WorkerClient() { stop(); }
 
-bool WorkerClient::start(const std::filesystem::path& worker_exe) {
+bool WorkerClient::start(const std::filesystem::path& worker_exe, 
+                         const std::vector<std::pair<std::wstring, std::wstring>>& env_overrides) {
     std::scoped_lock lk{mu_};
     if (process_) return true; // already started
 
@@ -82,10 +135,23 @@ bool WorkerClient::start(const std::filesystem::path& worker_exe) {
     // taking its children with it -- if the game ever dies without a clean stop.
     std::wstring cmd = subprocess::quote(worker_exe.wstring()) + L" " + token_ + L" " +
                        std::to_wstring(GetCurrentProcessId());
+
+    // build the custom environment block
+    std::vector<wchar_t> env_block = build_environment_block(env_overrides);
+    if (env_block.size() <= 2) {
+        log::error("[worker] failed to read inherited environment");
+        token_.clear();
+        return false;
+    }
+
     STARTUPINFOW si{};
     si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+
+    // add CREATE_UNICODE_ENVIRONMENT to the creation flags
+    DWORD flags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT;
+    
+    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, flags, env_block.data(),
                         subprocess::safe_spawn_cwd(), &si, &pi)) {
         log::error("[worker] failed to launch worker (err {})", GetLastError());
         token_.clear();

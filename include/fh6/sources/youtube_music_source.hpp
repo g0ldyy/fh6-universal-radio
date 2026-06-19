@@ -48,6 +48,26 @@ public:
     void set_yt_dlp_path(std::filesystem::path p);
     void set_playback_options(const PlaybackConfig& opts) override;
 
+    void set_config(YouTubeMusicConfig cfg);
+    void set_active_station(std::string name);
+
+    std::size_t station_count() const noexcept;
+    std::string active_station_name() const;
+
+    struct QueueEntry {
+        std::size_t index;
+        std::string url;
+        std::string title;
+        std::string artist;
+    };
+    struct QueueSnapshot {
+        std::size_t cursor;
+        std::vector<QueueEntry> entries;
+    };
+
+    QueueSnapshot queue_snapshot() const;
+    bool jump_to(std::size_t index);
+
     TrackInfo current_track() const override;
     PlaybackState playback_state() const noexcept override {
         return state_.load(std::memory_order_acquire);
@@ -56,7 +76,10 @@ public:
     std::string auth_instructions() const override;
     SourceCapabilities capabilities() const noexcept override { return {false, true, true}; }
 
-    bool shuffle() const noexcept { return cfg_.shuffle; }
+    bool shuffle() const {
+        std::scoped_lock lk{mu_};
+        return cfg_.shuffle;
+    }
 
 private:
     struct Pipe;
@@ -78,9 +101,16 @@ private:
     std::unique_ptr<Pipe> pipe_;
     std::unique_ptr<Pipe> prefetch_; // pre-spawned next-track pipeline (or null)
 
+    const YouTubeStation* active_station_locked() const noexcept;
+
     mutable std::mutex mu_;
     std::string target_url_;
-    std::vector<std::string> queue_; // canonical watch URLs in playback order
+    struct InternalQueueEntry {
+        std::string url;
+        std::string title;
+        std::string artist;
+    };
+    std::vector<InternalQueueEntry> queue_; // canonical watch URLs in playback order
     std::size_t queue_idx_ = 0;
     std::string queue_built_for_; // value of target_url_ when queue_ was resolved
     std::atomic<uint64_t> position_ms_{0};

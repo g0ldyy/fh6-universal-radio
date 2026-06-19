@@ -379,7 +379,7 @@ void serve_connection(HANDLE pipe) {
         } catch (const std::exception& e) {
             resp = {{"ok", false}, {"error", e.what()}};
         }
-        ipc_send(pipe, resp.dump());
+        ipc_send(pipe, resp.dump(-1, ' ', false, json::error_handler_t::replace));
     }
     FlushFileBuffers(pipe);
     DisconnectNamedPipe(pipe);

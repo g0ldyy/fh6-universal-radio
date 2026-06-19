@@ -106,8 +106,15 @@ json source_to_json(IAudioSource* s) {
         j["details"]["repeat"]         = lf->active_repeat();
         j["details"]["index_version"]  = lf->index_version();
     }
-    if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(s))
+    if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(s)) {
         j["details"]["shuffle"] = yt->shuffle();
+        j["details"]["station_count"] = yt->station_count();
+        j["details"]["active_station"] = yt->active_station_name();
+
+        auto snap = yt->queue_snapshot();
+        j["details"]["queue_size"] = snap.entries.size();
+        j["details"]["queue_cursor"] = snap.cursor;
+    }
     if (auto* rd = dynamic_cast<sources::OnlineRadioSource*>(s))
         j["details"]["song_history"] = rd->song_history();
     return j;
@@ -137,6 +144,23 @@ json stations_to_json(const std::vector<LocalStation>& v) {
     return a;
 }
 
+json yt_station_to_json(const YouTubeStation& s) {
+    return json{{"name", s.name}, {"url", s.url}};
+}
+
+json yt_stations_to_json(const std::vector<YouTubeStation>& v) {
+    json a = json::array();
+    for (const auto& s : v) a.push_back(yt_station_to_json(s));
+    return a;
+}
+
+YouTubeStation yt_station_from_json(const json& j) {
+    return YouTubeStation{
+        j.value("name", ""),
+        j.value("url", "")
+    };
+}
+
 json config_to_json(const Config& c) {
     return json{
         {"general",
@@ -159,7 +183,8 @@ json config_to_json(const Config& c) {
              {"enabled", c.youtube_music.enabled},
              {"cookies_path", path_s(c.youtube_music.cookies_path)},
              {"yt_dlp_path", path_s(c.youtube_music.yt_dlp_path)},
-             {"default_playlist", c.youtube_music.default_playlist},
+             {"active_station", c.youtube_music.active_station},
+             {"stations", yt_stations_to_json(c.youtube_music.stations)},
              {"shuffle", c.youtube_music.shuffle},
          }},
         {"jellyfin",
@@ -288,8 +313,12 @@ void apply_patch(Config& c, const json& j) {
         c.youtube_music.enabled      = pull(*it, "enabled", c.youtube_music.enabled);
         c.youtube_music.cookies_path = pull_path(*it, "cookies_path", c.youtube_music.cookies_path);
         c.youtube_music.yt_dlp_path  = pull_path(*it, "yt_dlp_path", c.youtube_music.yt_dlp_path);
-        c.youtube_music.default_playlist =
-            pull(*it, "default_playlist", c.youtube_music.default_playlist);
+        c.youtube_music.active_station = pull(*it, "active_station", c.youtube_music.active_station);
+        if (auto sts = it->find("stations"); sts != it->end() && sts->is_array()) {
+            std::vector<YouTubeStation> parsed;
+            for (const auto& st : *sts) parsed.push_back(yt_station_from_json(st));
+            c.youtube_music.stations = std::move(parsed);
+        }
         c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
     }
     if (auto it = j.find("jellyfin"); it != j.end()) {
@@ -723,10 +752,10 @@ struct HttpServer::Impl {
             mgr.switch_to("local_files");
             return ok(json{{"track_count", lf->track_count()}});
         }
-        if (m == "POST" && p == "/api/source/local_files/play") {
+        if (m == "POST" && p == "/api/source/local_files/play" && !req.body.empty()) {
             auto* lf = find_typed<sources::LocalFileSource>("local_files");
             if (!lf) return fail(404, "local_files not registered");
-            auto idx              = json::parse(req.body).value("index", std::size_t{0});
+            auto idx              = json::parse(req.body).at("index").get<std::size_t>();
             const bool was_active = (mgr.active() == lf);
             if (!lf->jump_to(idx)) return fail(400, "index out of range");
             if (was_active) mgr.ring().drain();
@@ -806,9 +835,10 @@ struct HttpServer::Impl {
             auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
             if (!yt) return fail(404, "youtube_music not registered");
             auto url              = json::parse(req.body).at("url").get<std::string>();
+            if (url.empty()) return fail(400, "url required");
             const bool was_active = (mgr.active() == yt);
-            yt->set_target(std::move(url));
             yt->stop();
+            yt->set_target(std::move(url));
             if (was_active) mgr.ring().drain();
             yt->play();
             mgr.switch_to("youtube_music");
@@ -820,6 +850,62 @@ struct HttpServer::Impl {
             auto shuffle = json::parse(req.body).at("shuffle").get<bool>();
             yt->set_shuffle(shuffle);
             store.patch([shuffle](Config& c) { c.youtube_music.shuffle = shuffle; });
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/youtube_music/stations") {
+            auto snap = store.snapshot();
+            return ok(json{
+                {"stations", yt_stations_to_json(snap.youtube_music.stations)},
+                {"active_station", snap.youtube_music.active_station}
+            });
+        }
+        if (m == "PUT" && p == "/api/source/youtube_music/stations") {
+            auto j = json::parse(req.body);
+            store.patch([&](Config& c) {
+                if (auto sts = j.find("stations"); sts != j.end() && sts->is_array()) {
+                    std::vector<YouTubeStation> parsed;
+                    for (const auto& st : *sts) parsed.push_back(yt_station_from_json(st));
+                    c.youtube_music.stations = std::move(parsed);
+                }
+                if (auto a = j.find("active_station"); a != j.end() && a->is_string())
+                    c.youtube_music.active_station = a->get<std::string>();
+            });
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (yt) yt->set_config(store.snapshot().youtube_music);
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/youtube_music/activate") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto name             = json::parse(req.body).value("name", std::string{});
+            const bool was_active = (mgr.active() == yt);
+            store.patch([&](Config& c) { c.youtube_music.active_station = name; });
+            yt->set_active_station(name);
+            if (was_active) mgr.ring().drain();
+            yt->play();
+            mgr.switch_to("youtube_music");
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/youtube_music/queue") {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto snap   = yt->queue_snapshot();
+            json tracks = json::array();
+            for (const auto& e : snap.entries) {
+                tracks.push_back(
+                    json{{"index", e.index}, {"title", e.title}, {"artist", e.artist}, {"url", e.url}});
+            }
+            return ok(json{{"cursor", snap.cursor}, {"tracks", tracks}});
+        }
+
+        if (m == "POST" && p == "/api/source/youtube_music/play" && !req.body.empty()) {
+            auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
+            if (!yt) return fail(404, "youtube_music not registered");
+            auto idx              = json::parse(req.body).at("index").get<std::size_t>();
+            const bool was_active = (mgr.active() == yt);
+            if (!yt->jump_to(idx)) return fail(400, "index out of range");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("youtube_music");
             return ok();
         }
         if (m == "POST" && p == "/api/source/jellyfin/cast") {

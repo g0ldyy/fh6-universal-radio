@@ -47,11 +47,17 @@ struct LocalFilesConfig {
                                                "aac", "wma",  "aiff", "aif", "m3u", "m3u8"};
 };
 
+struct YouTubeStation {
+    std::string name;
+    std::string url;
+};
+
 struct YouTubeMusicConfig {
     bool enabled = false;
     std::filesystem::path cookies_path;
     std::filesystem::path yt_dlp_path; // empty = look up on PATH
-    std::string default_playlist;
+    std::vector<YouTubeStation> stations;
+    std::string active_station; // station name; empty/unknown => first station
     bool shuffle = true;
 };
 

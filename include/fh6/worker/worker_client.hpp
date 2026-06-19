@@ -24,7 +24,8 @@ public:
     WorkerClient& operator=(const WorkerClient&) = delete;
 
     /// Launch the worker process and connect to its control pipe.
-    bool start(const std::filesystem::path& worker_exe);
+    bool start(const std::filesystem::path& worker_exe, 
+                   const std::vector<std::pair<std::wstring, std::wstring>>& env_overrides = {});
 
     /// Send shutdown and wait for the worker to exit.
     void stop();

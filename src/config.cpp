@@ -115,8 +115,30 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.enabled          = pick<bool>(ym, "enabled", cfg.youtube_music.enabled);
     cfg.youtube_music.cookies_path     = pick_path(ym, "cookies_path");
     cfg.youtube_music.yt_dlp_path      = pick_path(ym, "yt_dlp_path");
-    cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
+    cfg.youtube_music.active_station   = pick<std::string>(ym, "active_station", "");
     cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
+
+    try {
+        if (ym.contains("stations")) {
+            for (const auto& st : toml::find<std::vector<toml::value>>(ym, "stations")) {
+                YouTubeStation s;
+                s.name = pick<std::string>(st, "name", "");
+                s.url  = pick<std::string>(st, "url", "");
+                cfg.youtube_music.stations.push_back(std::move(s));
+            }
+        }
+    } catch (...) {}
+
+    // fallback to migrate old configs that still use default_playlist
+    if (cfg.youtube_music.stations.empty()) {
+        auto dp = pick<std::string>(ym, "default_playlist", "");
+        if (!dp.empty()) {
+            cfg.youtube_music.stations.push_back({"My Playlist", dp});
+        }
+    }
+    if (cfg.youtube_music.active_station.empty() && !cfg.youtube_music.stations.empty()) {
+        cfg.youtube_music.active_station = cfg.youtube_music.stations.front().name;
+    }
 
     const auto& sp             = section(root, "spotify");
     cfg.spotify.enabled        = pick<bool>(sp, "enabled", cfg.spotify.enabled);
@@ -333,8 +355,13 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("enabled", cfg.youtube_music.enabled);
     e.kv_path("cookies_path", cfg.youtube_music.cookies_path);
     e.kv_path("yt_dlp_path", cfg.youtube_music.yt_dlp_path);
-    e.kv("default_playlist", cfg.youtube_music.default_playlist);
+    e.kv("active_station", cfg.youtube_music.active_station);
     e.kv("shuffle", cfg.youtube_music.shuffle);
+    for (const auto& st : cfg.youtube_music.stations) {
+        e.array_header("youtube_music.stations");
+        e.kv("name", st.name);
+        e.kv("url", st.url);
+    }
 
     e.header("jellyfin");
     e.kv("enabled", cfg.jellyfin.enabled);
