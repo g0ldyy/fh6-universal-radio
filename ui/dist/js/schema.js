@@ -16,7 +16,6 @@ const KB_KEYS = [
   [0x22, "Page Down"],
   [0x24, "Home"],
   [0x23, "End"],
-  [0x77, "F8"],
   [0x78, "F9"],
   [0x79, "F10"],
   [0x9999, "Double-Tap Radio Change"]
