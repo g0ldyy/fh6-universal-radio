@@ -75,10 +75,13 @@ private:
     mutable std::mutex playback_opts_mtx_;
     std::shared_ptr<const PlaybackConfig> playback_opts_;
 
-    bool prev_r10_          = false;
-    bool prev_race_         = false;
-    bool prev_race_restart_ = false;
-    bool quick_skip_armed_  = false;
+    bool prev_r10_            = false;
+    bool prev_race_           = false;
+    bool prev_race_restart_   = false;
+    bool quick_skip_armed_    = false;
+    bool paused_by_race_off_  = false;
+    bool first_connection_    = true;
+    bool stopped_by_race_off_ = false;
     time_point last_r10_off_{};
     time_point last_race_event_{};
     time_point last_skip_cmd_{};

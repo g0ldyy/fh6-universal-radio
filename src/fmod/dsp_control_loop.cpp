@@ -254,7 +254,9 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     auto* active = bridge_.manager().active();
     if (!active) {
         prev_r10_ = prev_race_ = prev_race_restart_ = false;
-        quick_skip_armed_                           = false;
+        paused_by_race_off_ = false;
+        first_connection_   = true;
+        quick_skip_armed_   = false;
         return;
     }
 
@@ -264,6 +266,15 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     // transitions even though the user stayed on our station, which used to
     // trip a phantom quickStationSkip on every race start.
     const bool r10 = game.on_target_station;
+
+    if (first_connection_) {
+        prev_race_         = game.race_active;
+        prev_race_restart_ = game.race_restart;
+        prev_r10_          = r10;
+        first_connection_  = false;
+        return;
+    }
+
     auto& ring     = bridge_.manager().ring();
 
     // --- raceStartPlayback (race_active edge, gated by R10 + debounces) ---
@@ -282,6 +293,16 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
         } else if (mode == "restart") {
             fired   = active->restart_current();
             outcome = fired ? "restarted current track" : "could not restart current track";
+        } else if (mode == "off") {
+            const auto st = active->playback_state();
+            if (st == PlaybackState::playing || st == PlaybackState::buffering) {
+                active->stop();
+                fired               = true;
+                paused_by_race_off_ = true;
+                outcome             = "stopped playback";
+            } else {
+                outcome = "skipped stop (not playing)";
+            }
         }
         if (fired) {
             ring.drain();
@@ -289,6 +310,14 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
         }
         last_race_event_ = now;
         log::info("[ctrl] race {} -- {}", restart_edge_in ? "restarted" : "started", outcome);
+    }
+
+    // --- raceEndResume (race_active falling edge) ---
+    const bool race_edge_out = !game.race_active && prev_race_;
+    if (race_edge_out && paused_by_race_off_) {
+        active->play();
+        paused_by_race_off_ = false;
+        log::info("[ctrl] race ended -- resuming playback");
     }
     prev_race_         = game.race_active;
     prev_race_restart_ = game.race_restart;

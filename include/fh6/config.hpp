@@ -9,7 +9,7 @@
 namespace fh6 {
 
 struct PlaybackConfig {
-    std::string race_start_playback = "next"; // "next" | "restart" | "ignore"
+    std::string race_start_playback = "next"; // "next" | "restart" | "ignore" | "off"
     bool quick_station_skip         = false;
     bool volume_normalization       = false;
     bool equalizer_enabled          = false;

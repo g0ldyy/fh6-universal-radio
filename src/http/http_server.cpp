@@ -375,7 +375,7 @@ void apply_patch(Config& c, const json& j) {
     }
     if (auto it = j.find("playback"); it != j.end()) {
         auto rs = pull<std::string>(*it, "race_start_playback", c.playback.race_start_playback);
-        if (rs == "next" || rs == "restart" || rs == "ignore")
+        if (rs == "next" || rs == "restart" || rs == "ignore" || rs == "off")
             c.playback.race_start_playback = std::move(rs);
         c.playback.quick_station_skip =
             pull(*it, "quick_station_skip", c.playback.quick_station_skip);

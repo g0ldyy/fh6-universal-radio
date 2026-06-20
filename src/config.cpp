@@ -196,7 +196,7 @@ Config load_config(const std::filesystem::path& path) {
     const auto& pb = section(root, "playback");
     {
         auto rs = pick<std::string>(pb, "race_start_playback", cfg.playback.race_start_playback);
-        if (rs == "next" || rs == "restart" || rs == "ignore")
+        if (rs == "next" || rs == "restart" || rs == "ignore" || rs == "off")
             cfg.playback.race_start_playback = std::move(rs);
     }
     cfg.playback.quick_station_skip =
