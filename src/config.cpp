@@ -152,10 +152,32 @@ Config load_config(const std::filesystem::path& path) {
     cfg.jellyfin.server_url = pick<std::string>(jf, "server_url", cfg.jellyfin.server_url);
     cfg.jellyfin.api_key    = pick<std::string>(jf, "api_key", cfg.jellyfin.api_key);
     cfg.jellyfin.user_id    = pick<std::string>(jf, "user_id", cfg.jellyfin.user_id);
-    cfg.jellyfin.default_playlist =
-        pick<std::string>(jf, "default_playlist", cfg.jellyfin.default_playlist);
-    cfg.jellyfin.use_favorites = pick<bool>(jf, "use_favorites", cfg.jellyfin.use_favorites);
-    cfg.jellyfin.shuffle       = pick<bool>(jf, "shuffle", cfg.jellyfin.shuffle);
+    cfg.jellyfin.active_station = pick<std::string>(jf, "active_station", cfg.jellyfin.active_station);
+    cfg.jellyfin.shuffle    = pick<bool>(jf, "shuffle", cfg.jellyfin.shuffle);
+
+    try {
+        if (jf.contains("stations")) {
+            for (const auto& st : toml::find<std::vector<toml::value>>(jf, "stations")) {
+                JellyfinStation s;
+                s.name          = pick<std::string>(st, "name", "");
+                s.playlist_id   = pick<std::string>(st, "playlist_id", "");
+                s.use_favorites = pick<bool>(st, "use_favorites", false);
+                cfg.jellyfin.stations.push_back(std::move(s));
+            }
+        }
+    } catch (...) {}
+
+    // fallback migration for old configs
+    if (cfg.jellyfin.stations.empty()) {
+        auto dp = pick<std::string>(jf, "default_playlist", "");
+        auto uf = pick<bool>(jf, "use_favorites", false);
+        if (!dp.empty() || uf) {
+            cfg.jellyfin.stations.push_back({"My Playlist", dp, uf});
+        }
+    }
+    if (cfg.jellyfin.active_station.empty() && !cfg.jellyfin.stations.empty()) {
+        cfg.jellyfin.active_station = cfg.jellyfin.stations.front().name;
+    }
 
     const auto& or_sec       = section(root, "online_radio");
     cfg.online_radio.enabled = pick<bool>(or_sec, "enabled", cfg.online_radio.enabled);
@@ -194,13 +216,13 @@ Config load_config(const std::filesystem::path& path) {
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
 
     const auto& pb = section(root, "playback");
+    const bool legacy_quick_station_skip =
++        pick<bool>(pb, "quick_station_skip", false);
     {
         auto rs = pick<std::string>(pb, "race_start_playback", cfg.playback.race_start_playback);
         if (rs == "next" || rs == "restart" || rs == "ignore" || rs == "off")
             cfg.playback.race_start_playback = std::move(rs);
     }
-    cfg.playback.quick_station_skip =
-        pick<bool>(pb, "quick_station_skip", cfg.playback.quick_station_skip);
     cfg.playback.volume_normalization =
         pick<bool>(pb, "volume_normalization", cfg.playback.volume_normalization);
     cfg.playback.equalizer_enabled =
@@ -220,6 +242,23 @@ Config load_config(const std::filesystem::path& path) {
             }
         }
     } catch (...) {}
+
+    const auto& hk = section(root, "hotkeys");
+    cfg.playback.hotkeys.kb_skip = pick<int>(hk, "kb_skip", cfg.playback.hotkeys.kb_skip);
+    cfg.playback.hotkeys.pad_skip = pick<int>(hk, "pad_skip", cfg.playback.hotkeys.pad_skip);
+    cfg.playback.hotkeys.kb_source = pick<int>(hk, "kb_source", cfg.playback.hotkeys.kb_source);
+    cfg.playback.hotkeys.pad_source = pick<int>(hk, "pad_source", cfg.playback.hotkeys.pad_source);
+    cfg.playback.hotkeys.kb_playpause = pick<int>(hk, "kb_playpause", cfg.playback.hotkeys.kb_playpause);
+    cfg.playback.hotkeys.pad_playpause = pick<int>(hk, "pad_playpause", cfg.playback.hotkeys.pad_playpause);
+
+    const bool any_hotkey_bound =
+        cfg.playback.hotkeys.kb_skip || cfg.playback.hotkeys.pad_skip ||
+        cfg.playback.hotkeys.kb_source || cfg.playback.hotkeys.pad_source ||
+        cfg.playback.hotkeys.kb_playpause || cfg.playback.hotkeys.pad_playpause;
+    if (legacy_quick_station_skip && !any_hotkey_bound) {
+        cfg.playback.hotkeys.kb_skip = 0x9999; // legacy quick-skip sentinel
+        cfg.playback.hotkeys.pad_skip = 0x9999; // legacy quick-skip sentinel
+    }
 
     return cfg;
 }
@@ -368,9 +407,14 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("server_url", cfg.jellyfin.server_url);
     e.kv("api_key", cfg.jellyfin.api_key);
     e.kv("user_id", cfg.jellyfin.user_id);
-    e.kv("default_playlist", cfg.jellyfin.default_playlist);
-    e.kv("use_favorites", cfg.jellyfin.use_favorites);
+    e.kv("active_station", cfg.jellyfin.active_station);
     e.kv("shuffle", cfg.jellyfin.shuffle);
+    for (const auto& st : cfg.jellyfin.stations) {
+        e.array_header("jellyfin.stations");
+        e.kv("name", st.name);
+        e.kv("playlist_id", st.playlist_id);
+        e.kv("use_favorites", st.use_favorites);
+    }
 
     e.header("external_audio");
     e.kv("enabled", cfg.external_audio.enabled);
@@ -406,12 +450,19 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
 
     e.header("playback");
     e.kv("race_start_playback", cfg.playback.race_start_playback);
-    e.kv("quick_station_skip", cfg.playback.quick_station_skip);
     e.kv("volume_normalization", cfg.playback.volume_normalization);
     e.kv("equalizer_enabled", cfg.playback.equalizer_enabled);
     e.kv_floats("equalizer_bands", std::span<const float>{cfg.playback.equalizer_bands});
     e.kv("force_stereo_audio", cfg.playback.force_stereo_audio);
     e.kv("prebuffer_next_track", cfg.playback.prebuffer_next_track);
+
+    e.header("hotkeys");
+    e.kv("kb_skip", (int64_t)cfg.playback.hotkeys.kb_skip);
+    e.kv("pad_skip", (int64_t)cfg.playback.hotkeys.pad_skip);
+    e.kv("kb_source", (int64_t)cfg.playback.hotkeys.kb_source);
+    e.kv("pad_source", (int64_t)cfg.playback.hotkeys.pad_source);
+    e.kv("kb_playpause", (int64_t)cfg.playback.hotkeys.kb_playpause);
+    e.kv("pad_playpause", (int64_t)cfg.playback.hotkeys.pad_playpause);
 
     auto tmp  = path;
     tmp      += ".tmp";

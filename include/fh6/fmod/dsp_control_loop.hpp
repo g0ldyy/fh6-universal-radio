@@ -75,16 +75,28 @@ private:
     mutable std::mutex playback_opts_mtx_;
     std::shared_ptr<const PlaybackConfig> playback_opts_;
 
-    bool prev_r10_            = false;
-    bool prev_race_           = false;
-    bool prev_race_restart_   = false;
-    bool quick_skip_armed_    = false;
+    bool prev_race_         = false;
+    bool prev_race_restart_ = false;
+    bool prev_r10_          = false;
+    bool prev_skip_hotkey_ = false;
+    bool prev_source_hotkey_ = false;
+    bool prev_playpause_hotkey_ = false;
+    bool quick_skip_armed_  = false;
     bool paused_by_race_off_  = false;
     bool first_connection_    = true;
     bool stopped_by_race_off_ = false;
+    int combo_wait_ticks_ = 0;
+    bool pending_skip_ = false;
+    bool pending_src_ = false;
+    bool pending_pp_ = false;
+    time_point last_source_cmd_{};
+    time_point last_playpause_cmd_{};
     time_point last_r10_off_{};
     time_point last_race_event_{};
     time_point last_skip_cmd_{};
+    bool old_method_src_fired_ = false;
+    bool old_method_pp_fired_  = false;
+    bool old_method_skip_fired_ = false;
 
     std::jthread thread_;
 };

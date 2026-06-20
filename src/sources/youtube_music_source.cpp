@@ -203,7 +203,7 @@ void YouTubeMusicSource::set_shuffle(bool shuffle) {
             auto start = queue_.begin() + static_cast<std::ptrdiff_t>(queue_idx_ + 1);
             if (start < queue_.end()) {
                 std::sort(start, queue_.end(), [](const auto& a, const auto& b) { 
-                    return a.url < b.url; 
+                    return a.original_index < b.original_index;
                 });
             }
         }
@@ -251,14 +251,15 @@ void YouTubeMusicSource::resolve_queue_locked() {
     queue_idx_ = 0;
 
     if (!is_playlist_url(effective_url)) {
-        queue_.push_back({effective_url, ""});
+        // add a 0 at the end for the original_index
+        queue_.push_back({effective_url, "", "", 0}); 
         queue_built_for_ = effective_url;
         return;
     }
 
     // Playlist URL: enumerate IDs via --flat-playlist.
     const auto yt  = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
-    std::wstring cmd = quote(yt) + L" --no-warnings --flat-playlist --skip-download "
+    std::wstring cmd = quote(yt) + L" --ignore-config --no-warnings --flat-playlist --skip-download "
                                    L"--encoding UTF-8 "
                                    L"--print \"%(id)s\t%(title)s\" ";
     if (!cfg_.cookies_path.empty())
@@ -296,6 +297,7 @@ void YouTubeMusicSource::resolve_queue_locked() {
         raw = drain_to_eof(rd);
         CloseHandle(rd); CloseHandle(proc); CloseHandle(job);
     }
+    std::size_t og_idx = 0;
     for (std::size_t pos = 0; pos < raw.size();) {
         auto nl   = raw.find('\n', pos);
         auto end  = (nl == std::string::npos) ? raw.size() : nl;
@@ -308,7 +310,9 @@ void YouTubeMusicSource::resolve_queue_locked() {
             if (!id.empty() && id != "NA") {
                 const std::string title =
                     tab == std::string::npos ? std::string{} : line.substr(tab + 1);
-                queue_.push_back({watch_url_for_id(id), title, ""});
+                
+                // add og_idx++ to the end of the push_back
+                queue_.push_back({watch_url_for_id(id), title, "", og_idx++}); 
             }
         }
         pos = (nl == std::string::npos) ? raw.size() : nl + 1;
@@ -341,7 +345,8 @@ YouTubeMusicSource::spawn_pipe_locked(std::string_view url, std::size_t for_idx)
     const auto yt = cfg_.yt_dlp_path.empty() ? L"yt-dlp" : cfg_.yt_dlp_path.wstring();
     const auto ff = ffmpeg_path_.empty() ? L"ffmpeg" : ffmpeg_path_.wstring();
 
-    std::wstring yt_cmd = quote(yt) + L" --no-warnings --no-progress "
+    std::wstring yt_cmd = quote(yt) + L" --ignore-config --no-warnings --no-progress "
+                                      L"--no-write-thumbnail "
                                       L"--format bestaudio/best --no-playlist -o - ";
     if (!cfg_.cookies_path.empty())
         yt_cmd += L"--cookies " + quote(cfg_.cookies_path.wstring()) + L" ";
@@ -352,7 +357,8 @@ YouTubeMusicSource::spawn_pipe_locked(std::string_view url, std::size_t for_idx)
         ff_cmd += L"-af loudnorm=I=-14:TP=-2:LRA=11 ";
     ff_cmd += L"-acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
 
-    std::wstring tl_cmd = quote(yt) + L" --skip-download --no-warnings --no-playlist "
+    std::wstring tl_cmd = quote(yt) + L" --ignore-config --skip-download --no-warnings --no-playlist "
+                                      L"--no-write-thumbnail "
                                       L"--encoding UTF-8 "
                                       L"--print \"%(title)s\" "
                                       L"--print \"%(uploader)s\" "

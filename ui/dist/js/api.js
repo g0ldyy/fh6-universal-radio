@@ -34,8 +34,18 @@ export const api = {
   getYoutubeQueue: () => request("/api/source/youtube_music/queue"),
   playYoutubeIndex: index =>
     request("/api/source/youtube_music/play", { method: "POST", body: { index } }),
-  castJellyfin: playlistId =>
-    request("/api/source/jellyfin/cast", { method: "POST", body: { playlist_id: playlistId } }),
+  castJellyfin: (playlistId, useFavorites) => 
+    request("/api/source/jellyfin/cast", { method: "POST", body: { playlist_id: playlistId, use_favorites: useFavorites } }),
+  shuffleJellyfin: shuffle => 
+    request("/api/source/jellyfin/shuffle", { method: "POST", body: { shuffle } }),
+  getJellyfinStations: () => request("/api/source/jellyfin/stations"),
+  putJellyfinStations: (stations, activeStation) => 
+    request("/api/source/jellyfin/stations", { method: "PUT", body: { stations, active_station: activeStation } }),
+  activateJellyfinStation: name => 
+    request("/api/source/jellyfin/activate", { method: "POST", body: { name } }),
+  getJellyfinQueue: () => request("/api/source/jellyfin/queue"),
+  playJellyfinIndex: index => 
+    request("/api/source/jellyfin/play", { method: "POST", body: { index } }),
   setGain: gain => request("/api/options", { method: "POST", body: { output_gain: gain } }),
   getExternalAudio: () => request("/api/external_audio/devices"),
   putExternalAudio: config => request("/api/external_audio/config", { method: "PUT", body: config }),

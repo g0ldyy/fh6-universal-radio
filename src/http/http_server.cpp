@@ -115,6 +115,15 @@ json source_to_json(IAudioSource* s) {
         j["details"]["queue_size"] = snap.entries.size();
         j["details"]["queue_cursor"] = snap.cursor;
     }
+    if (auto* jf = dynamic_cast<sources::JellyfinSource*>(s)) {
+        j["details"]["shuffle"] = jf->shuffle();
+        j["details"]["station_count"] = jf->station_count();
+        j["details"]["active_station"] = jf->active_station_name();
+
+        auto snap = jf->queue_snapshot();
+        j["details"]["queue_size"] = snap.entries.size();
+        j["details"]["queue_cursor"] = snap.cursor;
+    }
     if (auto* rd = dynamic_cast<sources::OnlineRadioSource*>(s))
         j["details"]["song_history"] = rd->song_history();
     return j;
@@ -161,6 +170,28 @@ YouTubeStation yt_station_from_json(const json& j) {
     };
 }
 
+json jf_station_to_json(const JellyfinStation& s) {
+    return json{
+        {"name", s.name},
+        {"playlist_id", s.playlist_id},
+        {"use_favorites", s.use_favorites}
+    };
+}
+
+json jf_stations_to_json(const std::vector<JellyfinStation>& v) {
+    json a = json::array();
+    for (const auto& s : v) a.push_back(jf_station_to_json(s));
+    return a;
+}
+
+JellyfinStation jf_station_from_json(const json& j) {
+    return JellyfinStation{
+        j.value("name", ""),
+        j.value("playlist_id", ""),
+        j.value("use_favorites", false)
+    };
+}
+
 json config_to_json(const Config& c) {
     return json{
         {"general",
@@ -193,8 +224,8 @@ json config_to_json(const Config& c) {
              {"server_url", c.jellyfin.server_url},
              {"api_key", c.jellyfin.api_key},
              {"user_id", c.jellyfin.user_id},
-             {"default_playlist", c.jellyfin.default_playlist},
-             {"use_favorites", c.jellyfin.use_favorites},
+             {"active_station", c.jellyfin.active_station},
+             {"stations", jf_stations_to_json(c.jellyfin.stations)},
              {"shuffle", c.jellyfin.shuffle},
          }},
         {"external_audio",
@@ -240,12 +271,20 @@ json config_to_json(const Config& c) {
         {"playback",
          json{
              {"race_start_playback", c.playback.race_start_playback},
-             {"quick_station_skip", c.playback.quick_station_skip},
              {"volume_normalization", c.playback.volume_normalization},
              {"equalizer_enabled", c.playback.equalizer_enabled},
              {"equalizer_bands", c.playback.equalizer_bands},
              {"force_stereo_audio", c.playback.force_stereo_audio},
              {"prebuffer_next_track", c.playback.prebuffer_next_track},
+         }},
+        {"hotkeys",
+         json{
+             {"kb_skip", c.playback.hotkeys.kb_skip},
+             {"pad_skip", c.playback.hotkeys.pad_skip},
+             {"kb_source", c.playback.hotkeys.kb_source},
+             {"pad_source", c.playback.hotkeys.pad_source},
+             {"kb_playpause", c.playback.hotkeys.kb_playpause},
+             {"pad_playpause", c.playback.hotkeys.pad_playpause},
          }},
     };
 }
@@ -326,9 +365,13 @@ void apply_patch(Config& c, const json& j) {
         c.jellyfin.server_url       = pull(*it, "server_url", c.jellyfin.server_url);
         c.jellyfin.api_key          = pull(*it, "api_key", c.jellyfin.api_key);
         c.jellyfin.user_id          = pull(*it, "user_id", c.jellyfin.user_id);
-        c.jellyfin.default_playlist = pull(*it, "default_playlist", c.jellyfin.default_playlist);
-        c.jellyfin.use_favorites    = pull(*it, "use_favorites", c.jellyfin.use_favorites);
+        c.jellyfin.active_station   = pull(*it, "active_station", c.jellyfin.active_station);
         c.jellyfin.shuffle          = pull(*it, "shuffle", c.jellyfin.shuffle);
+        if (auto sts = it->find("stations"); sts != it->end() && sts->is_array()) {
+            std::vector<JellyfinStation> parsed;
+            for (const auto& st : *sts) parsed.push_back(jf_station_from_json(st));
+            c.jellyfin.stations = std::move(parsed);
+        }
     }
     if (auto it = j.find("external_audio"); it != j.end()) {
         c.external_audio.enabled     = pull(*it, "enabled", c.external_audio.enabled);
@@ -377,15 +420,14 @@ void apply_patch(Config& c, const json& j) {
         auto rs = pull<std::string>(*it, "race_start_playback", c.playback.race_start_playback);
         if (rs == "next" || rs == "restart" || rs == "ignore" || rs == "off")
             c.playback.race_start_playback = std::move(rs);
-        c.playback.quick_station_skip =
-            pull(*it, "quick_station_skip", c.playback.quick_station_skip);
         c.playback.volume_normalization =
             pull(*it, "volume_normalization", c.playback.volume_normalization);
         c.playback.force_stereo_audio =
             pull(*it, "force_stereo_audio", c.playback.force_stereo_audio);
         c.playback.prebuffer_next_track =
             pull(*it, "prebuffer_next_track", c.playback.prebuffer_next_track);
-        c.playback.equalizer_enabled = pull(*it, "equalizer_enabled", c.playback.equalizer_enabled);
+        c.playback.equalizer_enabled = 
+            pull(*it, "equalizer_enabled", c.playback.equalizer_enabled);
         if (auto bands = it->find("equalizer_bands"); bands != it->end() && bands->is_array()) {
             for (std::size_t i = 0; i < c.playback.equalizer_bands.size() && i < bands->size();
                  ++i) {
@@ -395,6 +437,20 @@ void apply_patch(Config& c, const json& j) {
                 c.playback.equalizer_bands[i] = b;
             }
         }
+    }
+    if (auto it = j.find("hotkeys"); it != j.end()) {
+        c.playback.hotkeys.kb_skip = 
+            pull(*it, "kb_skip", c.playback.hotkeys.kb_skip);
+        c.playback.hotkeys.pad_skip = 
+            pull(*it, "pad_skip", c.playback.hotkeys.pad_skip);
+        c.playback.hotkeys.kb_source = 
+            pull(*it, "kb_source", c.playback.hotkeys.kb_source);
+        c.playback.hotkeys.pad_source = 
+            pull(*it, "pad_source", c.playback.hotkeys.pad_source);
+        c.playback.hotkeys.kb_playpause = 
+            pull(*it, "kb_playpause", c.playback.hotkeys.kb_playpause);
+        c.playback.hotkeys.pad_playpause = 
+            pull(*it, "pad_playpause", c.playback.hotkeys.pad_playpause);
     }
 }
 
@@ -911,10 +967,75 @@ struct HttpServer::Impl {
         if (m == "POST" && p == "/api/source/jellyfin/cast") {
             auto* jf = find_typed<sources::JellyfinSource>("jellyfin");
             if (!jf) return fail(404, "jellyfin not registered");
-            auto playlist_id = json::parse(req.body).value("playlist_id", std::string{});
-            if (playlist_id.empty()) return fail(400, "playlist_id required");
+            auto body = json::parse(req.body);
+            auto playlist_id = body.value("playlist_id", std::string{});
+            auto use_favorites = body.value("use_favorites", false);
+            if (playlist_id.empty() && !use_favorites) return fail(400, "playlist_id or use_favorites required");
             const bool was_active = (mgr.active() == jf);
-            if (!jf->cast(std::move(playlist_id))) return fail(502, "jellyfin fetch failed");
+            if (!jf->cast(std::move(playlist_id), use_favorites)) return fail(502, "jellyfin fetch failed");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("jellyfin");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/jellyfin/shuffle") {
+            auto* jf = find_typed<sources::JellyfinSource>("jellyfin");
+            if (!jf) return fail(404, "jellyfin not registered");
+            auto shuffle = json::parse(req.body).at("shuffle").get<bool>();
+            jf->set_shuffle(shuffle);
+            store.patch([shuffle](Config& c) { c.jellyfin.shuffle = shuffle; });
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/jellyfin/stations") {
+            auto snap = store.snapshot();
+            return ok(json{
+                {"stations", jf_stations_to_json(snap.jellyfin.stations)},
+                {"active_station", snap.jellyfin.active_station}
+            });
+        }
+        if (m == "PUT" && p == "/api/source/jellyfin/stations") {
+            auto j = json::parse(req.body);
+            store.patch([&](Config& c) {
+                if (auto sts = j.find("stations"); sts != j.end() && sts->is_array()) {
+                    std::vector<JellyfinStation> parsed;
+                    for (const auto& st : *sts) parsed.push_back(jf_station_from_json(st));
+                    c.jellyfin.stations = std::move(parsed);
+                }
+                if (auto a = j.find("active_station"); a != j.end() && a->is_string())
+                    c.jellyfin.active_station = a->get<std::string>();
+            });
+            if (auto* jf = find_typed<sources::JellyfinSource>("jellyfin"))
+                jf->set_config(store.snapshot().jellyfin);
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/jellyfin/activate") {
+            auto* jf = find_typed<sources::JellyfinSource>("jellyfin");
+            if (!jf) return fail(404, "jellyfin not registered");
+            auto name = json::parse(req.body).value("name", std::string{});
+            const bool was_active = (mgr.active() == jf);
+            store.patch([&](Config& c) { c.jellyfin.active_station = name; });
+            jf->set_active_station(name);
+            if (was_active) mgr.ring().drain();
+            jf->play();
+            mgr.switch_to("jellyfin");
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/jellyfin/queue") {
+            auto* jf = find_typed<sources::JellyfinSource>("jellyfin");
+            if (!jf) return fail(404, "jellyfin not registered");
+            auto snap = jf->queue_snapshot();
+            json tracks = json::array();
+            for (const auto& e : snap.entries) {
+                tracks.push_back(
+                    json{{"index", e.index}, {"title", e.title}, {"artist", e.artist}, {"album", e.album}});
+            }
+            return ok(json{{"cursor", snap.cursor}, {"tracks", tracks}});
+        }
+        if (m == "POST" && p == "/api/source/jellyfin/play" && !req.body.empty()) {
+            auto* jf = find_typed<sources::JellyfinSource>("jellyfin");
+            if (!jf) return fail(404, "jellyfin not registered");
+            auto idx = json::parse(req.body).at("index").get<std::size_t>();
+            const bool was_active = (mgr.active() == jf);
+            if (!jf->jump_to(idx)) return fail(400, "index out of range");
             if (was_active) mgr.ring().drain();
             mgr.switch_to("jellyfin");
             return ok();

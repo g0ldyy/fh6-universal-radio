@@ -1,3 +1,5 @@
+#include <windows.h>
+#include <xinput.h>
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/radio_discovery.hpp"
 #include "fh6/audio_source.hpp"
@@ -5,6 +7,7 @@
 #include "fh6/log.hpp"
 
 #include <chrono>
+#include <bit>
 
 namespace fh6::fmod_bridge {
 
@@ -322,22 +325,156 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     prev_race_         = game.race_active;
     prev_race_restart_ = game.race_restart;
 
+    // --- Hotkeys ---
+    // dynamically load XInput
+    typedef DWORD(WINAPI* XInputGetState_t)(DWORD, XINPUT_STATE*);
+    static XInputGetState_t pXInputGetState = nullptr;
+    static std::once_flag xinput_once;
+    std::call_once(xinput_once, [] {
+        HMODULE hXInput = LoadLibraryW(L"xinput1_4.dll");
+        if (!hXInput) hXInput = LoadLibraryW(L"xinput9_1_0.dll");
+        if (!hXInput) hXInput = LoadLibraryW(L"xinput1_3.dll");
+        if (hXInput) {
+            pXInputGetState =
+                reinterpret_cast<XInputGetState_t>(GetProcAddress(hXInput, "XInputGetState"));
+        }
+    });
+
+    XINPUT_STATE xstate{};
+    const bool has_pad_hotkeys = opts->hotkeys.pad_skip || opts->hotkeys.pad_source || opts->hotkeys.pad_playpause;
+    bool pad_connected = has_pad_hotkeys && pXInputGetState && (pXInputGetState(0, &xstate) == ERROR_SUCCESS);
+
+    // helper to resolve overlap conflicts
+    auto check_pad = [&](int mask) {
+        return pad_connected && mask && (mask != 0x9999) && ((xstate.Gamepad.wButtons & mask) == mask);
+    };
+
+    // check keyboard (direct)
+    bool kb_skip = opts->hotkeys.kb_skip && (opts->hotkeys.kb_skip != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_skip) & 0x8000);
+    bool kb_src  = opts->hotkeys.kb_source && (opts->hotkeys.kb_source != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_source) & 0x8000);
+    bool kb_pp   = opts->hotkeys.kb_playpause && (opts->hotkeys.kb_playpause != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_playpause) & 0x8000);
+
+    // check controller (resolve overlap by complexity)
+    bool p_skip = check_pad(opts->hotkeys.pad_skip);
+    bool p_src  = check_pad(opts->hotkeys.pad_source);
+    bool p_pp   = check_pad(opts->hotkeys.pad_playpause);
+
+    DWORD max_bits = std::max<DWORD>({
+        p_skip ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_skip))) : 0u,
+        p_src  ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_source))) : 0u,
+        p_pp   ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_playpause))) : 0u
+    });
+
+    bool pad_skip_pressed = p_skip && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_skip))) == max_bits);
+    bool pad_src_pressed  = p_src && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_source))) == max_bits);
+    bool pad_pp_pressed   = p_pp && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_playpause))) == max_bits);
+
+    bool skip_pressed = kb_skip || pad_skip_pressed;
+    bool src_pressed  = kb_src || pad_src_pressed;
+    bool pp_pressed   = kb_pp || pad_pp_pressed;
+
     // --- quickStationSkip (R10 edge) ---
+    const bool use_old_skip = (opts->hotkeys.kb_skip      == 0x9999 || opts->hotkeys.pad_skip      == 0x9999);
+    const bool use_old_src  = (opts->hotkeys.kb_source    == 0x9999 || opts->hotkeys.pad_source    == 0x9999);
+    const bool use_old_pp   = (opts->hotkeys.kb_playpause == 0x9999 || opts->hotkeys.pad_playpause == 0x9999);
+
     if (prev_r10_ && !r10) {
         last_r10_off_ = now;
-        if (opts->quick_station_skip) quick_skip_armed_ = true;
+        if (use_old_skip || use_old_src || use_old_pp) quick_skip_armed_ = true;
     } else if (!prev_r10_ && r10) {
-        if (quick_skip_armed_ && now - last_r10_off_ <= kQuickSkipWindow &&
-            now - last_skip_cmd_ >= kSkipCommandCooldown) {
-            if (active->skip_next()) {
-                ring.drain();
-                last_skip_cmd_ = now;
-                log::info("[ctrl] quick station return -- advanced to next track");
-            }
+        if (quick_skip_armed_ && now - last_r10_off_ <= kQuickSkipWindow) {
+            if (use_old_skip) old_method_skip_fired_ = true;
+            if (use_old_src)  old_method_src_fired_  = true;
+            if (use_old_pp)   old_method_pp_fired_   = true;
         }
         quick_skip_armed_ = false;
     }
     prev_r10_ = r10;
+
+    // check for rising edges (button just pressed)
+    bool skip_edge = skip_pressed && !prev_skip_hotkey_;
+    bool src_edge  = src_pressed && !prev_source_hotkey_;
+    bool pp_edge   = pp_pressed && !prev_playpause_hotkey_;
+
+    // buffer
+    if (skip_edge) pending_skip_ = true;
+    if (src_edge)  pending_src_ = true;
+    if (pp_edge)   pending_pp_ = true;
+
+    bool trigger_skip = old_method_skip_fired_;
+    bool trigger_src  = old_method_src_fired_;
+    bool trigger_pp   = old_method_pp_fired_;
+    old_method_skip_fired_ = false;
+    old_method_src_fired_  = false;
+    old_method_pp_fired_   = false;
+
+    // track how long buttons have been held to allow combos to form
+    if (skip_pressed || src_pressed || pp_pressed) {
+        if (combo_wait_ticks_ >= 0) {
+            combo_wait_ticks_++;
+        }
+    } else {
+        combo_wait_ticks_ = 0;
+        pending_skip_ = pending_src_ = pending_pp_ = false;
+    }
+
+    // trigger combos immediately, delay single buttons by 3 ticks (~60ms) to prevent overlap
+    if (combo_wait_ticks_ == 3 || (max_bits > 1 && combo_wait_ticks_ > 0)) {
+        if (pending_pp_ && max_bits == static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_playpause)))) {
+            trigger_pp = true;
+        } else if (pending_src_ && max_bits == static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_source)))) {
+            trigger_src = true;
+        } else if (pending_skip_ && max_bits == static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_skip)))) {
+            trigger_skip = true;
+        }
+
+        // clear pending states
+        pending_skip_ = pending_src_ = pending_pp_ = false;
+        
+        // set to a negative number to prevent firing again until buttons are released
+        combo_wait_ticks_ = -9999; 
+    }
+
+    // execute skip track
+    if (trigger_skip && (now - last_skip_cmd_ >= kSkipCommandCooldown)) {
+        if (active->skip_next()) {
+            ring.drain();
+            last_skip_cmd_ = now;
+            log::info("[ctrl] Hotkey triggered: advanced to next track");
+        }
+    }
+    
+    // execute source switch
+    if (trigger_src && (now - last_source_cmd_ >= 250ms)) {
+        auto sources = bridge_.manager().sources_snapshot();
+        if (!sources.empty()) {
+            std::size_t next_idx = 0;
+            for (std::size_t i = 0; i < sources.size(); ++i) {
+                if (sources[i] == active) { next_idx = (i + 1) % sources.size(); break; }
+            }
+            bridge_.manager().switch_to(sources[next_idx]->name());
+            ring.drain();
+            last_source_cmd_ = now;
+            log::info("[ctrl] Hotkey triggered: switched source to {}", sources[next_idx]->name());
+        }
+    }
+
+    // execute play/pause toggle
+    if (trigger_pp && (now - last_playpause_cmd_ >= 250ms)) {
+        auto state = active->playback_state();
+        if (state == PlaybackState::playing || state == PlaybackState::buffering) {
+            active->pause();
+            log::info("[ctrl] Hotkey triggered: paused playback");
+        } else {
+            active->play();
+            log::info("[ctrl] Hotkey triggered: resumed playback");
+        }
+        last_playpause_cmd_ = now;
+    }
+
+    prev_skip_hotkey_ = skip_pressed;
+    prev_source_hotkey_ = src_pressed;
+    prev_playpause_hotkey_ = pp_pressed;
 }
 
 void ControlLoop::push_metadata() noexcept {

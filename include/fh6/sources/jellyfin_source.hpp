@@ -23,6 +23,7 @@ struct JellyfinTrack {
     std::string album;
     std::string image_tag; // ImageTags.Primary; empty when the item has no cover
     std::uint64_t duration_ms = 0;
+     std::size_t original_index = 0;
 };
 
 // Resolves a Jellyfin playlist over HTTP, then streams each item through
@@ -39,6 +40,7 @@ public:
     std::string_view display_name() const noexcept override { return "Jellyfin"; }
 
     bool initialize() override;
+    bool shuffle() const { std::scoped_lock lk{mu_}; return cfg_.shuffle; }
     void shutdown() noexcept override;
 
     void play() override;
@@ -53,9 +55,28 @@ public:
     void set_config(JellyfinConfig cfg);
     void set_ffmpeg_path(std::filesystem::path p);
 
+    void set_active_station(std::string name);
+    void set_shuffle(bool shuffle);
+    std::size_t station_count() const noexcept;
+    std::string active_station_name() const;
+
+    struct QueueEntry {
+        std::size_t index;
+        std::string title;
+        std::string artist;
+        std::string album;
+    };
+    struct QueueSnapshot {
+        std::size_t cursor;
+        std::vector<QueueEntry> entries;
+    };
+
+    QueueSnapshot queue_snapshot() const;
+    bool jump_to(std::size_t index);
+
     // POST /api/source/jellyfin/cast: swap to a specific playlist id.
     // Returns false if the fetch fails (queue left untouched).
-    bool cast(std::string playlist_id);
+    bool cast(std::string playlist_id, bool use_favorites = false);
 
     void set_playback_options(const PlaybackConfig& opts) override;
 
@@ -80,11 +101,14 @@ private:
     std::size_t next_queue_idx_locked() const noexcept;
     void advance_locked(std::ptrdiff_t step);
 
+    const JellyfinStation* active_station_locked() const noexcept;
+
     JellyfinConfig cfg_;
     std::filesystem::path ffmpeg_path_;
     worker::WorkerClient* worker_;
 
     mutable std::mutex mu_;
+    std::string target_playlist_; // one-off casting
     std::vector<JellyfinTrack> queue_;
     std::size_t current_idx_ = 0;
     std::unique_ptr<Pipe> pipe_;

@@ -46,27 +46,35 @@ function buildField(section, spec, cfg) {
         ]);
     }
 
-    if (type === "bands") {
-        const values = Array.isArray(cur) ? cur : [0, 0, 0, 0, 0];
-        const rows = EQ_BAND_LABELS.map((bandLabel, i) => {
-            const value = values[i] ?? 0;
-            const out = el("output", {}, db(value));
-            const range = el("input", {
-                type: "range",
-                min: "-6",
-                max: "6",
-                step: "0.5",
-                value: String(value),
-                "aria-label": bandLabel,
-                dataset: { section, key, index: String(i) },
-            });
-            range.addEventListener("input", () => {
-                out.textContent = db(parseFloat(range.value));
-            });
-            return el("div", { class: "band" }, [el("span", { class: "band-label" }, bandLabel), range, out]);
-        });
-        return el("div", { class: "field bands" }, [el("label", {}, label), ...rows]);
-    }
+  if (type === "select-kv") {
+    const options = (a || []).map(([val, lbl]) => el("option", { value: String(val), selected: Number(cur) === val }, lbl));
+    return el("div", { class: "field" }, [
+      el("label", { for: id }, label),
+      el("select", { id, dataset: { ...dataset, numeric: "1" } }, options),
+    ]);
+  }
+
+  if (type === "bands") {
+    const values = Array.isArray(cur) ? cur : [0, 0, 0, 0, 0];
+    const rows = EQ_BAND_LABELS.map((bandLabel, i) => {
+      const value = values[i] ?? 0;
+      const out = el("output", {}, db(value));
+      const range = el("input", {
+        type: "range",
+        min: "-6",
+        max: "6",
+        step: "0.5",
+        value: String(value),
+        "aria-label": bandLabel,
+        dataset: { section, key, index: String(i) },
+      });
+      range.addEventListener("input", () => {
+        out.textContent = db(parseFloat(range.value));
+      });
+      return el("div", { class: "band" }, [el("span", { class: "band-label" }, bandLabel), range, out]);
+    });
+    return el("div", { class: "field bands" }, [el("label", {}, label), ...rows]);
+  }
 
     const input = el("input", { id, type, value: cur ?? "", dataset });
     if (type === "number") {

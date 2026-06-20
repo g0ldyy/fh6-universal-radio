@@ -8,9 +8,17 @@
 
 namespace fh6 {
 
+struct HotkeysConfig {
+    int kb_skip = 0;
+    int pad_skip = 0;
+    int kb_source = 0;
+    int pad_source = 0;
+    int kb_playpause = 0;
+    int pad_playpause = 0;
+};
+
 struct PlaybackConfig {
     std::string race_start_playback = "next"; // "next" | "restart" | "ignore" | "off"
-    bool quick_station_skip         = false;
     bool volume_normalization       = false;
     bool equalizer_enabled          = false;
     std::array<float, 5> equalizer_bands{}; // 60 / 250 / 1000 / 4000 / 12000 Hz, [-6, +6] dB
@@ -18,6 +26,8 @@ struct PlaybackConfig {
     // Pre-spawn the next track's pipeline so transitions (skip / end-of-track)
     // are instant.
     bool prebuffer_next_track = true;
+
+    HotkeysConfig hotkeys;
 };
 
 struct GeneralConfig {
@@ -61,14 +71,20 @@ struct YouTubeMusicConfig {
     bool shuffle = true;
 };
 
+struct JellyfinStation {
+    std::string name;
+    std::string playlist_id;
+    bool use_favorites = false;
+};
+
 struct JellyfinConfig {
     bool enabled = false;
     std::string server_url;
     std::string api_key;
     std::string user_id;
-    std::string default_playlist;
-    bool use_favorites = false;
-    bool shuffle       = true;
+    std::vector<JellyfinStation> stations;
+    std::string active_station;
+    bool shuffle = true;
 };
 
 struct RadioStation {

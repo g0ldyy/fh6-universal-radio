@@ -109,6 +109,7 @@ private:
         std::string url;
         std::string title;
         std::string artist;
+        std::size_t original_index = 0;
     };
     std::vector<InternalQueueEntry> queue_; // canonical watch URLs in playback order
     std::size_t queue_idx_ = 0;
