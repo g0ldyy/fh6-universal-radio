@@ -62,6 +62,10 @@ std::optional<std::string> http_get(const JellyfinConfig& cfg, const std::string
 }
 
 std::optional<std::vector<JellyfinTrack>> fetch_tracks(const JellyfinConfig& cfg, const std::string& target_id, bool use_favs) {
+    if (!use_favs && target_id.empty()) {
+        log::warn("[jellyfin] playlist_id required when use_favorites=false");
+        return std::nullopt;
+    }
     std::string path;
     if (use_favs) {
         path = std::format("/Users/{}/Items?Filters=IsFavorite&IncludeItemTypes=Audio&Recursive=true", cfg.user_id);
@@ -397,8 +401,10 @@ void JellyfinSource::set_config(JellyfinConfig cfg) {
     } else if (shuffle_flip) {
         if (cfg_.shuffle) {
             shuffle_range(queue_, current_idx_ + 1); // preserve the currently-playing track
-        } else {
-            auto start = queue_.begin() + static_cast<std::ptrdiff_t>(current_idx_ + 1);
+        } else if (!queue_.empty()) {
+            const std::size_t from =
+                (current_idx_ >= queue_.size()) ? queue_.size() : (current_idx_ + 1);
+            auto start = queue_.begin() + static_cast<std::ptrdiff_t>(from);
             if (start < queue_.end()) {
                 std::sort(start, queue_.end(), [](const auto& a, const auto& b) {
                     return a.original_index < b.original_index;
