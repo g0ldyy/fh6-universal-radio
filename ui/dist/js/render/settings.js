@@ -39,7 +39,7 @@ function buildField(section, spec, cfg) {
     }
 
     if (type === "select") {
-        const options = (a || []).map(value => el("option", { value, selected: cur === value }, value));
+        const options = (a || []).map(value => el("option", { value, selected: cur === value }, t(`schema.playback.race_start.${value}`)));
         return el("div", { class: "field" }, [
             el("label", { for: id }, label),
             el("select", { id, dataset }, options),

@@ -268,5 +268,6 @@
   "lf.repeat.one": "Repetir uno",
   "lf.repeat.off": "Sin repetición",
   "local_files.default_station_name": "Mi musica",
-  "youtube_music.default_station_name": "Mi lista de reproducción"
+  "youtube_music.default_station_name": "Mi lista de reproducción",
+  "schema.playback.race_start.off": "Apagado"
 }

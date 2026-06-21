@@ -22,7 +22,13 @@
     align-items: center;
     justify-content: space-between;
     padding: var(--spacing-20) var(--spacing-24);
+}
+.drawer-head {
     border-bottom: 1px solid var(--line);
+}
+
+.drawer-foot {
+    border-top: 1px solid var(--line);
 }
 
 .drawer-head h2 {
@@ -31,13 +37,6 @@
     font-weight: var(--font-weight-regular);
     font-size: 24px;
     color: var(--text-strong);
-}
-
-.drawer-foot {
-    border-bottom: 0;
-    border-top: 1px solid var(--line);
-    flex-direction: column;
-    gap: var(--spacing-8);
 }
 
 .drawer-body {
@@ -67,22 +66,55 @@
     color: var(--text-muted);
 }
 
+.drawer-foot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-12);
+}
+
 .drawer-foot-group {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-8);
+}
+
+.drawer-foot-group:first-child {
     width: 100%;
+    padding-bottom: var(--spacing-12);
+    border-bottom: 1px solid var(--line);
 }
 
 .drawer-foot-group .btn {
     width: 100%;
-    white-space: normal;
+    white-space: nowrap;
     text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.drawer-foot-group:first-child {
-    padding-bottom: var(--spacing-8);
-    border-bottom: 1px solid var(--line);
+.drawer-foot-group:first-child .btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 8px;
+    border-color: var(--line);
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 8px 12px;
+}
+
+.drawer-foot-group:first-child .btn:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+}
+
+.drawer-foot-group:last-child {
+    width: 100%;
+    flex-direction: row;
+    gap: var(--spacing-8);
+}
+
+.drawer-foot-group:last-child .btn {
+    flex: 1;
 }
 
 .field {
