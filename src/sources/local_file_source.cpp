@@ -105,17 +105,19 @@ std::string sniff_image_mime(const std::string& d) noexcept {
 // Copy the embedded cover out via one ffmpeg pass; empty when there's none.
 // 8 MiB cap: covers are small and an unbounded read could balloon.
 ArtworkImage extract_cover(const std::wstring& ff_bin, const std::filesystem::path& file,
-                           worker::WorkerClient* worker) {
-                           
+                           worker::WorkerClient* worker) {          
     // create a unique temporary file path to prevent collisions
-    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-    std::filesystem::path tmp = std::filesystem::temp_directory_path() / 
-                                ("fh6_cover_" + std::to_string(now) + ".jpg");
+    wchar_t temp_dir[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp_dir);
+    wchar_t temp_file[MAX_PATH];
+    GetTempFileNameW(temp_dir, L"fh6", 0, temp_file);
+    
+    std::filesystem::path tmp{temp_file};
 
     // tell FFmpeg to save the image directly to the temp file
     const std::wstring cmd =
         quote(ff_bin) + L" -hide_banner -nostdin -loglevel error -i " + quote(file.wstring()) +
-        L" -an -c:v mjpeg -frames:v 1 -y " + quote(tmp.wstring());
+        L" -an -c:v mjpeg -frames:v 1 -f mjpeg -y " + quote(tmp.wstring());
 
     // output is written to disk
     if (worker && worker->alive()) {
@@ -1008,19 +1010,12 @@ void LocalFileSource::set_config(LocalFilesConfig cfg) {
 }
 
 void LocalFileSource::set_active_station(std::string name) {
-    bool changed = false;
     {
         std::scoped_lock lk{mu_};
         if (cfg_.active_station == name) return;
         cfg_.active_station = std::move(name);
-        changed = true;
     }
-
-    if (changed) {
-        stop();
-        rebuild_playlist();
-    }
-
+    stop();
     rebuild_playlist();
 }
 

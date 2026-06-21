@@ -342,7 +342,7 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     });
 
     XINPUT_STATE xstate{};
-    const bool has_pad_hotkeys = opts->hotkeys.pad_skip || opts->hotkeys.pad_source || opts->hotkeys.pad_playpause || opts->hotkeys.pad_prev;
+    const bool has_pad_hotkeys = opts->hotkeys.pad_skip || opts->hotkeys.pad_source || opts->hotkeys.pad_playpause || opts->hotkeys.pad_prev || opts->hotkeys.pad_next_station;
     bool pad_connected = has_pad_hotkeys && pXInputGetState && (pXInputGetState(0, &xstate) == ERROR_SUCCESS);
 
     // helper to resolve overlap conflicts
