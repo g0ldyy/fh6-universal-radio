@@ -39,7 +39,7 @@ constexpr const char* kTargetSoundName = "HZ6_R9_PeterBroderick_EyesClosedandTra
 } // namespace
 
 ControlLoop::ControlLoop(DSPBridge& bridge, const PEImage& img, PlaybackConfig initial_playback,
-                         float configured_gain, std::function<void()> on_cycle_station)
+                         float configured_gain, std::function<bool()> on_cycle_station)
     : bridge_{bridge}, img_{img}, configured_gain_{configured_gain}, game_state_{img},
       on_cycle_station_{std::move(on_cycle_station)},
       playback_opts_{std::make_shared<const PlaybackConfig>(std::move(initial_playback))},
@@ -509,10 +509,11 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
 
     // execute cycle station/playlist
     if (trigger_station && (now - last_station_cmd_ >= 250ms)) {
-        if (on_cycle_station_) on_cycle_station_();
-        ring.drain();
+        if (on_cycle_station_ && on_cycle_station_()) {
+            ring.drain();
+            log::info("[ctrl] Hotkey triggered: cycled active station");
+        }
         last_station_cmd_ = now;
-        log::info("[ctrl] Hotkey triggered: cycled active station");
     }
 
     prev_skip_hotkey_ = skip_pressed;

@@ -25,7 +25,7 @@ namespace fh6::fmod_bridge {
 class ControlLoop {
 public:
     ControlLoop(DSPBridge& bridge, const PEImage& img, PlaybackConfig initial_playback,
-                float configured_gain, std::function<void()> on_cycle_station = nullptr);
+                float configured_gain, std::function<bool()> on_cycle_station = nullptr);
     ~ControlLoop();
 
     ControlLoop(const ControlLoop&)            = delete;
@@ -59,7 +59,7 @@ private:
     DSPBridge& bridge_;
     const PEImage& img_;
     std::atomic<float> configured_gain_;
-    std::function<void()> on_cycle_station_;
+    std::function<bool()> on_cycle_station_;
     MetadataInjector meta_;
     GameStateProbe game_state_;
     std::uint64_t prev_calls_     = 0;

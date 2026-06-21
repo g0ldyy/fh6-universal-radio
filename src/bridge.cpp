@@ -246,37 +246,43 @@ void run_bridge(HMODULE self) noexcept {
     bridge.set_force_stereo_audio(cfg.playback.force_stereo_audio);
 
     // cycle the playlist for whichever source is currently active
-    auto cycle_station = [&store, &mgr]() {
-        store.patch([&mgr](Config& c) {
+    auto cycle_station = [&store, &mgr]() -> bool {
+        bool changed = false;
+        store.patch([&mgr, &changed](Config& c) {
             auto* active = mgr.active();
             if (!active) return;
             auto name = active->name();
             
-            if (name == "local_files" && !c.local_files.stations.empty()) {
+            if (name == "local_files" && c.local_files.stations.size() > 1) {
                 size_t idx = 0;
                 for (size_t i = 0; i < c.local_files.stations.size(); ++i) {
                     if (c.local_files.stations[i].name == c.local_files.active_station) { idx = i; break; }
                 }
                 c.local_files.active_station = c.local_files.stations[(idx + 1) % c.local_files.stations.size()].name;
+                changed = true;
             }
-            else if (name == "youtube_music" && !c.youtube_music.stations.empty()) {
+            else if (name == "youtube_music" && c.youtube_music.stations.size() > 1) {
                 size_t idx = 0;
                 for (size_t i = 0; i < c.youtube_music.stations.size(); ++i) {
                     if (c.youtube_music.stations[i].name == c.youtube_music.active_station) { idx = i; break; }
                 }
                 c.youtube_music.active_station = c.youtube_music.stations[(idx + 1) % c.youtube_music.stations.size()].name;
+                changed = true;
             }
-            else if (name == "jellyfin" && !c.jellyfin.stations.empty()) {
+            else if (name == "jellyfin" && c.jellyfin.stations.size() > 1) {
                 size_t idx = 0;
                 for (size_t i = 0; i < c.jellyfin.stations.size(); ++i) {
                     if (c.jellyfin.stations[i].name == c.jellyfin.active_station) { idx = i; break; }
                 }
                 c.jellyfin.active_station = c.jellyfin.stations[(idx + 1) % c.jellyfin.stations.size()].name;
+                changed = true;
             }
-            else if (name == "online_radio" && !c.online_radio.stations.empty()) {
+            else if (name == "online_radio" && c.online_radio.stations.size() > 1) {
                 c.online_radio.default_station_index = (c.online_radio.default_station_index + 1) % c.online_radio.stations.size();
+                changed = true;
             }
         });
+        return changed;
     };
 
     std::unique_ptr<fmod_bridge::ControlLoop> ctrl;

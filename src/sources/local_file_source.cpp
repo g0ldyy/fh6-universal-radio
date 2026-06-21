@@ -106,12 +106,40 @@ std::string sniff_image_mime(const std::string& d) noexcept {
 // 8 MiB cap: covers are small and an unbounded read could balloon.
 ArtworkImage extract_cover(const std::wstring& ff_bin, const std::filesystem::path& file,
                            worker::WorkerClient* worker) {
+                           
+    // create a unique temporary file path to prevent collisions
+    auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+    std::filesystem::path tmp = std::filesystem::temp_directory_path() / 
+                                ("fh6_cover_" + std::to_string(now) + ".jpg");
+
+    // tell FFmpeg to save the image directly to the temp file
     const std::wstring cmd =
         quote(ff_bin) + L" -hide_banner -nostdin -loglevel error -i " + quote(file.wstring()) +
-        L" -an -c:v copy -frames:v 1 -f image2pipe pipe:1";
+        L" -an -c:v mjpeg -frames:v 1 -y " + quote(tmp.wstring());
 
-    std::string data = (worker && worker->alive()) ? worker->run_capture(cmd)
-                                                    : capture_output(cmd, false, 8u << 20);
+    // output is written to disk
+    if (worker && worker->alive()) {
+        worker->run_capture(cmd);
+    } else {
+        capture_output(cmd, false, 0);
+    }
+
+    // read the pristine binary data back from the temp file
+    std::string data;
+    std::ifstream is{tmp, std::ios::binary | std::ios::ate};
+    if (is) {
+        auto size = is.tellg();
+        is.seekg(0, std::ios::beg);
+        if (size > 0 && size <= (8u << 20)) { // cap at 8MB
+            data.resize(size);
+            is.read(data.data(), size);
+        }
+    }
+    
+    // clean up
+    std::error_code ec;
+    std::filesystem::remove(tmp, ec);
+
     ArtworkImage out;
     out.mime = sniff_image_mime(data);
     if (!out.mime.empty()) out.bytes = std::move(data);
@@ -957,6 +985,7 @@ std::optional<ArtworkImage> LocalFileSource::artwork() const {
 
 void LocalFileSource::set_config(LocalFilesConfig cfg) {
     bool rescan;
+    bool station_changed;
     {
         std::scoped_lock lk{mu_};
         const LocalStation* o        = active_station_locked();
@@ -966,20 +995,32 @@ void LocalFileSource::set_config(LocalFilesConfig cfg) {
         cfg_                         = std::move(cfg);
         const LocalStation* n        = active_station_locked();
         const LocalStation neu       = n ? *n : LocalStation{};
+        station_changed = old_active != cfg_.active_station;
         rescan = old_active != cfg_.active_station || old.roots != neu.roots ||
                  old.excluded != neu.excluded || old.recursive != neu.recursive ||
                  old.order != neu.order || old.grouping != neu.grouping ||
                  old_formats != cfg_.supported_formats;
     }
+
+    if (station_changed) stop();
+
     if (rescan) rebuild_playlist();
 }
 
 void LocalFileSource::set_active_station(std::string name) {
+    bool changed = false;
     {
         std::scoped_lock lk{mu_};
         if (cfg_.active_station == name) return;
         cfg_.active_station = std::move(name);
+        changed = true;
     }
+
+    if (changed) {
+        stop();
+        rebuild_playlist();
+    }
+
     rebuild_playlist();
 }
 
