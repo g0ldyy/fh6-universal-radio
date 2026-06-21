@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>FH6 Universal Radio</title>
+
     <link rel="stylesheet" href="css/styles.css" />
 </head>
 
@@ -46,14 +47,14 @@
             <div class="sources" id="sources"></div>
         </section>
 
-      <section class="card" id="output-card" hidden>
-        <h2>Output</h2>
-        <label class="slider">
-          <span>Volume</span>
-          <input type="range" id="vol" min="0" max="1" step="0.01" value="1" />
-          <output id="vol-out">100%</output>
-        </label>
-      </section>
+        <section class="card" id="output-card" hidden>
+            <h2>Output</h2>
+            <label class="slider">
+                <span>Volume</span>
+                <input type="range" id="vol" min="0" max="1" step="0.01" value="1" />
+                <output id="vol-out">100%</output>
+            </label>
+        </section>
     </main>
 
     <footer class="credits">
@@ -66,7 +67,8 @@
             <a href="https://github.com/g0ldyy/fh6-universal-radio/blob/main/LICENSE" target="_blank"
                 rel="noopener noreferrer">GPLv3</a>.
         </p>
-        <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider supporting development:</p>
+        <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider
+            supporting development:</p>
         <div class="donate-links">
             <a class="donate-btn" href="https://github.com/sponsors/g0ldyy" target="_blank"
                 rel="noopener noreferrer"><span aria-hidden="true">&hearts;</span> GitHub Sponsors</a>
@@ -78,26 +80,31 @@
     </footer>
 
     <aside class="drawer" id="drawer" inert aria-label="Settings">
-      <div class="drawer-head">
-        <h2>Settings</h2>
-        <button class="icon-btn" id="close-settings" aria-label="Close settings"></button>
-      </div>
-      <form id="settings-form" class="drawer-body"></form>
-      <div class="drawer-foot">
-        <div style="display: flex; gap: 8px;">
-          <button class="btn ghost" id="backup-config" type="button" title="Download settings backup">Backup</button>
-          <button class="btn ghost" id="restore-config" type="button" title="Restore settings from file">Restore</button>
-          <input type="file" id="restore-file" accept=".json" style="display: none;" />
+        <div class="drawer-head">
+            <h2 data-i18n="settings.open">Settings</h2>
+            <button class="icon-btn" id="close-settings" aria-label="Close settings"
+                data-i18n-aria-label="settings.close"></button>
         </div>
-        
-        <div style="display: flex; gap: 8px;">
-          <button class="btn ghost" id="reload-config" type="button" title="Reload from disk">Reload</button>
-          <button class="btn filled" id="save-config" type="button">Save</button>
+        <form id="settings-form" class="drawer-body"></form>
+        <div class="drawer-foot">
+            <div class="drawer-foot-group">
+                <button class="btn ghost" id="backup-config" type="button" data-i18n="settings.backup"
+                    data-i18n-title="settings.backup_title">Backup</button>
+                <button class="btn ghost" id="restore-config" type="button" data-i18n="settings.restore"
+                    data-i18n-title="settings.restore_title">Restore</button>
+                <input type="file" id="restore-file" accept=".json" hidden />
+            </div>
+
+            <div class="drawer-foot-group">
+                <button class="btn ghost" id="reload-config" type="button" data-i18n="settings.reload"
+                    data-i18n-title="settings.reload_title">Reload</button>
+                <button class="btn filled" id="save-config" type="button" data-i18n="settings.save">Save</button>
+            </div>
         </div>
-      </div>
     </aside>
     <div class="scrim" id="scrim" hidden></div>
 
     <script src="js/main.js" type="module"></script>
-  </body>
+</body>
+
 </html>

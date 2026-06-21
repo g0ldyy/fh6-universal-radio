@@ -1,0 +1,34 @@
+.yt-stationtools {
+    display: flex;
+    margin-top: var(--spacing-16);
+    gap: var(--spacing-8);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.yt-stationtools .btn {
+    flex: 1;
+    min-width: 0;
+}
+
+.yt-stationtools .btn:first-child {
+    border-color: var(--ok);
+    color: var(--ok);
+    background: rgba(2, 217, 92, 0.05);
+}
+
+.yt-stationtools .btn:last-child {
+    border-color: var(--alert);
+    color: var(--alert);
+    background: rgba(255, 50, 50, 0.05);
+}
+
+.yt-stationtools .btn:first-child:hover {
+    background: rgba(2, 217, 92, 0.12);
+    border-color: var(--ok);
+}
+
+.yt-stationtools .btn:last-child:hover {
+    background: rgba(255, 50, 50, 0.12);
+    border-color: var(--alert);
+}

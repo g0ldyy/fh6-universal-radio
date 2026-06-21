@@ -4,7 +4,7 @@ import { connect } from "./events.js";
 import { icons } from "./icons.js";
 import { toast } from "./toast.js";
 import { renderStatus } from "./render/status.js";
-import { renderNowPlaying } from "./render/nowPlaying.js";
+import { renderNowPlaying, extractDominantColor } from "./render/nowPlaying.js";
 import { renderSources } from "./render/sources.js";
 import { createOutput } from "./render/output.js";
 import { renderSettings, collectSettings } from "./render/settings.js";
@@ -14,29 +14,30 @@ import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
 import { createYoutubeMusic } from "./render/youtubeMusic.js";
 import { createJellyfin } from "./render/jellyfin.js";
+import { initI18n, onLangChange, t, setLang, getLang} from "./i18n.js";
 
 let state = null;
 let cfg = null;
 
 const refs = {
-  status: $("#status"),
-  np: {
-    art: $("#np-art"),
-    backdrop: $("#np-backdrop"),
-    img: $("#np-art-img"),
-    title: $("#np-title"),
-    artist: $("#np-artist"),
-    fill: $("#np-fill"),
-    pos: $("#np-pos"),
-    dur: $("#np-dur"),
-    play: $("#t-play"),
-  },
-  sources: $("#sources"),
-  sourceCard: $("#source-card"),
-  outputCard: $("#output-card"),
-  drawer: $("#drawer"),
-  scrim: $("#scrim"),
-  form: $("#settings-form"),
+    status: $("#status"),
+    np: {
+        art: $("#np-art"),
+        backdrop: $("#np-backdrop"),
+        img: $("#np-art-img"),
+        title: $("#np-title"),
+        artist: $("#np-artist"),
+        fill: $("#np-fill"),
+        pos: $("#np-pos"),
+        dur: $("#np-dur"),
+        play: $("#t-play"),
+    },
+    sources: $("#sources"),
+    sourceCard: $("#source-card"),
+    outputCard: $("#output-card"),
+    drawer: $("#drawer"),
+    scrim: $("#scrim"),
+    form: $("#settings-form"),
 };
 
 $("#brand-mark").innerHTML = icons.broadcast;
@@ -47,32 +48,13 @@ $("#t-next").innerHTML = icons.next;
 
 const mainEl = $("main");
 
-// Composants initialisés dans boot() après initI18n()
 let renderOutput;
 let deps;
 let externalAudio;
 let localFiles;
 let onlineRadio;
-
-const youtubeMusic = createYoutubeMusic(mainEl, {
-  getState: () => state,
-  getConfig: () => cfg,
-  onSaved: async () => {
-    cfg = await api.getConfig().catch(() => cfg);
-    state = await api.getState().catch(() => state);
-    render();
-  },
-});
-
-const jellyfin = createJellyfin(mainEl, {
-  getState: () => state,
-  getConfig: () => cfg,
-  onSaved: async () => {
-    cfg = await api.getConfig().catch(() => cfg);
-    state = await api.getState().catch(() => state);
-    render();
-  },
-});
+let youtubeMusic;
+let jellyfin;
 
 async function switchSource(name) {
     try {
@@ -127,50 +109,50 @@ function closeDrawer() {
 }
 
 function render() {
-  if (!state) return;
-  renderStatus(refs.status, state);
-  renderNowPlaying(refs.np, state);
-  renderSources(refs.sources, state, cfg, switchSource);
-  renderOutput(state);
-  externalAudio.render();
-  localFiles.render();
-  onlineRadio.render();
-  youtubeMusic.render();
-  jellyfin.render();
+    if (!state) return;
+    renderStatus(refs.status, state);
+    renderNowPlaying(refs.np, state);
+    renderSources(refs.sources, state, cfg, switchSource);
+    renderOutput(state);
+    externalAudio.render();
+    localFiles.render();
+    onlineRadio.render();
+    youtubeMusic.render();
+    jellyfin.render();
 
     refs.sourceCard.hidden = false;
     refs.outputCard.hidden = !state.sources?.active;
 
-  const available = state.sources?.available || [];
-  const active = state.sources?.active;
+    const available = state.sources?.available || [];
+    const active = state.sources?.active;
 }
 
 // --- BACKUP CONFIGURATION ---
 const backupBtn = document.getElementById("backup-config");
 if (backupBtn) {
-  backupBtn.addEventListener("click", async () => {
-    try {
-      const config = await api.getConfig();
+    backupBtn.addEventListener("click", async () => {
+        try {
+            const config = await api.getConfig();
 
-      const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
+            const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
 
-      const dateStr = new Date().toISOString().split("T")[0];
-      a.download = `fh6-radio-settings-${dateStr}.json`;
+            const dateStr = new Date().toISOString().split("T")[0];
+            a.download = `fh6-radio-settings-${dateStr}.json`;
 
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      toast("Backup downloaded successfully");
-    } catch (err) {
-      console.error("Failed to backup config:", err);
-      toast("Failed to backup settings.", true);
-    }
-  });
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            toast("Backup downloaded successfully");
+        } catch (err) {
+            console.error("Failed to backup config:", err);
+            toast("Failed to backup settings.", true);
+        }
+    });
 }
 
 // --- RESTORE CONFIGURATION ---
@@ -178,35 +160,35 @@ const restoreBtn = document.getElementById("restore-config");
 const restoreFile = document.getElementById("restore-file");
 
 if (restoreBtn && restoreFile) {
-  restoreBtn.addEventListener("click", () => restoreFile.click());
+    restoreBtn.addEventListener("click", () => restoreFile.click());
 
-  restoreFile.addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    restoreFile.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-    try {
-      const text = await file.text();
-      const patch = JSON.parse(text);
+        try {
+            const text = await file.text();
+            const patch = JSON.parse(text);
 
-      cfg = await api.putConfig(patch);
+            cfg = await api.putConfig(patch);
 
-      externalAudio.invalidate();
-      localFiles.invalidate();
-      onlineRadio.invalidate();
-      youtubeMusic.invalidate();
-      jellyfin.invalidate();
-      renderSettings(refs.form, cfg);
-      state = await api.getState().catch(() => state);
-      render();
-      
-      toast("Settings restored successfully!");
-    } catch (err) {
-      console.error("Failed to restore config:", err);
-      toast("Failed to restore settings. Invalid JSON file.", true);
-    } finally {
-      e.target.value = ""; 
-    }
-  });
+            externalAudio.invalidate();
+            localFiles.invalidate();
+            onlineRadio.invalidate();
+            youtubeMusic.invalidate();
+            jellyfin.invalidate();
+            renderSettings(refs.form, cfg);
+            state = await api.getState().catch(() => state);
+            render();
+
+            toast("Settings restored successfully!");
+        } catch (err) {
+            console.error("Failed to restore config:", err);
+            toast("Failed to restore settings. Invalid JSON file.", true);
+        } finally {
+            e.target.value = "";
+        }
+    });
 }
 
 $("#t-play").addEventListener("click", () => transport("play"));
@@ -236,6 +218,8 @@ $("#save-config").addEventListener("click", async () => {
         externalAudio.invalidate();
         localFiles.invalidate();
         onlineRadio.invalidate();
+        youtubeMusic.invalidate()
+        jellyfin.invalidate()
         state = await api.getState().catch(() => state);
         render();
         toast(t("settings.saved"));
@@ -285,6 +269,9 @@ function applyI18n() {
     document.querySelectorAll("[data-i18n-aria-label]").forEach(el => {
         el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel));
     });
+    document.querySelectorAll("[data-i18n-title]").forEach(el => {
+        el.title = t(el.dataset.i18nTitle);
+    });
 }
 
 async function boot() {
@@ -332,7 +319,26 @@ async function boot() {
         },
     });
 
-    applyNpLayout(localStorage.getItem("fh6-np-layout") || "default");
+    youtubeMusic = createYoutubeMusic(mainEl, {
+        getState: () => state,
+        getConfig: () => cfg,
+        onSaved: async () => {
+            cfg = await api.getConfig().catch(() => cfg);
+            state = await api.getState().catch(() => state);
+            render();
+        },
+    });
+
+
+    jellyfin = createJellyfin(mainEl, {
+        getState: () => state,
+        getConfig: () => cfg,
+        onSaved: async () => {
+            cfg = await api.getConfig().catch(() => cfg);
+            state = await api.getState().catch(() => state);
+            render();
+        },
+    });
 
     try {
         cfg = await api.getConfig();

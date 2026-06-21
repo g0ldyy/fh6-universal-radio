@@ -7,3 +7,5 @@ third_party/
 
 # Dependency directories
 node_modules/
+
+ui/dist/.vscode

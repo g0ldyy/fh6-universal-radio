@@ -186,7 +186,7 @@ export function createLocalFiles(main, ctx) {
 		if (loaded && !force) return;
 		try {
 			const r = await api.getLocalStations();
-			stations = Array.isArray(r.stations) && r.stations.length ? r.stations : [newStation("My Music")];
+			stations = Array.isArray(r.stations) && r.stations.length ? r.stations : [newStation(t("local_files.default_station_name"))];
 			stations.forEach(s => {
 				s.roots ??= [];
 				s.excluded ??= [];

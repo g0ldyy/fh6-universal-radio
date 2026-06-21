@@ -146,8 +146,8 @@
 }
 
 .sources {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-12);
 }
 
@@ -175,6 +175,8 @@
         border-color 0.15s ease,
         background 0.15s ease,
         transform 0.1s ease;
+    flex: 1 1 calc(33.333% - var(--spacing-12));
+    min-width: 220px;
 }
 
 .source:hover {

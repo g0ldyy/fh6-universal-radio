@@ -2,7 +2,7 @@
     position: fixed;
     inset: 0 0 0 auto;
     z-index: 10;
-    width: min(440px, 100%);
+    width: min(600px, 100%);
     display: flex;
     flex-direction: column;
     background: var(--surface-card);
@@ -36,6 +36,8 @@
 .drawer-foot {
     border-bottom: 0;
     border-top: 1px solid var(--line);
+    flex-direction: column;
+    gap: var(--spacing-8);
 }
 
 .drawer-body {
@@ -63,6 +65,24 @@
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-muted);
+}
+
+.drawer-foot-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-8);
+    width: 100%;
+}
+
+.drawer-foot-group .btn {
+    width: 100%;
+    white-space: normal;
+    text-align: center;
+}
+
+.drawer-foot-group:first-child {
+    padding-bottom: var(--spacing-8);
+    border-bottom: 1px solid var(--line);
 }
 
 .field {

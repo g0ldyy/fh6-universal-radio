@@ -17,11 +17,15 @@
         padding: var(--spacing-24) var(--spacing-20);
     }
 
-    .lf-stationtools {
+    .lf-stationtools,
+    .yt-stationtools,
+    .lf-editor-foot {
         flex-direction: column;
     }
 
-    .lf-stationtools .btn {
+    .lf-stationtools .btn,
+    .yt-stationtools .btn,
+    .lf-editor-foot .btn {
         width: 100%;
     }
 
@@ -73,16 +77,13 @@
         margin-top: 4px;
     }
 
-    .drawer-body {
-        padding: var(--spacing-12)
-    }
-
     .drawer {
         width: 100%;
         overflow-x: hidden;
     }
 
     .drawer-body {
+        padding: var(--spacing-12);
         overflow-x: hidden;
     }
 

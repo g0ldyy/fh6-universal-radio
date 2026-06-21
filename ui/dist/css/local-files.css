@@ -8,13 +8,16 @@
 }
 
 .lf-stationtools {
-    margin-top: var(--spacing-8);
+    display: flex;
+    margin-top: var(--spacing-16);
     gap: var(--spacing-8);
-    flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .lf-stationtools .btn {
     flex: 1;
+    min-width: 0;
 }
 
 .lf-stationtools .btn:first-child {
@@ -80,8 +83,15 @@
 }
 
 .lf-editor-foot {
-    margin-top: var(--spacing-16);
-    justify-content: flex-end;
+    display: flex;
+    gap: var(--spacing-8);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.lf-editor-foot .btn {
+    flex: 1;
+    min-width: 0;
 }
 
 .lf-roots {
