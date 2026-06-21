@@ -218,6 +218,8 @@
   "jellyfin.description": "Entrez un ID de playlist Jellyfin. La radio change de source et commence à diffuser immédiatement.",
   "jellyfin.queue_empty": "La file est vide.",
   "jellyfin.unknown_title": "Titre Inconnu",
+  "jellyfin.shuffle_on": "Aléatoire activé",
+  "jellyfin.shuffle_off": "Aléatoire désactivé",
 
   "credits.support": "Soutenir le projet",
   "credits.support_text": "Si ce mod améliore vos courses, soutenez le développement :",

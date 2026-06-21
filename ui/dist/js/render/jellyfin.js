@@ -211,7 +211,7 @@ export function createJellyfin(main, ctx) {
         const isShuffled = shuffleBtn.classList.contains("toggled");
         try {
             await api.shuffleJellyfin(!isShuffled);
-            toast(!isShuffled ? t("youtube_music.shuffle_on") : t("youtube_music.shuffle_off"));
+            toast(!isShuffled ? t("jellyfin.shuffle_on") : t("jellyfin.shuffle_off"));
             await ctx.onSaved?.();
             loadQueue();
         } catch (err) {

@@ -189,6 +189,8 @@
   "jellyfin.casting": "Casting to Jellyfin...",
   "jellyfin.unknown_title": "Unknown Title",
   "jellyfin.queue_empty": "Queue is empty.",
+  "jellyfin.shuffle_on": "Shuffle on",
+  "jellyfin.shuffle_off": "Shuffle off",
   "credits.support": "Support the project",
   "error.url_required": "A stream URL is required.",
   "error.enter_url": "Enter a URL first to save.",

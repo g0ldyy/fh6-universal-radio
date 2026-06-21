@@ -114,7 +114,6 @@ function render() {
     renderNowPlaying(refs.np, state);
     renderSources(refs.sources, state, cfg, switchSource);
     renderOutput(state);
-
     externalAudio.render();
     localFiles.render();
     onlineRadio.render();
@@ -216,13 +215,11 @@ document.addEventListener("keydown", e => {
 $("#save-config").addEventListener("click", async () => {
     try {
         cfg = await api.putConfig(collectSettings(refs.form));
-
         externalAudio.invalidate();
         localFiles.invalidate();
         onlineRadio.invalidate();
         youtubeMusic.invalidate()
         jellyfin.invalidate()
-        
         state = await api.getState().catch(() => state);
         render();
         toast(t("settings.saved"));
