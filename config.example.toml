@@ -108,3 +108,5 @@ kb_source     = 0           # keyboard virtual key code to switch sources (0 = u
 pad_source    = 0           # XInput controller button mask to switch sources (0 = unbound)
 kb_playpause  = 0           # keyboard virtual key code to play track (0 = unbound)
 pad_playpause = 0           # XInput controller button mask to play track (0 = unbound)
+kb_prev       = 0           # keyboard virtual key code to go to previous track (0 = unbound)
+pad_prev      = 0           # XInput controller button mask to go to previous track (0 = unbound)

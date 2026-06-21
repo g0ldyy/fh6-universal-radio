@@ -341,7 +341,7 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     });
 
     XINPUT_STATE xstate{};
-    const bool has_pad_hotkeys = opts->hotkeys.pad_skip || opts->hotkeys.pad_source || opts->hotkeys.pad_playpause;
+    const bool has_pad_hotkeys = opts->hotkeys.pad_skip || opts->hotkeys.pad_source || opts->hotkeys.pad_playpause || opts->hotkeys.pad_prev;
     bool pad_connected = has_pad_hotkeys && pXInputGetState && (pXInputGetState(0, &xstate) == ERROR_SUCCESS);
 
     // helper to resolve overlap conflicts
@@ -353,39 +353,46 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     bool kb_skip = opts->hotkeys.kb_skip && (opts->hotkeys.kb_skip != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_skip) & 0x8000);
     bool kb_src  = opts->hotkeys.kb_source && (opts->hotkeys.kb_source != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_source) & 0x8000);
     bool kb_pp   = opts->hotkeys.kb_playpause && (opts->hotkeys.kb_playpause != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_playpause) & 0x8000);
+    bool kb_prev = opts->hotkeys.kb_prev && (opts->hotkeys.kb_prev != 0x9999) && (GetAsyncKeyState(opts->hotkeys.kb_prev) & 0x8000);
 
     // check controller (resolve overlap by complexity)
     bool p_skip = check_pad(opts->hotkeys.pad_skip);
     bool p_src  = check_pad(opts->hotkeys.pad_source);
     bool p_pp   = check_pad(opts->hotkeys.pad_playpause);
+    bool p_prev = check_pad(opts->hotkeys.pad_prev);
 
     DWORD max_bits = std::max<DWORD>({
         p_skip ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_skip))) : 0u,
         p_src  ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_source))) : 0u,
         p_pp   ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_playpause))) : 0u
+        p_prev ? static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_prev))) : 0u
     });
 
     bool pad_skip_pressed = p_skip && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_skip))) == max_bits);
     bool pad_src_pressed  = p_src && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_source))) == max_bits);
     bool pad_pp_pressed   = p_pp && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_playpause))) == max_bits);
+    bool pad_prev_pressed = p_prev && (static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_prev))) == max_bits);
 
     bool skip_pressed = kb_skip || pad_skip_pressed;
     bool src_pressed  = kb_src || pad_src_pressed;
     bool pp_pressed   = kb_pp || pad_pp_pressed;
+    bool prev_pressed   = kb_prev || pad_prev_pressed;
 
     // --- quickStationSkip (R10 edge) ---
     const bool use_old_skip = (opts->hotkeys.kb_skip      == 0x9999 || opts->hotkeys.pad_skip      == 0x9999);
     const bool use_old_src  = (opts->hotkeys.kb_source    == 0x9999 || opts->hotkeys.pad_source    == 0x9999);
     const bool use_old_pp   = (opts->hotkeys.kb_playpause == 0x9999 || opts->hotkeys.pad_playpause == 0x9999);
+    const bool use_old_prev = (opts->hotkeys.kb_prev      == 0x9999 || opts->hotkeys.pad_prev      == 0x9999);
 
     if (prev_r10_ && !r10) {
         last_r10_off_ = now;
-        if (use_old_skip || use_old_src || use_old_pp) quick_skip_armed_ = true;
+        if (use_old_skip || use_old_src || use_old_pp || use_old_prev) quick_skip_armed_ = true;
     } else if (!prev_r10_ && r10) {
         if (quick_skip_armed_ && now - last_r10_off_ <= kQuickSkipWindow) {
             if (use_old_skip) old_method_skip_fired_ = true;
             if (use_old_src)  old_method_src_fired_  = true;
             if (use_old_pp)   old_method_pp_fired_   = true;
+            if (use_old_prev) old_method_prev_fired_ = true;
         }
         quick_skip_armed_ = false;
     }
@@ -395,27 +402,31 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
     bool skip_edge = skip_pressed && !prev_skip_hotkey_;
     bool src_edge  = src_pressed && !prev_source_hotkey_;
     bool pp_edge   = pp_pressed && !prev_playpause_hotkey_;
+    bool prev_edge = prev_pressed && !prev_prev_hotkey_;
 
     // buffer
     if (skip_edge) pending_skip_ = true;
     if (src_edge)  pending_src_ = true;
     if (pp_edge)   pending_pp_ = true;
+    if (prev_edge) pending_prev_ = true;
 
     bool trigger_skip = old_method_skip_fired_;
     bool trigger_src  = old_method_src_fired_;
     bool trigger_pp   = old_method_pp_fired_;
+    bool trigger_prev = old_method_prev_fired_;
     old_method_skip_fired_ = false;
     old_method_src_fired_  = false;
     old_method_pp_fired_   = false;
+    old_method_prev_fired_ = false;
 
     // track how long buttons have been held to allow combos to form
-    if (skip_pressed || src_pressed || pp_pressed) {
+    if (skip_pressed || src_pressed || pp_pressed || prev_pressed) {
         if (combo_wait_ticks_ >= 0) {
             combo_wait_ticks_++;
         }
     } else {
         combo_wait_ticks_ = 0;
-        pending_skip_ = pending_src_ = pending_pp_ = false;
+        pending_skip_ = pending_src_ = pending_pp_ = pending_prev_ = false;
     }
 
     // trigger combos immediately, delay single buttons by 3 ticks (~60ms) to prevent overlap
@@ -426,10 +437,12 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
             trigger_src = true;
         } else if (pending_skip_ && max_bits == static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_skip)))) {
             trigger_skip = true;
+        } else if (pending_prev_ && max_bits == static_cast<DWORD>(std::popcount(static_cast<uint32_t>(opts->hotkeys.pad_prev)))) {
+            trigger_prev = true;
         }
 
         // clear pending states
-        pending_skip_ = pending_src_ = pending_pp_ = false;
+        pending_skip_ = pending_src_ = pending_pp_ = pending_prev_ = false;
         
         // set to a negative number to prevent firing again until buttons are released
         combo_wait_ticks_ = -9999; 
@@ -472,9 +485,18 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
         last_playpause_cmd_ = now;
     }
 
+    // execute previous track
+    if (trigger_prev && (now - last_prev_cmd_ >= kSkipCommandCooldown)) {
+        active->previous();
+        ring.drain();
+        last_prev_cmd_ = now;
+        log::info("[ctrl] Hotkey triggered: returned to previous track");
+    }
+
     prev_skip_hotkey_ = skip_pressed;
     prev_source_hotkey_ = src_pressed;
     prev_playpause_hotkey_ = pp_pressed;
+    prev_prev_hotkey_ = prev_pressed;
 }
 
 void ControlLoop::push_metadata() noexcept {
