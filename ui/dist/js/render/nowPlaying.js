@@ -38,7 +38,7 @@ export function renderNowPlaying(refs, state) {
     }
     if (refs.backdrop) refs.backdrop.style.backgroundImage = hasArt ? `url("${track.artwork_url}")` : "";
 
-    setText(refs.title, track.title || t("np.nothing_playing"));
+    setText(refs.title, track.title || t("now_playing.nothing_playing"));
     setText(
         refs.artist,
         track.artist ? (track.album ? `${track.artist}` : track.artist) : "",
@@ -51,7 +51,7 @@ export function renderNowPlaying(refs, state) {
     if (refs.play.dataset.icon !== want) {
         refs.play.dataset.icon = want;
         refs.play.innerHTML = icons[want];
-        refs.play.setAttribute("aria-label", playing ? t("np.pause") : t("np.play"));
+        refs.play.setAttribute("aria-label", playing ? t("now_playing.pause") : t("now_playing.play"));
     }
 }
 

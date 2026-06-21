@@ -3,6 +3,7 @@ import { $, el } from "../dom.js";
 import { icons } from "../icons.js";
 import { toast } from "../toast.js";
 import { t } from "../i18n.js";
+import { renderTrackQueue } from "./playlistQueue.js";
 
 function newStation(name) {
     return { name, url: "" };
@@ -87,12 +88,12 @@ export function createYoutubeMusic(main, ctx) {
         stationSelect.replaceChildren(
             ...stations.map((s, i) =>
                 el("option", { value: String(i), selected: i === selected },
-                    s.name + (s.name === activeStation ? `  • ${t("youtube_music.on_air_title")}` : "")),
+                    s.name + (s.name === activeStation ? `  • ${t("youtube_music.on_air")}` : "")),
             ),
         );
         deleteBtn.disabled = stations.length <= 1;
         onAirBtn.disabled = cur()?.name === activeStation;
-        onAirBtn.textContent = cur()?.name === activeStation ? t("youtube_music.on_air") : t("youtube_music.set_on_air");
+        onAirBtn.textContent = cur()?.name === activeStation ? t("youtube_music.already_on_air") : t("youtube_music.set_on_air");
     }
 
     function renderEditor() {
@@ -102,75 +103,26 @@ export function createYoutubeMusic(main, ctx) {
     }
 
     function renderQueue() {
-        const terms = fold(search).split(/\s+/).filter(Boolean);
-        const rows = (queue.tracks || []).filter(t => {
-            if (!terms.length) return true;
-            const hay = fold(`${t.title || ""} ${t.url || ""}`);
-            return terms.every(w => hay.includes(w));
-        });
-
         queueCount.textContent = `${queue.tracks?.length || 0} ${t("youtube_music.tracks")}`;
 
-        trackList.replaceChildren(
-            ...rows.map(t => {
-                const titleText = t.title || t.url.split("v=")[1] || t.url;
-
-                const coverImg = el("img", {
-                    class: "lf-track-cover-img",
-                    src: t.cover_url || "",
-                    alt: "",
-                    loading: "lazy",
-                    "aria-hidden": "true",
-                });
-
-                const coverWrap = el("div", { class: "lf-track-cover" }, [coverImg]);
-                if (!t.cover_url) {
-                    coverWrap.dataset.noart = "1";
-                    coverWrap.append(
-                        el("div", { class: "lf-eq" }, [
-                            el("span", { class: "lf-eq-bar" }),
-                            el("span", { class: "lf-eq-bar" }),
-                            el("span", { class: "lf-eq-bar" }),
-                        ])
-                    );
+        renderTrackQueue(trackList, queue, search, {
+            getTitle: track => track.title || track.url?.split("v=")[1] || track.url,
+            getSubtitle: track => track.url ? (track.url.split("v=")[1] || track.url) : null,
+            getCoverUrl: track => track.cover_url,
+            getSearchFields: track => [track.title || "", track.url || ""],
+            onTrackClick: async track => {
+                try {
+                    await api.playYoutubeIndex(track.index);
+                    queue.cursor = track.index;
+                    renderQueue();
+                } catch (e) {
+                    toast(e.message, true);
                 }
-
-                const infoWrap = el("div", { class: "lf-track-info" }, [
-                    el("span", { class: "lf-track-title" }, titleText),
-                    t.url ? el("span", { class: "lf-track-folder muted" }, t.url.split("v=")[1] || t.url) : null,
-                ]);
-
-                const li = el("li", {
-                    class: "lf-track" + (t.index === queue.cursor ? " current" : "")
-                }, [coverWrap, infoWrap]);
-
-                li.addEventListener("click", async () => {
-                    try {
-                        await api.playYoutubeIndex(t.index);
-                        queue.cursor = t.index;
-                        renderQueue();
-                    } catch (e) {
-                        toast(e.message, true);
-                    }
-                });
-
-                return li;
-            }),
-        );
-
-        if (!rows.length) {
-            trackList.append(
-                el("li", { class: "muted" }, terms.length ? t("youtube_music.no_matches") : t("youtube_music.queue_empty"))
-            );
-        }
-
-        const current = trackList.querySelector(".lf-track.current");
-        if (current) {
-            trackList.scrollTo({
-                top: current.offsetTop - trackList.offsetTop - trackList.clientHeight / 2 + current.clientHeight / 2,
-                behavior: "smooth"
-            });
-        }
+            },
+            emptyKey: "youtube_music.queue_empty",
+            noMatchesKey: "youtube_music.no_matches",
+            unknownTitleKey: "youtube_music.unknown_title",
+        });
     }
 
     // --- events ---
@@ -180,9 +132,9 @@ export function createYoutubeMusic(main, ctx) {
     });
 
     newBtn.addEventListener("click", () => {
-        let name = "New Playlist";
+        let name = t("youtube_music.default_station_name");
         let n = 2;
-        while (stations.some(s => s.name === name)) name = `New Playlist ${n++}`;
+        while (stations.some(s => s.name === name)) name = `${t("youtube_music.default_station_name")} ${n++}`;
         stations.push(newStation(name));
         selected = stations.length - 1;
         renderEditor();

@@ -62,10 +62,9 @@ export const SCHEMA = () => [
         "YouTube Music",
         [
             ["enabled", t("schema.enabled"), "checkbox"],
-            ["cookies_path", t("schema.yt.cookies_path"), "text"],
-            ["yt_dlp_path", t("schema.yt.yt_dlp_path"), "text"],
-            ["default_playlist", t("schema.yt.default_playlist"), "text"],
-            ["shuffle", t("schema.yt.shuffle"), "checkbox"],
+            ["cookies_path", t("schema.youtube_music.cookies_path"), "text"],
+            ["yt_dlp_path", t("schema.youtube_music.yt_dlp_path"), "text"],
+            ["default_playlist", t("schema.youtube_music.default_playlist"), "text"],
         ],
     ],
     [
@@ -76,9 +75,6 @@ export const SCHEMA = () => [
             ["server_url", t("schema.jellyfin.server_url"), "text"],
             ["user_id", t("schema.jellyfin.user_id"), "text"],
             ["api_key", t("schema.jellyfin.api_key"), "text"],
-            ["default_playlist", t("schema.jellyfin.default_playlist"), "text"],
-            ["use_favorites", t("schema.jellyfin.use_favorites"), "checkbox"],
-            ["shuffle", t("schema.yt.shuffle"), "checkbox"],
         ],
     ],
     ["external_audio", t("source.external_audio"), [["enabled", t("schema.enabled"), "checkbox"]]],

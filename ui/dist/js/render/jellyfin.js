@@ -3,6 +3,7 @@ import { $, el } from "../dom.js";
 import { toast } from "../toast.js";
 import { icons } from "../icons.js";
 import { t } from "../i18n.js";
+import { renderTrackQueue } from "./playlistQueue.js";
 
 function newStation(name) {
     return { name, playlist_id: "", use_favorites: false };
@@ -19,7 +20,7 @@ export function createJellyfin(main, ctx) {
     let search = "";
 
     const stationSelect = el("select", { id: "jf-station", "aria-label": "Station preset" });
-    const onAirBtn = el("button", { type: "button", class: "btn filled" }, t("jellyfin.on_air"));
+    const onAirBtn = el("button", { type: "button", class: "btn filled" }, t("jellyfin.set_on_air"));
     const newBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.new"));
     const renameBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.rename"));
     const deleteBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.delete"));
@@ -91,13 +92,13 @@ export function createJellyfin(main, ctx) {
         stationSelect.replaceChildren(
             ...stations.map((s, i) =>
                 el("option", { value: String(i), selected: i === selected },
-                    s.name + (s.name === activeStation ? `  • ${t("jellyfin.on_air_title")}` : "")),
+                    s.name + (s.name === activeStation ? `  • ${t("jellyfin.on_air")}` : "")),
             ),
         );
         deleteBtn.disabled = stations.length <= 1;
         const isOnAir = cur()?.name === activeStation;
         onAirBtn.disabled = isOnAir;
-        onAirBtn.textContent = isOnAir ? t("jellyfin.on_air_title") : t("jellyfin.on_air");
+        onAirBtn.textContent = isOnAir ? t("jellyfin.already_on_air") : t("jellyfin.set_on_air");
     }
 
     function renderEditor() {
@@ -108,74 +109,26 @@ export function createJellyfin(main, ctx) {
     }
 
     function renderQueue() {
-        const terms = fold(search).split(/\s+/).filter(Boolean);
-        const rows = (queue.tracks || []).filter(t => {
-            if (!terms.length) return true;
-            const hay = fold(`${t.title || ""} ${t.artist || ""}`);
-            return terms.every(w => hay.includes(w));
-        });
-
         queueCount.textContent = `${queue.tracks?.length || 0} ${t("local_files.tracks")}`;
 
-        trackList.replaceChildren(
-            ...rows.map(track => {
-                const coverImg = el("img", {
-                    class: "lf-track-cover-img",
-                    src: track.cover_url || "",
-                    alt: "",
-                    loading: "lazy",
-                    "aria-hidden": "true",
-                });
-
-                const coverWrap = el("div", { class: "lf-track-cover" }, [coverImg]);
-
-                if (!track.cover_url) {
-                    coverWrap.dataset.noart = "1";
-                    coverWrap.append(
-                        el("div", { class: "lf-eq" }, [
-                            el("span", { class: "lf-eq-bar" }),
-                            el("span", { class: "lf-eq-bar" }),
-                            el("span", { class: "lf-eq-bar" }),
-                        ])
-                    );
+        renderTrackQueue(trackList, queue, search, {
+            getTitle: track => track.title,
+            getSubtitle: track => track.artist || null,
+            getCoverUrl: track => track.cover_url,
+            getSearchFields: track => [track.title || "", track.artist || ""],
+            onTrackClick: async track => {
+                try {
+                    await api.playJellyfinIndex(track.index);
+                    queue.cursor = track.index;
+                    renderQueue();
+                } catch (e) {
+                    toast(e.message, true);
                 }
-
-                const infoWrap = el("div", { class: "lf-track-info" }, [
-                    el("span", { class: "lf-track-title" }, track.title || t("local_files.unknown_title")),
-                    track.artist ? el("span", { class: "lf-track-folder muted" }, track.artist) : null,
-                ]);
-
-                const li = el("li", {
-                    class: "lf-track" + (track.index === queue.cursor ? " current" : ""),
-                }, [coverWrap, infoWrap]);
-
-                li.addEventListener("click", async () => {
-                    try {
-                        await api.playJellyfinIndex(track.index);
-                        queue.cursor = track.index;
-                        renderQueue();
-                    } catch (e) {
-                        toast(e.message, true);
-                    }
-                });
-
-                return li;
-            }),
-        );
-
-        if (!rows.length) {
-            trackList.append(
-                el("li", { class: "muted" }, terms.length ? t("local_files.no_matches") : t("local_files.queue_empty"))
-            );
-        }
-
-        const current = trackList.querySelector(".lf-track.current");
-        if (current) {
-            trackList.scrollTo({
-                top: current.offsetTop - trackList.offsetTop - trackList.clientHeight / 2 + current.clientHeight / 2,
-                behavior: "smooth"
-            });
-        }
+            },
+            emptyKey: "jellyfin.queue_empty",
+            noMatchesKey: "jellyfin.no_matches",
+            unknownTitleKey: "jellyfin.unknown_title",
+        });
     }
 
     stationSelect.addEventListener("change", () => {
@@ -258,7 +211,7 @@ export function createJellyfin(main, ctx) {
         const isShuffled = shuffleBtn.classList.contains("toggled");
         try {
             await api.shuffleJellyfin(!isShuffled);
-            toast(!isShuffled ? t("yt.shuffle_on") : t("yt.shuffle_off"));
+            toast(!isShuffled ? t("youtube_music.shuffle_on") : t("youtube_music.shuffle_off"));
             await ctx.onSaved?.();
             loadQueue();
         } catch (err) {
@@ -277,7 +230,7 @@ export function createJellyfin(main, ctx) {
 
             activeStation = name;
             renderStations();
-            toast(`${t("jellyfin.on_air_title")}: ${name}`);
+            toast(`${t("jellyfin.on_air")}: ${name}`);
             await ctx.onSaved?.();
             loadQueue();
         } catch (e) {
@@ -311,7 +264,7 @@ export function createJellyfin(main, ctx) {
 
     function refreshTexts() {
         card.querySelector("h2").textContent = t("jellyfin.title");
-        onAirBtn.textContent = cur()?.name === activeStation ? t("jellyfin.on_air_title") : t("jellyfin.on_air");
+        onAirBtn.textContent = cur()?.name === activeStation ? t("jellyfin.already_on_air") : t("jellyfin.set_on_air");
         newBtn.textContent = t("local_files.new");
         renameBtn.textContent = t("local_files.rename");
         deleteBtn.textContent = t("local_files.delete");

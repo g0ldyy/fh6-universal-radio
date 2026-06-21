@@ -23,7 +23,7 @@ const listeners = new Set();
  * Helper to check if a language code is supported
  */
 function isSupported(langCode) {
-  return SUPPORTED.some(lang => lang.code === langCode);
+    return SUPPORTED.some(lang => lang.code === langCode);
 }
 
 /**
@@ -33,45 +33,45 @@ function isSupported(langCode) {
  * 3. Fallback "en"
  */
 function detectLang() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && isSupported(stored)) return stored;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && isSupported(stored)) return stored;
 
-  const browser = navigator.language?.slice(0, 2).toLowerCase();
-  if (browser && isSupported(browser)) return browser;
+    const browser = navigator.language?.slice(0, 2).toLowerCase();
+    if (browser && isSupported(browser)) return browser;
 
-  return FALLBACK;
+    return FALLBACK;
 }
 
 /**
  * Load the translation strings for a given language.
  */
 async function loadStrings(lang) {
-  try {
-    const res = await fetch(`/lang/${lang}.json`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-  } catch (e) {
-    console.warn(`[i18n] Failed to load "${lang}", falling back to "${FALLBACK}".`, e);
-    
-    if (lang !== FALLBACK) {
-      toast(`Language file "${lang}.json" not found. Falling back to English.`, true);
-      return loadStrings(FALLBACK);
+    try {
+        const res = await fetch(`/lang/${lang}.json`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (e) {
+        console.warn(`[i18n] Failed to load "${lang}", falling back to "${FALLBACK}".`, e);
+
+        if (lang !== FALLBACK) {
+            toast(`Language file "${lang}.json" not found. Falling back to English.`, true);
+            return loadStrings(FALLBACK);
+        }
+        return {};
     }
-    return {};
-  }
 }
 
 /**
  * init i18n: detect the language and load the strings.
  */
 export async function initI18n() {
-  currentLang = detectLang();
-  strings = await loadStrings(currentLang);
+    currentLang = detectLang();
+    strings = await loadStrings(currentLang);
 }
 
 /**
  * change the language and reload the page.
- * @param {string} lang — code ISO 639-1 ("en", "fr")
+ * @param {string} lang
  */
 export async function setLang(lang) {
     if (!isSupported(lang)) return;
@@ -80,14 +80,14 @@ export async function setLang(lang) {
     window.location.reload();
 }
 
-/** return the current language code (ISO 639-1) */
+/** return the current language */
 export function getLang() {
-  return currentLang;
+    return currentLang;
 }
 
-/** list of supported languages (ISO 639-1) */
+/** list of supported languages */
 export function getSupportedLangs() {
-  return SUPPORTED;
+    return SUPPORTED;
 }
 
 /**
@@ -96,8 +96,8 @@ export function getSupportedLangs() {
  * @returns {Function} unsubscribe
  */
 export function onLangChange(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+    listeners.add(fn);
+    return () => listeners.delete(fn);
 }
 
 /**
@@ -112,16 +112,16 @@ export function onLangChange(fn) {
  * t("online_radio.tuning", { name: "NRJ" }) // → "Tuning into NRJ…"
  */
 export function t(key, vars) {
-  let str = strings[key];
+    let str = strings[key];
 
-  if (str === undefined) {
-    console.warn(`[i18n] Missing key: "${key}" (lang: ${currentLang})`);
-    str = key; // display the raw key as fallback
-  }
+    if (str === undefined) {
+        console.warn(`[i18n] Missing key: "${key}" (lang: ${currentLang})`);
+        str = key; // display the raw key as fallback
+    }
 
-  if (vars) {
-    str = str.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
-  }
+    if (vars) {
+        str = str.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
+    }
 
-  return str;
+    return str;
 }

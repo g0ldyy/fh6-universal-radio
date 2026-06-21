@@ -117,4 +117,16 @@
     .or-stations {
         max-height: none;
     }
+
+    .yt-stationbar,
+    .lf-stationbar {
+        flex-direction: column;
+        padding-bottom: var(--spacing-12);
+        border-bottom: 1px solid var(--line);
+    }
+
+    .yt-stationbar > *,
+    .lf-stationbar > * {
+        width: 100%;
+    }
 }

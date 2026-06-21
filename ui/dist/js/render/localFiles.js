@@ -3,21 +3,23 @@ import { $, el } from "../dom.js";
 import { icons } from "../icons.js";
 import { toast } from "../toast.js";
 import { t } from "../i18n.js";
+import { renderTrackQueue } from "./playlistQueue.js";
+
 
 const ORDERS = () => [
-	["shuffle", t("lf.order.shuffle")],
-	["album", t("lf.order.album")],
-	["name", t("lf.order.name")],
-	["folder", t("lf.order.folder")],
+	["shuffle", t("local_files.order.shuffle")],
+	["album", t("local_files.order.album")],
+	["name", t("local_files.order.name")],
+	["folder", t("local_files.order.folder")],
 ];
 const GROUPINGS = () => [
-	["folder", t("lf.grouping.folder")],
-	["tags", t("lf.grouping.tags")],
+	["folder", t("local_files.grouping.folder")],
+	["tags", t("local_files.grouping.tags")],
 ];
 const REPEATS = () => [
-	["all", t("lf.repeat.all")],
-	["one", t("lf.repeat.one")],
-	["off", t("lf.repeat.off")],
+	["all", t("local_files.repeat.all")],
+	["one", t("local_files.repeat.one")],
+	["off", t("local_files.repeat.off")],
 ];
 
 // Lowercase + strip diacritics, so "ete" matches "Été" in queue search.
@@ -116,7 +118,7 @@ export function createLocalFiles(main, ctx) {
 	const browser = createBrowser();
 
 	const stationSelect = el("select", { id: "lf-station", "aria-label": "Station preset" });
-	const onAirBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.on_air"));
+	const onAirBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.set_on_air"));
 	const newBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.new"));
 	const renameBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.rename"));
 	const deleteBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.delete"));
@@ -214,13 +216,13 @@ export function createLocalFiles(main, ctx) {
 		stationSelect.replaceChildren(
 			...stations.map((s, i) =>
 				el("option", { value: String(i), selected: i === selected },
-					s.name + (s.name === activeStation ? `  • ${t("local_files.on_air_title")}` : "")),
+					s.name + (s.name === activeStation ? `  • ${t("local_files.on_air")}` : "")),
 			),
 		);
 		deleteBtn.disabled = stations.length <= 1;
 		const isOnAir = cur()?.name === activeStation;
 		onAirBtn.disabled = isOnAir;
-		onAirBtn.textContent = isOnAir ? t("local_files.already_on_air") : t("local_files.on_air");
+		onAirBtn.textContent = isOnAir ? t("local_files.already_on_air") : t("local_files.set_on_air");
 	}
 
 	function renderRoots() {
@@ -321,63 +323,26 @@ export function createLocalFiles(main, ctx) {
 	}
 
 	function renderQueue() {
-		const terms = fold(search).split(/\s+/).filter(Boolean);
-		const rows = (queue.tracks || []).filter(track => {
-			if (!terms.length) return true;
-			const hay = fold(`${track.title} ${track.artist || ""} ${track.folder || ""}`);
-			return terms.every(w => hay.includes(w));
-		});
 		queueCount.textContent = `${queue.tracks?.length || 0} ${t("local_files.tracks")}`;
-		trackList.replaceChildren(
-			...rows.map(track => {
-				const coverImg = el("img", {
-					class: "lf-track-cover-img",
-					src: track.cover_url || "",
-					alt: "",
-					loading: "lazy",
-					"aria-hidden": "true",
-				});
-				const coverWrap = el("div", { class: "lf-track-cover" }, [coverImg]);
-				if (!track.cover_url) {
-					coverWrap.dataset.noart = "1";
-					coverWrap.append(
-						el("div", { class: "lf-eq" }, [
-							el("span", { class: "lf-eq-bar" }),
-							el("span", { class: "lf-eq-bar" }),
-							el("span", { class: "lf-eq-bar" }),
-						])
-					);
+
+		renderTrackQueue(trackList, queue, search, {
+			getTitle: track => track.title || t("local_files.unknown_title"),
+			getSubtitle: track => track.folder || null,
+			getCoverUrl: track => track.cover_url,
+			getSearchFields: track => [track.title || "", track.artist || "", track.folder || ""],
+			onTrackClick: async track => {
+				try {
+					await api.playLocalIndex(track.index);
+					queue.cursor = track.index;
+					renderQueue();
+				} catch (e) {
+					toast(e.message, true);
 				}
-
-				const infoWrap = el("div", { class: "lf-track-info" }, [
-					el("span", { class: "lf-track-title" }, track.title || t("local_files.unknown_title")),
-					track.folder ? el("span", { class: "lf-track-folder muted" }, track.folder) : null,
-				]);
-
-				const li = el("li", {
-					class: "lf-track" + (track.index === queue.cursor ? " current" : ""),
-				}, [coverWrap, infoWrap]);
-
-				li.addEventListener("click", async () => {
-					try {
-						await api.playLocalIndex(track.index);
-						queue.cursor = track.index;
-						renderQueue();
-					} catch (e) {
-						toast(e.message, true);
-					}
-				});
-				return li;
-			}),
-		);
-		if (!rows.length) {
-			trackList.append(
-				el("li", { class: "muted" }, terms.length ? t("local_files.no_matches") : t("local_files.queue_empty")),
-			);
-		}
-
-		const current = trackList.querySelector(".lf-track.current");
-		if (current) trackList.scrollTo({ top: current.offsetTop - trackList.offsetTop - trackList.clientHeight / 2 + current.clientHeight / 2, behavior: "smooth" });
+			},
+			emptyKey: "local_files.queue_empty",
+			noMatchesKey: "local_files.no_matches",
+			unknownTitleKey: "local_files.unknown_title",
+		});
 	}
 
 	// --- events ---------------------------------------------------------------
