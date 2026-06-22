@@ -38,6 +38,7 @@ public:
     void next() override;
     void previous() override;
     bool skip_next() override;
+    bool restart_current() override;
     void pump(RingBuffer& ring) override;
     void on_radio_audible(bool audible) override;
     void set_config(ExternalAudioConfig cfg);

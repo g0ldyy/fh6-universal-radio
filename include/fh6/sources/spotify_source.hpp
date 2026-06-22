@@ -33,6 +33,7 @@ public:
     void stop() override;
     void next() override; // next/prev are handled by OS media keys
     void previous() override;
+    bool restart_current() override;
     void pump(RingBuffer& ring) override;
 
     TrackInfo current_track() const override;

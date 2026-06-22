@@ -586,6 +586,11 @@ bool ExternalAudioSource::skip_next() {
     return true; 
 }
 
+bool ExternalAudioSource::restart_current() {
+    previous();
+    return true;
+}
+
 void ExternalAudioSource::pump(RingBuffer& ring) {
     if (state_.load(std::memory_order_acquire) != PlaybackState::playing) return;
 

@@ -84,16 +84,37 @@ export function createYoutubeMusic(main, ctx) {
         renderQueue();
     }
 
-    function renderStations() {
-        stationSelect.replaceChildren(
-            ...stations.map((s, i) =>
-                el("option", { value: String(i), selected: i === selected },
-                    s.name + (s.name === activeStation ? `  • ${t("youtube_music.on_air")}` : "")),
-            ),
-        );
-        deleteBtn.disabled = stations.length <= 1;
-        onAirBtn.disabled = cur()?.name === activeStation;
-        onAirBtn.textContent = cur()?.name === activeStation ? t("youtube_music.already_on_air") : t("youtube_music.set_on_air");
+  let lastQueueSize = -1;
+  let lastQueueCursor = -1;
+
+  function render() {
+    const state = ctx.getState();
+    const isActive = state?.sources?.active === "youtube_music";
+    card.hidden = !isActive;
+    if (!isActive) return;
+    load();
+
+    const ytDetails = state?.sources?.available?.find(s => s.name === "youtube_music")?.details;
+
+    const liveActiveStation = ytDetails?.active_station;
+    if (loaded && liveActiveStation && liveActiveStation !== activeStation) {
+      activeStation = liveActiveStation;
+      selected = Math.max(0, stations.findIndex(s => s.name === activeStation));
+      renderEditor();
+      loadQueue();
+    }
+    
+    const shuffleOn = !!ytDetails?.shuffle;
+    shuffleBtn.classList.toggle("toggled", shuffleOn);
+    shuffleBtn.setAttribute("aria-pressed", String(shuffleOn));
+
+    // refetch the queue if the track count changes (rescan/activate) or cursor moves
+    const qs = ytDetails?.queue_size ?? -1;
+    const qc = ytDetails?.queue_cursor ?? -1;
+    if (loaded && (qs !== lastQueueSize || qc !== lastQueueCursor)) {
+      lastQueueSize = qs;
+      lastQueueCursor = qc;
+      loadQueue();
     }
 
     function renderEditor() {

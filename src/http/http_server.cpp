@@ -285,6 +285,10 @@ json config_to_json(const Config& c) {
              {"pad_source", c.playback.hotkeys.pad_source},
              {"kb_playpause", c.playback.hotkeys.kb_playpause},
              {"pad_playpause", c.playback.hotkeys.pad_playpause},
+             {"kb_prev", c.playback.hotkeys.kb_prev},
+             {"pad_prev", c.playback.hotkeys.pad_prev},
+             {"kb_next_station", c.playback.hotkeys.kb_next_station},
+             {"pad_next_station", c.playback.hotkeys.pad_next_station},
          }},
     };
 }
@@ -451,6 +455,14 @@ void apply_patch(Config& c, const json& j) {
             pull(*it, "kb_playpause", c.playback.hotkeys.kb_playpause);
         c.playback.hotkeys.pad_playpause = 
             pull(*it, "pad_playpause", c.playback.hotkeys.pad_playpause);
+        c.playback.hotkeys.kb_prev = 
+            pull(*it, "kb_prev", c.playback.hotkeys.kb_prev);
+        c.playback.hotkeys.pad_prev = 
+            pull(*it, "pad_prev", c.playback.hotkeys.pad_prev);
+        c.playback.hotkeys.kb_next_station = 
+            pull(*it, "kb_next_station", c.playback.hotkeys.kb_next_station);
+        c.playback.hotkeys.pad_next_station = 
+            pull(*it, "pad_next_station", c.playback.hotkeys.pad_next_station);
     }
 }
 

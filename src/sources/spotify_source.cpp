@@ -132,7 +132,7 @@ bool SpotifySource::initialize() {
     std::filesystem::create_directories(cfg_.cache_dir, ec);
     if (ec) {
         log::warn("[spotify] cannot create cache dir {} ({})", cfg_.cache_dir.string(),
-                  ec.message());
+                ec.message());
         return false;
     }
     return true;
@@ -164,9 +164,9 @@ AuthState SpotifySource::auth_state() const noexcept {
 
 std::string SpotifySource::auth_instructions() const {
     return "1. Ensure your PC and phone are on the same Wi-Fi network.\n"
-           "2. Open the Spotify app on your phone.\n"
-           "3. Tap the 'Devices' icon and select 'FH6 Universal Radio'.\n"
-           "Once connected, credentials will automatically save to the cache folder.";
+        "2. Open the Spotify app on your phone.\n"
+        "3. Tap the 'Devices' icon and select 'FH6 Universal Radio'.\n"
+        "Once connected, credentials will automatically save to the cache folder.";
 }
 
 void SpotifySource::start_pipe_locked() {
@@ -177,18 +177,17 @@ void SpotifySource::start_pipe_locked() {
     const auto spot = cfg_.librespot_path.empty() ? L"librespot" : cfg_.librespot_path.wstring();
     const std::wstring ff = ffmpeg_path_.empty() ? std::wstring{L"ffmpeg"} : ffmpeg_path_.wstring();
     const auto cache      = cfg_.cache_dir.wstring();
-    const auto tmp_dir    = (cfg_.cache_dir / L"tmp").wstring();
 
     std::wstring spot_cmd = quote(spot) + L" --name \"FH6 Universal Radio\"" + L" --bitrate 320" +
                             L" --backend pipe" + L" --initial-volume 100" + L" --cache " +
-                            quote(cache) + L" --tmp " + quote(tmp_dir) + L" --disable-audio-cache";
+                            quote(cache) + L" --disable-audio-cache";
 
     // librespot defaults to 44100Hz s16le. We must resample to 48000Hz for FH6.
     // added flags to disable FFmpeg internal buffering for perfect UI sync
     std::wstring ff_cmd = quote(ff) + L" -loglevel error" + L" -fflags nobuffer -flags low_delay" +
-                          L" -blocksize 4096" + // force micro-block processing
-                          L" -f s16le -ar 44100 -ac 2 -i pipe:0" + L" -flush_packets 1" +
-                          L" -f s16le -acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
+                        L" -blocksize 4096" + // force micro-block processing
+                        L" -f s16le -ar 44100 -ac 2 -i pipe:0" + L" -flush_packets 1" +
+                        L" -f s16le -acodec pcm_s16le -ar 48000 -ac 2 pipe:1";
 
     // request debug logs for the player module to intercept Seek events & metadata
     SetEnvironmentVariableW(L"RUST_LOG",
@@ -286,8 +285,8 @@ void SpotifySource::start_pipe_locked() {
 
     if (!pipe->proc_spot) {
         log::warn("[spotify] failed to launch librespot -- {} (check {})",
-                  describe_launch_failure(std::wstring{spot}, ec_spot, !cfg_.librespot_path.empty()),
-                  stderr_log_path().string());
+                describe_launch_failure(std::wstring{spot}, ec_spot, !cfg_.librespot_path.empty()),
+                stderr_log_path().string());
         bail();
         return;
     }
@@ -312,8 +311,8 @@ void SpotifySource::start_pipe_locked() {
 
     if (!pipe->proc_ff) {
         log::warn("[spotify] failed to launch ffmpeg -- {} (check {})",
-                  describe_launch_failure(std::wstring{ff}, ec_ff, !ffmpeg_path_.empty()),
-                  stderr_log_path().string());
+                describe_launch_failure(std::wstring{ff}, ec_ff, !ffmpeg_path_.empty()),
+                stderr_log_path().string());
         bail(); // clean up unassigned pipe handles
         return;
     }
@@ -371,6 +370,11 @@ void SpotifySource::transport_skip(bool forward) {
 void SpotifySource::next() { transport_skip(true); }
 void SpotifySource::previous() { transport_skip(false); }
 
+bool SpotifySource::restart_current() {
+    previous();
+    return true;
+}
+
 TrackInfo SpotifySource::current_track() const {
     std::scoped_lock lk{mu_};
     return info_;
@@ -387,7 +391,7 @@ void SpotifySource::pump(RingBuffer& ring) {
 
     // Adopt a track's metadata into the now-playing info
     auto apply_info = [&](const std::string& title, const std::string& artist,
-                          const std::string& album, uint64_t dur, const std::string& cover_url) {
+                        const std::string& album, uint64_t dur, const std::string& cover_url) {
         info_.title          = title;
         info_.artist         = artist;
         info_.album          = album;
@@ -404,8 +408,8 @@ void SpotifySource::pump(RingBuffer& ring) {
 
         // process a maximum of 16KB of logs per pump cycle
         while (safety++ < 16 &&
-               PeekNamedPipe(p->err_pipe, nullptr, 0, nullptr, &err_avail, nullptr) &&
-               err_avail > 0) {
+            PeekNamedPipe(p->err_pipe, nullptr, 0, nullptr, &err_avail, nullptr) &&
+            err_avail > 0) {
             char buf[1024];
             DWORD to_read = std::min<DWORD>(err_avail, (DWORD)sizeof(buf));
             DWORD got     = 0;
@@ -436,7 +440,7 @@ void SpotifySource::pump(RingBuffer& ring) {
                     std::string out_line = line + "\r\n";
                     DWORD w              = 0;
                     WriteFile(p->log_file, out_line.data(), static_cast<DWORD>(out_line.size()), &w,
-                              nullptr);
+                            nullptr);
                 }
 
                 if (is_trace_start &&
@@ -491,7 +495,7 @@ void SpotifySource::pump(RingBuffer& ring) {
                             }
                             p->next_meta_cover_bytes.clear(); // retry the next image on a bad parse
                         } else if (size_t d = line.find_first_of("0123456789");
-                                   d != std::string::npos) {
+                                d != std::string::npos) {
                             try {
                                 int val = std::stoi(line.substr(d));
                                 if (val >= 0 && val <= 255)
@@ -511,7 +515,7 @@ void SpotifySource::pump(RingBuffer& ring) {
                                 p->next_meta_title.empty()) {
                                 p->next_meta_title = val;
                             } else if (p->meta_context == Pipe::MetaContext::Album &&
-                                       p->next_meta_album.empty()) {
+                                    p->next_meta_album.empty()) {
                                 p->next_meta_album = val;
                             } else if (p->meta_context == Pipe::MetaContext::Artist) {
                                 // librespot repeats artists across track/album; de-dup whole names
@@ -580,7 +584,7 @@ void SpotifySource::pump(RingBuffer& ring) {
                         // First track, an explicit skip, or an in-app skip: apply at once.
                         if (p->awaiting_first_track || p->force_next_metadata || is_external_skip) {
                             apply_info(final_title, final_artist, final_album, parsed_duration,
-                                       final_cover);
+                                    final_cover);
                             p->bytes_consumed       = 0;
                             p->awaiting_first_track = false;
                             p->force_next_metadata  = false;
@@ -617,7 +621,7 @@ void SpotifySource::pump(RingBuffer& ring) {
             // the user manually skipped during the final 30 seconds of the song
             if (p->has_pending) {
                 apply_info(p->pending_title, p->pending_artist, p->pending_album,
-                           p->pending_duration_ms, p->pending_cover_url);
+                        p->pending_duration_ms, p->pending_cover_url);
                 p->bytes_consumed = 0;
             }
             // catch-all for extreme network lag / dead stream (stall for > 800ms)
@@ -634,7 +638,7 @@ void SpotifySource::pump(RingBuffer& ring) {
         uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
         if (p->bytes_consumed >= track_bytes) {
             apply_info(p->pending_title, p->pending_artist, p->pending_album,
-                       p->pending_duration_ms, p->pending_cover_url);
+                    p->pending_duration_ms, p->pending_cover_url);
             // carry the remainder so the timer stays exact
             p->bytes_consumed -= track_bytes;
             p->stall_ticks     = 0;

@@ -88,17 +88,36 @@ export function createJellyfin(main, ctx) {
         renderQueue();
     }
 
-    function renderStations() {
-        stationSelect.replaceChildren(
-            ...stations.map((s, i) =>
-                el("option", { value: String(i), selected: i === selected },
-                    s.name + (s.name === activeStation ? `  • ${t("jellyfin.on_air")}` : "")),
-            ),
-        );
-        deleteBtn.disabled = stations.length <= 1;
-        const isOnAir = cur()?.name === activeStation;
-        onAirBtn.disabled = isOnAir;
-        onAirBtn.textContent = isOnAir ? t("jellyfin.already_on_air") : t("jellyfin.set_on_air");
+  let lastQueueSize = -1;
+  let lastQueueCursor = -1;
+
+  function render() {
+    const state = ctx.getState();
+    const isActive = state?.sources?.active === "jellyfin";
+    card.hidden = !isActive;
+    if (!isActive) return;
+    load();
+
+    const jfDetails = state?.sources?.available?.find(s => s.name === "jellyfin")?.details;
+
+    const liveActiveStation = jfDetails?.active_station;
+    if (loaded && liveActiveStation && liveActiveStation !== activeStation) {
+      activeStation = liveActiveStation;
+      selected = Math.max(0, stations.findIndex(s => s.name === activeStation));
+      renderEditor();
+      loadQueue();
+    }
+    
+    const shuffleOn = !!jfDetails?.shuffle;
+    shuffleBtn.classList.toggle("toggled", shuffleOn);
+    shuffleBtn.setAttribute("aria-pressed", String(shuffleOn));
+
+    const qs = jfDetails?.queue_size ?? -1;
+    const qc = jfDetails?.queue_cursor ?? -1;
+    if (loaded && (qs !== lastQueueSize || qc !== lastQueueCursor)) {
+      lastQueueSize = qs;
+      lastQueueCursor = qc;
+      loadQueue();
     }
 
     function renderEditor() {

@@ -345,50 +345,37 @@ export function createLocalFiles(main, ctx) {
 		});
 	}
 
-	// --- events ---------------------------------------------------------------
-	stationSelect.addEventListener("change", () => {
-		selected = parseInt(stationSelect.value, 10) || 0;
-		renderEditor();
-	});
-	newBtn.addEventListener("click", () => {
-		let name = "New Station";
-		let n = 2;
-		while (stations.some(s => s.name === name)) name = `New Station ${n++}`;
-		stations.push(newStation(name));
-		selected = stations.length - 1;
-		renderEditor();
-	});
-	renameBtn.addEventListener("click", () => {
-		const s = cur();
-		const name = window.prompt(t("local_files.station_name"), s.name)?.trim();
-		if (!name || name === s.name) return;
-		if (stations.some(x => x !== s && x.name === name)) return toast("A station with that name exists", true);
-		if (s.name === activeStation) activeStation = name;
-		s.name = name;
-		renderEditor();
-	});
-	deleteBtn.addEventListener("click", () => {
-		if (stations.length <= 1) return;
-		const wasActive = cur().name === activeStation;
-		stations.splice(selected, 1);
-		selected = Math.min(selected, stations.length - 1);
-		if (wasActive) activeStation = stations[0].name;
-		renderEditor();
-	});
-	addFolderBtn.addEventListener("click", () => {
-		browser.open(path => {
-			const s = cur();
-			if (!s.roots.some(r => norm(r) === norm(path))) s.roots.push(path);
-			renderRoots();
-			renderTree();
-		});
-	});
-	orderSelect.addEventListener("change", () => {
-		cur().order = orderSelect.value;
-		renderModes();
-	});
-	groupingSelect.addEventListener("change", () => (cur().grouping = groupingSelect.value));
-	repeatSelect.addEventListener("change", () => (cur().repeat = repeatSelect.value));
+  // --- lifecycle ------------------------------------------------------------
+  let lastTrackCount = -1;
+  let lastIndexVersion = -1;
+  let lastTrackSig = ""; 
+  function render() {
+    const state = ctx.getState();
+    const isActive = state?.sources?.active === "local_files";
+    card.hidden = !isActive;
+    if (!isActive) return;
+    load();
+    // Refresh the queue (titles, artists, current-track highlight) when the
+    // track count changes (rescan) or the metadata index advances.
+    const lf = state?.sources?.available?.find(s => s.name === "local_files");
+
+    const liveActiveStation = lf?.details?.active_station;
+    if (loaded && liveActiveStation && liveActiveStation !== activeStation) {
+      activeStation = liveActiveStation;
+      selected = Math.max(0, stations.findIndex(s => s.name === activeStation));
+      renderEditor();
+    }
+
+    const tc = lf?.details?.track_count ?? -1;
+    const iv = lf?.details?.index_version ?? -1;
+    const currentTrackSig = state?.track?.title + "|" + state?.track?.artist;
+    if (loaded && (tc !== lastTrackCount || iv !== lastIndexVersion || currentTrackSig !== lastTrackSig)) {
+      lastTrackCount = tc;
+      lastIndexVersion = iv;
+      lastTrackSig = currentTrackSig; // update the signature
+      loadQueue();
+    }
+  }
 
 	saveBtn.addEventListener("click", async () => {
 		try {

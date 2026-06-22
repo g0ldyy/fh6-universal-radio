@@ -116,15 +116,15 @@ export const SCHEMA = () => [
         ],
     ],
     [
-        "hotkeys",
-        t("hotkeys.title"),
-        [
-            ["kb_playpause", t("hotkeys.kb_playpause"), "select-kv", KB_KEYS()],
-            ["pad_playpause", t("hotkeys.pad_playpause"), "select-kv", PAD_BUTTONS()],
-            ["kb_skip", t("hotkeys.kb_skip"), "select-kv", KB_KEYS()],
-            ["pad_skip", t("hotkeys.pad_skip"), "select-kv", PAD_BUTTONS()],
-            ["kb_source", t("hotkeys.kb_source"), "select-kv", KB_KEYS()],
-            ["pad_source", t("hotkeys.pad_source"), "select-kv", PAD_BUTTONS()],
-        ]
+      ["kb_playpause", "Play / Pause (Keyboard)", "keybind-kb", KB_KEYS],
+      ["pad_playpause", "Play / Pause (Controller)", "keybind-pad", PAD_BUTTONS],
+      ["kb_skip", "Next Track (Keyboard)", "keybind-kb", KB_KEYS],
+      ["pad_skip", "Next Track (Controller)", "keybind-pad", PAD_BUTTONS],
+      ["kb_prev", "Previous Track (Keyboard)", "keybind-kb", KB_KEYS],
+      ["pad_prev", "Previous Track (Controller)", "keybind-pad", PAD_BUTTONS],
+      ["kb_next_station", "Cycle Station/Playlist (Keyboard)", "keybind-kb", KB_KEYS],
+      ["pad_next_station", "Cycle Station/Playlist (Controller)", "keybind-pad", PAD_BUTTONS],
+      ["kb_source", "Switch Source (Keyboard)", "keybind-kb", KB_KEYS],
+      ["pad_source", "Switch Source (Controller)", "keybind-pad", PAD_BUTTONS],
     ]
 ];

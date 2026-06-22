@@ -250,11 +250,17 @@ Config load_config(const std::filesystem::path& path) {
     cfg.playback.hotkeys.pad_source = pick<int>(hk, "pad_source", cfg.playback.hotkeys.pad_source);
     cfg.playback.hotkeys.kb_playpause = pick<int>(hk, "kb_playpause", cfg.playback.hotkeys.kb_playpause);
     cfg.playback.hotkeys.pad_playpause = pick<int>(hk, "pad_playpause", cfg.playback.hotkeys.pad_playpause);
+    cfg.playback.hotkeys.kb_prev = pick<int>(hk, "kb_prev", cfg.playback.hotkeys.kb_prev);
+    cfg.playback.hotkeys.pad_prev = pick<int>(hk, "pad_prev", cfg.playback.hotkeys.pad_prev);
+    cfg.playback.hotkeys.kb_next_station = pick<int>(hk, "kb_next_station", cfg.playback.hotkeys.kb_next_station);
+    cfg.playback.hotkeys.pad_next_station = pick<int>(hk, "pad_next_station", cfg.playback.hotkeys.pad_next_station);
 
     const bool any_hotkey_bound =
         cfg.playback.hotkeys.kb_skip || cfg.playback.hotkeys.pad_skip ||
         cfg.playback.hotkeys.kb_source || cfg.playback.hotkeys.pad_source ||
-        cfg.playback.hotkeys.kb_playpause || cfg.playback.hotkeys.pad_playpause;
+        cfg.playback.hotkeys.kb_playpause || cfg.playback.hotkeys.pad_playpause ||
+        cfg.playback.hotkeys.kb_prev || cfg.playback.hotkeys.pad_prev ||
+        cfg.playback.hotkeys.kb_next_station || cfg.playback.hotkeys.pad_next_station;
     if (legacy_quick_station_skip && !any_hotkey_bound) {
         cfg.playback.hotkeys.kb_skip = 0x9999; // legacy quick-skip sentinel
         cfg.playback.hotkeys.pad_skip = 0x9999; // legacy quick-skip sentinel
@@ -463,6 +469,10 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("pad_source", (int64_t)cfg.playback.hotkeys.pad_source);
     e.kv("kb_playpause", (int64_t)cfg.playback.hotkeys.kb_playpause);
     e.kv("pad_playpause", (int64_t)cfg.playback.hotkeys.pad_playpause);
+    e.kv("kb_prev", (int64_t)cfg.playback.hotkeys.kb_prev);
+    e.kv("pad_prev", (int64_t)cfg.playback.hotkeys.pad_prev);
+    e.kv("kb_next_station", (int64_t)cfg.playback.hotkeys.kb_next_station);
+    e.kv("pad_next_station", (int64_t)cfg.playback.hotkeys.pad_next_station);
 
     auto tmp  = path;
     tmp      += ".tmp";

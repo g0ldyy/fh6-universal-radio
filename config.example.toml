@@ -100,7 +100,6 @@ equalizer_bands      = [0.0, 0.0, 0.0, 0.0, 0.0]   # 60/250/1000/4000/12000 Hz, 
 force_stereo_audio   = true        # off => mono (avoids metallic phase-cancellation on the 3D radio channel)
 prebuffer_next_track = true        # pre-spawn the next track's pipeline so transitions skip the "(loading)" gap
 
-
 [hotkeys]
 kb_skip       = 0           # keyboard virtual key code to skip track (0 = unbound)
 pad_skip      = 0           # XInput controller button mask to skip track (0 = unbound)
@@ -108,3 +107,7 @@ kb_source     = 0           # keyboard virtual key code to switch sources (0 = u
 pad_source    = 0           # XInput controller button mask to switch sources (0 = unbound)
 kb_playpause  = 0           # keyboard virtual key code to play track (0 = unbound)
 pad_playpause = 0           # XInput controller button mask to play track (0 = unbound)
+kb_prev       = 0           # keyboard virtual key code to go to previous track (0 = unbound)
+pad_prev      = 0           # XInput controller button mask to go to previous track (0 = unbound)
+kb_next_station = 0         # keyboard virtual key code to change active station/playlist (0 = unbound)
+pad_next_station = 0        # XInput controller button mask to change active station/playlist (0 = unbound)
