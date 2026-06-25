@@ -20,7 +20,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build librespot
-        run: cargo install librespot --version ${{ env.LIBRESPOT_VERSION }} --locked --root staging
+        # --no-default-features drops the ALSA audio backend (unused; we run
+        # with --backend pipe) and swaps native-TLS for rustls with bundled
+        # webpki roots, which fixes TLS handshakes for users running under
+        # Wine/Proton on Linux. with-libmdns keeps the default Zeroconf discovery.
+        run: cargo install librespot --version ${{ env.LIBRESPOT_VERSION }} --no-default-features --features "rustls-tls-webpki-roots,with-libmdns" --locked --root staging
 
       - name: Stage binary
         run: copy staging\bin\librespot.exe librespot.exe
