@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Copies the built mod into a Forza Horizon 6 install. Run after build.sh
-# (and fetch-media.sh for the radio-station overlay).
 #
-#   $ scripts/install.sh /path/to/ForzaHorizon6 [--skip-media]
 #
 # On Linux the path is typically inside a Proton prefix, e.g.
 #   ~/.steam/steam/steamapps/common/ForzaHorizon6
@@ -13,11 +11,9 @@
 
 set -euo pipefail
 
-game=${1:?Usage: $0 <game-dir> [--skip-media]}
-skip_media=${2:-}
+game=${1:?Usage: $0 <game-dir>}
 root=$(cd "$(dirname "$0")/.." && pwd)
 dist=$root/dist
-mdir=$dist/media
 
 [ -f "$dist/version.dll" ] || { echo "dist/version.dll not found, run scripts/build.sh first." >&2; exit 1; }
 [ -d "$game" ]             || { echo "Game directory not found: $game" >&2; exit 1; }
@@ -47,16 +43,6 @@ fi
 
 if [ -f "$dist/fh6-radio/fh6-radio-worker.exe" ]; then
     backup_and_copy "$dist/fh6-radio/fh6-radio-worker.exe" "$game/fh6-radio/fh6-radio-worker.exe"
-fi
-
-if [ "$skip_media" != "--skip-media" ]; then
-    if [ -d "$mdir" ]; then
-        while IFS= read -r -d '' f; do
-            backup_and_copy "$f" "$game/media/${f#"$mdir/"}"
-        done < <(find "$mdir" -type f -print0)
-    else
-        printf '\033[33mdist/media/ missing, radio station overlay not installed. Run scripts/fetch-media.sh first.\033[0m\n' >&2
-    fi
 fi
 
 printf '\n\033[32mDone. Launch the game, set Audio -> Radio DJ = Off, Streamer Mode = On.\033[0m\n'

@@ -84,7 +84,7 @@ When Vanilla Radio is active, switching between FH6's built-in stations works no
 
 ## Build from source
 
-The output is always a Windows `version.dll`. You also need the radio-station media overlay from any existing radio mod ZIP. It's mod-agnostic, but the assets are modified copies of game files so we don't ship them.
+The output is always a Windows `version.dll`.
 
 ### Windows
 
@@ -93,7 +93,6 @@ Requires **Visual Studio 2022+** with the *Desktop development with C++* workloa
 ```powershell
 .\scripts\get-deps.ps1                                                  # one-time: header-only deps
 .\scripts\build.ps1                                                     # compile + stage dist\
-.\scripts\fetch-media.ps1 -Source "C:\path\to\radio-mod.zip"            # radio-station overlay
 .\scripts\install.ps1 -GameDir "C:\XboxGames\Forza Horizon 6\Content"   # copy into game
 ```
 
@@ -104,7 +103,6 @@ Requires **CMake** and **llvm-mingw**. On Arch: `sudo pacman -S llvm-mingw cmake
 ```bash
 ./scripts/get-deps.sh                                                   # one-time: header-only deps
 ./scripts/build.sh                                                      # compile + stage dist/
-./scripts/fetch-media.sh /path/to/radio-mod.zip                         # radio-station overlay
 ./scripts/install.sh ~/.steam/steam/steamapps/common/ForzaHorizon6      # copy into game (Proton prefix)
 ```
 
@@ -112,7 +110,6 @@ Requires **CMake** and **llvm-mingw**. On Arch: `sudo pacman -S llvm-mingw cmake
 
 | Symptom | Fix |
 |---|---|
-| Dashboard says **bridge offline** | Media overlay not installed. Re-run `install.ps1` with `dist\media\` present. |
 | New radio station doesn't show in-game | **Audio > Streamer Mode** is off. Turn it on, restart the game. |
 | Local files don't play | The active station has no folders, or its folders only hold unsupported formats. Add a folder in the dashboard's Local Files card. |
 | YouTube Music produces no audio | Check `%TEMP%\fh6-stderr.log` (helper-process stderr lands there). Usually expired cookies, or geo/format restrictions. |

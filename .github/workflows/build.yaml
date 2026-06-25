@@ -8,8 +8,6 @@ jobs:
     defaults:
       run:
         shell: pwsh
-    env:
-      MEDIA_ZIP_URL: ${{ secrets.MEDIA_ZIP_URL }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -17,13 +15,6 @@ jobs:
 
       - name: Build distribution into dist/
         run: .\scripts\build.ps1
-
-      - name: Fetch radio-station media overlay
-        if: ${{ env.MEDIA_ZIP_URL != '' }}
-        run: |
-          Invoke-WebRequest -UseBasicParsing -Uri $env:MEDIA_ZIP_URL -OutFile radio-mod.zip
-          .\scripts\fetch-media.ps1 -Source (Resolve-Path radio-mod.zip).Path
-          Remove-Item radio-mod.zip
 
       - name: Upload distribution
         uses: actions/upload-artifact@v7
