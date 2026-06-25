@@ -27,6 +27,7 @@ public:
 
     // Settings drawer hot-update; new paths apply on the next pipe start.
     void set_config(SpotifyConfig cfg, std::filesystem::path ffmpeg_path);
+    void set_playback_options(const PlaybackConfig& opts) override;
 
     void play() override;
     void pause() override;
@@ -53,6 +54,7 @@ private:
     void stop_pipe_locked();           // mu_ held
     void transport_skip(bool forward); // shared next()/previous() body
     bool cache_exists() const;
+    bool volume_normalization_ = false;
 
     SpotifyConfig cfg_;
     std::filesystem::path ffmpeg_path_;

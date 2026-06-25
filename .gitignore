@@ -4,6 +4,7 @@ build/
 
 # Downloaded by scripts\get-deps.ps1
 third_party/
+include/stb
 
 # Dependency directories
 node_modules/

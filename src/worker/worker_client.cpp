@@ -242,6 +242,25 @@ std::string WorkerClient::run_capture(const std::wstring& cmd, bool capture_stde
 }
 
 // ---------------------------------------------------------------------------
+// Synchronous download via worker
+// ---------------------------------------------------------------------------
+
+bool WorkerClient::download_file(const std::string& url, const std::string& dest_path) {
+    json req = {{"op", "download"}, {"url", url}, {"dest_path", dest_path}};
+    auto resp_str = request(req.dump());
+    if (resp_str.empty()) return false;
+
+    try {
+        auto resp = json::parse(resp_str);
+        if (resp.value("ok", false)) return true;
+        log::warn("[worker] download failed: {}", resp.value("error", "unknown"));
+    } catch (...) {
+        log::warn("[worker] malformed download response");
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------------------
 // Asynchronous pipeline spawn
 // ---------------------------------------------------------------------------
 

@@ -40,6 +40,9 @@ public:
     /// @return The captured output, or empty string on failure.
     std::string run_capture(const std::wstring& cmd, bool capture_stderr = false);
 
+    /// Ask the worker to download a file using WinHTTP and save it to dest_path
+    bool download_file(const std::string& url, const std::string& dest_path);
+
     // ---- asynchronous pipeline operations --------------------------------
 
     struct SpawnResult {

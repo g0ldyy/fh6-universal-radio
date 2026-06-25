@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(fh6_universal_radio LANGUAGES CXX)
+project(fh6_universal_radio LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,6 +83,9 @@ target_include_directories(version PRIVATE
     third_party/nlohmann
     third_party/toml11
     third_party/miniaudio
+    third_party/stb
+    third_party/minhook/include
+    third_party/kiero
 )
 
 target_link_libraries(version PRIVATE ws2_32 bcrypt psapi winhttp ole32 uuid ksuser runtimeobject)
@@ -98,6 +101,17 @@ add_executable(fh6-radio-worker
     src/worker/worker_main.cpp
     src/subprocess.cpp
     src/log.cpp
+    src/net/http_get.cpp
+)
+
+target_sources(version PRIVATE
+    third_party/minhook/src/hook.c
+    third_party/minhook/src/trampoline.c
+    third_party/minhook/src/buffer.c
+    third_party/minhook/src/hde/hde64.c
+    third_party/minhook/src/hde/hde32.c
+    third_party/kiero/kiero.cpp
+    src/fmod/texture_injector.cpp
 )
 
 target_include_directories(fh6-radio-worker PRIVATE
@@ -105,7 +119,7 @@ target_include_directories(fh6-radio-worker PRIVATE
     third_party/nlohmann
 )
 
-target_link_libraries(fh6-radio-worker PRIVATE advapi32)
+target_link_libraries(fh6-radio-worker PRIVATE advapi32 ws2_32 winhttp)
 
 set_target_properties(fh6-radio-worker PROPERTIES
     OUTPUT_NAME fh6-radio-worker

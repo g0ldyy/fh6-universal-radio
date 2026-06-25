@@ -59,10 +59,20 @@ ControlLoop::~ControlLoop() {
 void ControlLoop::run(const std::stop_token& tok) {
     log::info("[ctrl] control loop started");
 
+    int discovery_attempts = 0;
+
     while (!tok.stop_requested()) {
         if (acquire_target()) {
             break;
         }
+        
+        // every 6 misses (~30 seconds), automatically send the off->on station toggle
+        // to force the game to instantiate the missing FMOD radio structures
+        if (++discovery_attempts % 6 == 0) {
+            log::info("[ctrl] initial discovery stalled; auto-cycling station to force initialization...");
+            game_state_.retune_streamer_station();
+        }
+
         for (auto t = std::chrono::steady_clock::now() + kDiscoveryRetry;
              std::chrono::steady_clock::now() < t && !tok.stop_requested();)
             std::this_thread::sleep_for(kTick);
@@ -75,6 +85,7 @@ void ControlLoop::run(const std::stop_token& tok) {
     // memory writes off the hot path.
     constexpr int kMetaEveryNTicks = 12; // ~240 ms at the 20 ms tick rate.
     int meta_tick                  = 0;
+    bool texture_was_processing    = false; // track texture state for fast sync
 
     auto next = std::chrono::steady_clock::now();
     while (!tok.stop_requested()) {
@@ -91,11 +102,17 @@ void ControlLoop::run(const std::stop_token& tok) {
             bridge_.set_mode(DSPMode::pcm);
         }
 
+        // fast-sync check: if a texture was downloading/converting and just finished,
+        // force an immediate metadata push instead of waiting for the next 240ms tick
+        bool texture_is_processing = TextureInjector::instance().is_processing();
+        bool texture_just_finished = texture_was_processing && !texture_is_processing;
+        texture_was_processing     = texture_is_processing;
+
         // Skip refreshing while the station is silenced (pause menu, rewind):
         // the HUD isn't shown, and freezing the value lets the dedup in
         // MetadataInjector swallow the resume so the game doesn't re-pop its
         // now-playing banner on every pause/rewind.
-        if (++meta_tick >= kMetaEveryNTicks) {
+        if (++meta_tick >= kMetaEveryNTicks || texture_just_finished) {
             meta_tick = 0;
             if (radio_audible_) {
                 // re-poll the discovery cache to grab the freshest SampleProperties body
@@ -560,9 +577,13 @@ void ControlLoop::run_playback_state_machines(time_point now) noexcept {
 }
 
 void ControlLoop::push_metadata() noexcept {
+    static std::string current_artwork_url{};
+    static bool has_current_artwork_url = false;
     auto* a = bridge_.manager().active();
     if (!a) {
         meta_.update("FH6 Universal Radio", "Idle");
+        current_artwork_url.clear();
+        has_current_artwork_url = false;
         return;
     }
 
@@ -571,6 +592,8 @@ void ControlLoop::push_metadata() noexcept {
     // it will overwrite whatever native metadata the game wrote in the meantime
     if (a->name() == "vanilla_radio") {
         meta_.reset_cache();
+        current_artwork_url.clear();
+        has_current_artwork_url = false;
         return;
     }
 
@@ -580,6 +603,20 @@ void ControlLoop::push_metadata() noexcept {
     } catch (...) {
         return;
     }
+
+    if (!has_current_artwork_url || info.artwork_url != current_artwork_url) {
+        current_artwork_url = info.artwork_url;
+        has_current_artwork_url = true;
+        TextureInjector::instance().update_artwork_url(current_artwork_url);
+    }
+
+    // if the texture is currently downloading/converting, abort function early
+    // the next time this loop ticks (after the image is ready),
+    // the text and image will update onto the screen at the same time
+    if (TextureInjector::instance().is_processing()) {
+        return; 
+    }
+
     std::string title  = !info.title.empty() ? info.title : std::string{a->display_name()};
     std::string artist = info.artist;
     if (artist.empty()) {

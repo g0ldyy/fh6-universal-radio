@@ -18,6 +18,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include "fh6/net/http_get.hpp"
+#include <fstream>
+#include <filesystem>
+
 #include <windows.h>
 #include <sddl.h>
 
@@ -351,6 +355,32 @@ json handle_kill(const json& req) {
 }
 
 // ---------------------------------------------------------------------------
+// Handle "download" -- Download a URL directly using WinHTTP and save to disk
+// ---------------------------------------------------------------------------
+
+json handle_download(const json& req) {
+    auto url = req.at("url").get<std::string>();
+    auto dest_path = req.at("dest_path").get<std::string>();
+
+    auto data = fh6::net::http_get(url, /*extra_header=*/{});
+    if (!data || data->empty()) {
+        return {{"ok", false}, {"error", "http_get failed or returned empty data"}};
+    }
+
+    std::ofstream out(std::filesystem::path(dest_path), std::ios::binary);
+    if (!out) {
+        return {{"ok", false}, {"error", "failed to open destination file for writing"}};
+    }
+
+    out.write(data->data(), data->size());
+    out.close();
+    if (!out) {
+        return {{"ok", false}, {"error", "failed to write destination file"}};
+    }
+    return {{"ok", true}};
+}
+
+// ---------------------------------------------------------------------------
 // Serve one control connection: read a request, dispatch, reply, close.
 // ---------------------------------------------------------------------------
 
@@ -373,6 +403,8 @@ void serve_connection(HANDLE pipe) {
                 resp = handle_spawn(msg);
             } else if (op == "kill") {
                 resp = handle_kill(msg);
+            } else if (op == "download") {
+                resp = handle_download(msg);
             } else {
                 resp = {{"ok", false}, {"error", "unknown op"}};
             }

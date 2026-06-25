@@ -57,14 +57,24 @@ Write-Host "-> cmake build (Release)" -ForegroundColor Cyan
 & $cmake --build $build --config Release | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "cmake build failed" }
 
+$dataDir = Join-Path $dist "fh6-radio"
+
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $dist "fh6-radio") | Out-Null
+New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 
 Copy-Item (Join-Path $build "Release\version.dll") $dist
-Copy-Item (Join-Path $build "Release\fh6-radio-worker.exe") (Join-Path $dist "fh6-radio")
-Copy-Item -Recurse (Join-Path $root "ui\dist") (Join-Path $dist "fh6-radio\ui")
-Copy-Item (Join-Path $root "config.example.toml") (Join-Path $dist "fh6-radio\config.toml")
+Copy-Item (Join-Path $build "Release\fh6-radio-worker.exe") $dataDir
+
+# Validate assets are present before copying
+if (-not (Test-Path (Join-Path $root "assets\default_artwork.png"))) {
+    throw "Missing required assets (e.g., default_artwork.png). Please run .\scripts\get-deps.ps1 again to fetch missing dependencies."
+}
+
+New-Item -ItemType Directory -Force -Path (Join-Path $dataDir "assets") | Out-Null
+Copy-Item (Join-Path $root "assets\default_artwork.png") (Join-Path $dataDir "assets\default_artwork.png")
+Copy-Item -Recurse (Join-Path $root "ui\dist") (Join-Path $dataDir "ui")
+Copy-Item (Join-Path $root "config.example.toml") (Join-Path $dataDir "config.toml")
 
 Copy-Item (Join-Path $PSScriptRoot "dist-readme.txt") (Join-Path $dist "README.txt")
 

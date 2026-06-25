@@ -9,6 +9,7 @@
 #include "fh6/fmod/dsp_bridge.hpp"
 #include "fh6/fmod/dsp_control_loop.hpp"
 #include "fh6/fmod/pe_image.hpp"
+#include "fh6/fmod/texture_injector.hpp"
 #include "fh6/http/http_server.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
@@ -66,10 +67,12 @@ Config with_resolved_bins(Config c, const DependencyManager& deps) {
     c.general.ffmpeg_path       = deps.resolve(Tool::ffmpeg, c.general.ffmpeg_path);
     c.youtube_music.yt_dlp_path = deps.resolve(Tool::yt_dlp, c.youtube_music.yt_dlp_path);
     c.spotify.librespot_path    = deps.resolve(Tool::librespot, c.spotify.librespot_path);
+    std::string texconv_path    = deps.resolve(Tool::texconv, "").string();
 
     log::info("[bridge] Resolved ffmpeg path to: {}", c.general.ffmpeg_path.string());
     log::info("[bridge] Resolved yt-dlp path to: {}", c.youtube_music.yt_dlp_path.string());
     log::info("[bridge] Resolved librespot path to: {}", c.spotify.librespot_path.string());
+    log::info("[bridge] Resolved texconv path to: {}", texconv_path);
     return c;
 }
 
@@ -152,17 +155,22 @@ void run_bridge(HMODULE self) noexcept {
 
     DependencyManager deps{data_dir / "bin"};
 
+    TextureInjector::instance().set_deps(&deps);
+    TextureInjector::instance().set_config_store(&store);
+
     // Worker process: delegates CreateProcess calls to a small external exe
     // so the fork() Wine performs is cheap (~5 MB) instead of copying the
     // game's multi-GB page table.  Falls back to direct spawn if absent.
-    worker::WorkerClient worker;
+    auto worker = std::make_shared<worker::WorkerClient>();
     {
         auto worker_exe = data_dir / "fh6-radio-worker.exe";
         if (!std::filesystem::exists(worker_exe))
             worker_exe = dir / "fh6-radio" / "fh6-radio-worker.exe";
         
-        if (worker.start(worker_exe, {{L"RUST_LOG", L"librespot_playback::player=debug,librespot_metadata=trace"}})) {
+        if (worker->start(worker_exe, {{L"RUST_LOG", L"librespot_playback::player=debug,librespot_metadata=trace"}})) {
             log::info("[bridge] worker process started");
+
+            TextureInjector::instance().set_worker_client(worker);
         } else {
             log::warn("[bridge] worker process unavailable -- falling back to direct spawn");
         }
@@ -174,7 +182,7 @@ void run_bridge(HMODULE self) noexcept {
     auto sync_sources = [&mgr, &data_dir, &worker](const Config& c) {
         if (c.local_files.enabled && !mgr.find("local_files")) {
             auto src = std::make_unique<sources::LocalFileSource>(
-                c.local_files, c.general.ffmpeg_path, data_dir / "local_index.json", &worker);
+                c.local_files, c.general.ffmpeg_path, data_dir / "local_index.json", worker.get());
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.local_files.enabled && mgr.find("local_files")) {
             mgr.unregister_source("local_files");
@@ -182,21 +190,21 @@ void run_bridge(HMODULE self) noexcept {
         if (c.youtube_music.enabled && !mgr.find("youtube_music")) {
             auto src = std::make_unique<sources::YouTubeMusicSource>(c.youtube_music,
                                                                      c.general.ffmpeg_path,
-                                                                     &worker);
+                                                                     worker.get());
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
         if (c.jellyfin.enabled && !mgr.find("jellyfin")) {
             auto src = std::make_unique<sources::JellyfinSource>(c.jellyfin, c.general.ffmpeg_path,
-                                                                  &worker);
+                                                                  worker.get());
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.jellyfin.enabled && mgr.find("jellyfin")) {
             mgr.unregister_source("jellyfin");
         }
         if (c.online_radio.enabled && !mgr.find("online_radio")) {
             auto src = std::make_unique<sources::OnlineRadioSource>(c.online_radio,
-                                                                    c.general.ffmpeg_path, &worker);
+                                                                    c.general.ffmpeg_path, worker.get());
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.online_radio.enabled && mgr.find("online_radio")) {
             mgr.unregister_source("online_radio");
@@ -210,7 +218,7 @@ void run_bridge(HMODULE self) noexcept {
         }
         if (c.spotify.enabled && !mgr.find("spotify")) {
             auto src = std::make_unique<sources::SpotifySource>(anchor_spotify(c.spotify, data_dir),
-                                                                c.general.ffmpeg_path, &worker);
+                                                                c.general.ffmpeg_path, worker.get());
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.spotify.enabled && mgr.find("spotify")) {
             mgr.unregister_source("spotify");

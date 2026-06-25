@@ -29,6 +29,8 @@ constexpr std::array<ToolSpec, kToolCount> kSpecs{{
      L"https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", ""},
     {"librespot", L"librespot.exe",
      L"https://github.com/g0ldyy/fh6-universal-radio/releases/download/deps/librespot.exe", ""},
+    {"texconv", L"texconv.exe",
+     L"https://github.com/microsoft/DirectXTex/releases/latest/download/texconv.exe", ""},
 }};
 
 const ToolSpec& spec(Tool t) { return kSpecs[static_cast<std::size_t>(t)]; }
