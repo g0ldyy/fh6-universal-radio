@@ -645,7 +645,11 @@ void SpotifySource::pump(RingBuffer& ring) {
     // natural gapless transition
     if (p->has_pending && p->track_duration_ms > 0) {
         uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
-        if (p->bytes_consumed >= track_bytes) {
+        uint64_t unplayed = ring.readable();
+        uint64_t played_bytes = p->bytes_consumed > unplayed ? (p->bytes_consumed - unplayed) : 0;
+
+        // trigger the metadata swap based on played_bytes
+        if (played_bytes >= track_bytes) {
             apply_info(p->pending_title, p->pending_artist, p->pending_album,
                     p->pending_duration_ms, p->pending_cover_url);
             // carry the remainder so the timer stays exact
