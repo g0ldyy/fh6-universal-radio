@@ -73,6 +73,8 @@ struct SpotifySource::Pipe {
 
     // tracks the total PCM bytes pumped to calculate UI time syncing
     uint64_t bytes_consumed = 0;
+    uint64_t explicit_position_bytes = 0; // tracks mid-song loads
+    bool has_explicit_position = false;   // flags if a custom position was parsed
 
     // gapless & prefetch tracking
     std::string pending_title;
@@ -369,6 +371,8 @@ void SpotifySource::transport_skip(bool forward) {
     std::scoped_lock lk{mu_};
     if (pipe_) {
         pipe_->bytes_consumed      = 0;
+        pipe_->explicit_position_bytes = 0;
+        pipe_->has_explicit_position   = false;
         pipe_->has_pending         = false; // clear any queued prefetch
         pipe_->track_duration_ms   = 0;     // don't wait on the old duration
         pipe_->force_next_metadata = true;  // adopt the next track immediately
@@ -551,8 +555,39 @@ void SpotifySource::pump(RingBuffer& ring) {
                                 std::stoull(line.substr(seek_pos + seek_marker.length(),
                                                         end - (seek_pos + seek_marker.length())));
                             p->bytes_consumed = parsed_seek * kBytesPerMs;
+                            p->explicit_position_bytes = p->bytes_consumed;
+                            p->has_explicit_position   = true;
                         } catch (...) {}
                         continue; // parsed successfully, move to next line
+                    }
+                }
+
+                // catch Load events for initial position sync (mid-song connect)
+                const std::string load_marker = "command=Load";
+                size_t load_pos               = line.find(load_marker);
+                if (load_pos != std::string::npos) {
+                    size_t pos_ms_idx = line.find("position_ms", load_pos);
+                    size_t digit_pos  = std::string::npos;
+                    
+                    if (pos_ms_idx != std::string::npos) {
+                        digit_pos = line.find_first_of("0123456789", pos_ms_idx);
+                    } else {
+                        size_t end = line.rfind(')');
+                        if (end != std::string::npos && end > load_pos) {
+                            size_t last_comma = line.rfind(',', end);
+                            if (last_comma != std::string::npos) {
+                                digit_pos = line.find_first_of("0123456789", last_comma);
+                                if (digit_pos >= end) digit_pos = std::string::npos;
+                            }
+                        }
+                    }
+
+                    if (digit_pos != std::string::npos) {
+                        try {
+                            uint64_t parsed_pos = std::stoull(line.substr(digit_pos));
+                            p->explicit_position_bytes = parsed_pos * kBytesPerMs;
+                            p->has_explicit_position   = true;
+                        } catch (...) {}
                     }
                 }
 
@@ -594,10 +629,17 @@ void SpotifySource::pump(RingBuffer& ring) {
                         if (p->awaiting_first_track || p->force_next_metadata || is_external_skip) {
                             apply_info(final_title, final_artist, final_album, parsed_duration,
                                     final_cover);
-                            p->bytes_consumed       = 0;
-                            p->awaiting_first_track = false;
-                            p->force_next_metadata  = false;
-                            p->stall_ticks          = 0;
+
+                            if (p->has_explicit_position) {
+                                p->bytes_consumed = p->explicit_position_bytes;
+                            } else {
+                                p->bytes_consumed = 0;
+                            }
+                            
+                            p->has_explicit_position = false;
+                            p->awaiting_first_track  = false;
+                            p->force_next_metadata   = false;
+                            p->stall_ticks           = 0;
                         } else {
                             // queue it for the gapless transition
                             p->pending_title       = final_title;
@@ -606,6 +648,7 @@ void SpotifySource::pump(RingBuffer& ring) {
                             p->pending_duration_ms = parsed_duration;
                             p->pending_cover_url   = final_cover;
                             p->has_pending         = true;
+                            p->has_explicit_position = false; 
                         }
                     }
                 }
@@ -621,25 +664,6 @@ void SpotifySource::pump(RingBuffer& ring) {
     if (!PeekNamedPipe(p->read_pipe, nullptr, 0, nullptr, &avail, nullptr)) {
         p->ended = true;
         return;
-    }
-
-    if (avail == 0) {
-        p->stall_ticks++;
-        // if pipe is dry for just 5 ticks (~80ms)
-        if (p->stall_ticks > 5) {
-            // the user manually skipped during the final 30 seconds of the song
-            if (p->has_pending) {
-                apply_info(p->pending_title, p->pending_artist, p->pending_album,
-                        p->pending_duration_ms, p->pending_cover_url);
-                p->bytes_consumed = 0;
-            }
-            // catch-all for extreme network lag / dead stream (stall for > 800ms)
-            else if (p->stall_ticks > 50) {
-                p->force_next_metadata = true;
-            }
-        }
-    } else {
-        p->stall_ticks = 0;
     }
 
     // natural gapless transition
