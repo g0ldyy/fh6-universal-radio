@@ -78,6 +78,20 @@ void OnlineRadioSource::set_target(std::string url, std::string name, std::strin
     target_logo_ = std::move(logo);
 }
 
+void OnlineRadioSource::on_radio_audible(bool audible) {
+    std::scoped_lock lk{mu_};
+    if (audible == audible_) return;
+    audible_ = audible;
+    if (audible) {
+        log::info("[online_radio] radio audible -- reconnecting to live stream");
+        drain_pending_ = true;
+        start_pipe_locked();
+    } else {
+        log::info("[online_radio] radio inaudible -- disconnecting stream");
+        pipe_.reset();
+    }
+}
+
 void OnlineRadioSource::start_pipe_locked() {
     stop_pipe_locked();
 
@@ -195,6 +209,7 @@ void OnlineRadioSource::stop_pipe_locked() {
 
 void OnlineRadioSource::play() {
     std::scoped_lock lk{mu_};
+    drain_pending_ = true;
     if (!pipe_) start_pipe_locked();
     if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
 }
@@ -218,8 +233,10 @@ void OnlineRadioSource::next() {
     if (cfg_.stations.empty()) return;
 
     current_station_idx_ = (current_station_idx_ + 1) % cfg_.stations.size();
-    start_pipe_locked();
-    if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
+    if (audible_) {
+        start_pipe_locked();
+        if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
+    }
 }
 
 void OnlineRadioSource::previous() {
@@ -229,8 +246,10 @@ void OnlineRadioSource::previous() {
 
     current_station_idx_ =
         (current_station_idx_ == 0 ? cfg_.stations.size() : current_station_idx_) - 1;
-    start_pipe_locked();
-    if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
+    if (audible_) {
+        start_pipe_locked();
+        if (pipe_) state_.store(PlaybackState::playing, std::memory_order_release);
+    }
 }
 
 TrackInfo OnlineRadioSource::current_track() const {
@@ -258,10 +277,16 @@ void OnlineRadioSource::set_playback_options(const PlaybackConfig& opts) {
 }
 
 void OnlineRadioSource::pump(RingBuffer& ring) {
-    auto st = state_.load(std::memory_order_acquire);
+    std::scoped_lock lk{mu_};
+
+    if (drain_pending_) {
+        ring.drain();
+        drain_pending_ = false;
+    }
+
+    auto st = state_.load(std::memory_order_relaxed);
     if (st != PlaybackState::playing && st != PlaybackState::buffering) return;
 
-    std::scoped_lock lk{mu_};
     Pipe* p = pipe_.get();
     if (!p) return;
 

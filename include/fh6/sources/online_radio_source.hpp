@@ -49,6 +49,7 @@ public:
     void set_config(const OnlineRadioConfig& c);
     void set_ffmpeg_path(std::filesystem::path p);
     void set_target(std::string url, std::string name = {}, std::string logo = {});
+    void on_radio_audible(bool audible) override;
 
     // single source of truth for what may be handed to ffmpeg -i (guards every
     // playback path against file:/concat:/etc. injection from config or the API).
@@ -85,6 +86,9 @@ private:
     std::atomic<uint64_t> position_ms_{0};
 
     worker::WorkerClient* worker_ = nullptr;
+
+    bool audible_ = true;
+    bool drain_pending_ = false;
 };
 
 } // namespace fh6::sources
