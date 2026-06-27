@@ -624,10 +624,12 @@ void SpotifySource::pump(RingBuffer& ring) {
 
                         // A load event while we're still >32 s from the current
                         // track's end means a manual in-app skip -- adopt it now.
+                        // Also skip if bytes_consumed has massively overshot (desync).
                         const uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
                         const bool is_external_skip =
                             p->track_duration_ms > 0 &&
-                            p->bytes_consumed + kExternalSkipGuardMs * kBytesPerMs < track_bytes;
+                            (p->bytes_consumed >= track_bytes ||
+                             p->bytes_consumed + kExternalSkipGuardMs * kBytesPerMs < track_bytes);
 
                         // First track, an explicit skip, or an in-app skip: apply at once.
                         if (p->awaiting_first_track || p->force_next_metadata || is_external_skip) {
@@ -635,7 +637,13 @@ void SpotifySource::pump(RingBuffer& ring) {
                                     final_cover);
 
                             if (p->has_explicit_position) {
-                                p->bytes_consumed = p->explicit_position_bytes;
+                                // sanity check to reject clock-drift desyncs
+                                uint64_t max_bytes = parsed_duration * kBytesPerMs;
+                                if (p->explicit_position_bytes > max_bytes) {
+                                    p->bytes_consumed = 0; 
+                                } else {
+                                    p->bytes_consumed = p->explicit_position_bytes;
+                                }
                             } else {
                                 p->bytes_consumed = 0;
                             }
