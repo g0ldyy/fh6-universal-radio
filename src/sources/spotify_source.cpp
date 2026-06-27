@@ -562,6 +562,14 @@ void SpotifySource::pump(RingBuffer& ring) {
                     }
                 }
 
+                // catch warning about invalid start position out-of-bounds
+                if (line.find("Invalid start position") != std::string::npos &&
+                    line.find("starting track from the beginning") != std::string::npos) {
+                    p->explicit_position_bytes = 0;
+                    p->has_explicit_position   = true;
+                    continue; // overriding the last bad load command
+                }
+
                 // catch Load events for initial position sync (mid-song connect)
                 const std::string load_marker = "command=Load";
                 size_t load_pos               = line.find(load_marker);
