@@ -566,6 +566,10 @@ void SpotifySource::pump(RingBuffer& ring) {
                 const std::string load_marker = "command=Load";
                 size_t load_pos               = line.find(load_marker);
                 if (load_pos != std::string::npos) {
+                    // reset state before attempting to parse a new one
+                    p->has_explicit_position   = false;
+                    p->explicit_position_bytes = 0;
+
                     size_t pos_ms_idx = line.find("position_ms", load_pos);
                     size_t digit_pos  = std::string::npos;
                     
