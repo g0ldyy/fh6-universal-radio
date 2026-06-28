@@ -102,63 +102,59 @@
         </div>
     </div>
 
+    <footer class="credits">
+        <p class="credit-line">
+            <strong>FH6 Universal Radio</strong> &mdash; an open-source mod by
+            <a href="https://github.com/g0ldyy" target="_blank" rel="noopener noreferrer">g0ldyy</a>
+            and
+            <a href="https://github.com/g0ldyy/fh6-universal-radio/graphs/contributors" target="_blank"
+                rel="noopener noreferrer">contributors</a>. Released under
+            <a href="https://github.com/g0ldyy/fh6-universal-radio/blob/main/LICENSE" target="_blank"
+                rel="noopener noreferrer">GPLv3</a>.
+        </p>
+        <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider
+            supporting development:</p>
+        <div class="donate-links">
+            <a class="donate-btn" href="https://github.com/sponsors/g0ldyy" target="_blank"
+                rel="noopener noreferrer"><span aria-hidden="true">&hearts;</span> GitHub Sponsors</a>
+            <a class="donate-btn" href="https://ko-fi.com/g0ldyy" target="_blank" rel="noopener noreferrer"><span
+                    aria-hidden="true">&#9749;</span> Ko-fi</a>
+            <a class="donate-btn" href="https://github.com/g0ldyy/fh6-universal-radio" target="_blank"
+                rel="noopener noreferrer"><span aria-hidden="true">&#9733;</span> Star the repo</a>
+        </div>
+    </footer>
+
+    <aside class="drawer" id="drawer" inert aria-label="Settings">
+        <div class="drawer-head">
+            <h2 data-i18n="settings.open">Settings</h2>
+            <button class="icon-btn" id="close-settings" aria-label="Close settings"
+                data-i18n-aria-label="settings.close"></button>
+        </div>
+        <form id="settings-form" class="drawer-body"></form>
+        <div class="drawer-foot">
+            <div class="drawer-foot-group">
+                <button class="btn ghost" id="backup-config" type="button" data-i18n="settings.backup"
+                    data-i18n-title="settings.backup_title">Backup</button>
+                <button class="btn ghost" id="restore-config" type="button" data-i18n="settings.restore"
+                    data-i18n-title="settings.restore_title">Restore</button>
+                <input type="file" id="restore-file" accept=".json" hidden />
+                <button class="btn ghost" id="export-stations" type="button" data-i18n="settings.export_stations"
+                    data-i18n-title="settings.export_stations_title">Export YT Music stations</button>
+                <button class="btn ghost" id="import-stations" type="button" data-i18n="settings.import_stations"
+                    data-i18n-title="settings.import_stations_title">Import YT Music stations</button>
+                <input type="file" id="import-stations-file" accept=".json" hidden />
+            </div>
+
+            <div class="drawer-foot-group">
+                <button class="btn ghost" id="reload-config" type="button" data-i18n="settings.reload"
+                    data-i18n-title="settings.reload_title">Reload</button>
+                <button class="btn filled" id="save-config" type="button" data-i18n="btn.save">Save</button>
+            </div>
+        </div>
+    </aside>
     <div class="scrim" id="scrim" hidden></div>
+
     <script src="js/main.js" type="module"></script>
-</body>
-
-<footer class="credits">
-    <p class="credit-line">
-        <strong>FH6 Universal Radio</strong> &mdash; an open-source mod by
-        <a href="https://github.com/g0ldyy" target="_blank" rel="noopener noreferrer">g0ldyy</a>
-        and
-        <a href="https://github.com/g0ldyy/fh6-universal-radio/graphs/contributors" target="_blank"
-            rel="noopener noreferrer">contributors</a>. Released under
-        <a href="https://github.com/g0ldyy/fh6-universal-radio/blob/main/LICENSE" target="_blank"
-            rel="noopener noreferrer">GPLv3</a>.
-    </p>
-    <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider
-        supporting development:</p>
-    <div class="donate-links">
-        <a class="donate-btn" href="https://github.com/sponsors/g0ldyy" target="_blank" rel="noopener noreferrer"><span
-                aria-hidden="true">&hearts;</span> GitHub Sponsors</a>
-        <a class="donate-btn" href="https://ko-fi.com/g0ldyy" target="_blank" rel="noopener noreferrer"><span
-                aria-hidden="true">&#9749;</span> Ko-fi</a>
-        <a class="donate-btn" href="https://github.com/g0ldyy/fh6-universal-radio" target="_blank"
-            rel="noopener noreferrer"><span aria-hidden="true">&#9733;</span> Star the repo</a>
-    </div>
-</footer>
-
-<aside class="drawer" id="drawer" inert aria-label="Settings">
-    <div class="drawer-head">
-        <h2 data-i18n="settings.open">Settings</h2>
-        <button class="icon-btn" id="close-settings" aria-label="Close settings"
-            data-i18n-aria-label="settings.close"></button>
-    </div>
-    <form id="settings-form" class="drawer-body"></form>
-    <div class="drawer-foot">
-        <div class="drawer-foot-group">
-            <button class="btn ghost" id="backup-config" type="button" data-i18n="settings.backup"
-                data-i18n-title="settings.backup_title">Backup</button>
-            <button class="btn ghost" id="restore-config" type="button" data-i18n="settings.restore"
-                data-i18n-title="settings.restore_title">Restore</button>
-            <input type="file" id="restore-file" accept=".json" hidden />
-            <button class="btn ghost" id="export-stations" type="button" data-i18n="settings.export_stations"
-                data-i18n-title="settings.export_stations_title">Export YT Music stations</button>
-            <button class="btn ghost" id="import-stations" type="button" data-i18n="settings.import_stations"
-                data-i18n-title="settings.import_stations_title">Import YT Music stations</button>
-            <input type="file" id="import-stations-file" accept=".json" hidden />
-        </div>
-
-        <div class="drawer-foot-group">
-            <button class="btn ghost" id="reload-config" type="button" data-i18n="settings.reload"
-                data-i18n-title="settings.reload_title">Reload</button>
-            <button class="btn filled" id="save-config" type="button" data-i18n="btn.save">Save</button>
-        </div>
-    </div>
-</aside>
-<div class="scrim" id="scrim" hidden></div>
-
-<script src="js/main.js" type="module"></script>
 </body>
 
 </html>
