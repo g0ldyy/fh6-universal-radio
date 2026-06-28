@@ -120,35 +120,40 @@ Requires **CMake** and **llvm-mingw**. On Arch: `sudo pacman -S llvm-mingw cmake
 | Media hotkeys don't work | Ensure another application is not intercepting media key events. Play/Pause and Next Source should work while FH6 is focused. |
 
 ## Adding a New Language
-
 The dashboard and language selection can be easily extended to support new languages. To add a language to the interface, you need to update the configuration array and create the corresponding translation file:
-
 1. Open the main UI source file: `ui/dist/js/i18n.js`.
 2. Locate the `SUPPORTED` array.
 3. Add a new object containing the 2-letter ISO language code and the formatted label (with flag emoji) to the list:
-
 ```javascript
 // To add a new language, simply add its object to this array:
 export const SUPPORTED = [
+    { code: "en", label: "🇬🇧 English" },
+    { code: "fr", label: "🇫🇷 Français" },
     // ... existing languages ...
-    { code: "it", label: "🇮🇹 Italiano (AI Generate)" },
-    { code: "pt", label: "🇵🇹 Português (AI Generate)" },
-    { code: "fr", label: "🇫🇷 Français" }, // Example of a fully translated language
+    { code: "it", label: "🇮🇹 Italiano (AI Generated)" },
+    { code: "pt", label: "🇵🇹 Português (AI Generated)" },
 ];
 ```
-
 4. Create the translation file in the language directory:
-   - Create a new JSON file named exactly after your 2-letter ISO code (e.g., `lang/it.json` or `lang/nl.json`).
-   - Copy the structure from `lang/en.json` and translate the values into your new language:
-
+   - Copy `lang/en.json` to a new file named exactly after your 2-letter ISO code (e.g., `lang/it.json` or `lang/nl.json`).
+   - Update the `_meta` block at the top (`language`, `code`, `author`) to reflect your language.
+   - Translate only the **values** (the text to the right of each `:`) — never the keys, and never remove or rename a placeholder like `{name}`, `{count}`, `{pct}` (the app fills those in at runtime):
 ```json
 {
-  "settings.interface.title": "Your Translated Title",
-  "settings.interface.language": "Your Translated Language Label"
+  "_meta": {
+    "language": "Italiano",
+    "code": "it",
+    "author": "your-name"
+  },
+
+  "brand.title": "FH6 Universal Radio",
+  "settings.interface.title": "Interfaccia",
+  "error.station_name_exists": "Esiste già una stazione con questo nome"
 }
 ```
+   - Lines starting with `//` are full-line comments used to group/annotate keys for translators (e.g. `// ─── Settings drawer ───`). They're stripped before parsing — they're not valid JSON, so any JSON validator/linter will flag them; that's expected, leave them as-is or use them to keep your file organized.
 
-The web dashboard dynamically handles this array. It will automatically extract the language codes to validate backend requests, instantly generate the corresponding dropdown options in the settings UI, and fetch the appropriate JSON translation file upon selection.
+The web dashboard dynamically handles this array. It will automatically extract the language codes to validate backend requests, instantly generate the corresponding dropdown options in the settings UI, and fetch the appropriate JSON translation file (with graceful fallback to English if the file is missing or a key isn't translated yet) upon selection.
 
 ## Why this exists
 
