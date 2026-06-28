@@ -28,9 +28,6 @@ using subprocess::stderr_log_path;
 constexpr uint64_t kBytesPerMs        = 192;
 constexpr std::size_t kMaxBufferBytes = 28800; // 150 ms of in-flight PCM
 constexpr std::size_t kPipeChunk      = 4096;  // OS-minimum pipe / read granularity
-// A track-load event arriving while the previous track is still this far from
-// its end means the user skipped inside the Spotify app -- adopt it at once.
-constexpr uint64_t kExternalSkipGuardMs = 32000;
 
 // Press-and-release one extended media key (next/prev fallback).
 void send_media_key(WORD vk) {
@@ -570,6 +567,11 @@ void SpotifySource::pump(RingBuffer& ring) {
                     continue; // overriding the last bad load command
                 }
 
+                // catch Preload events to ensure gapless tracks are queued, not applied instantly
+                if (line.find("command=Preload") != std::string::npos) {
+                    p->has_explicit_position = false;
+                }
+
                 // catch Load events for initial position sync (mid-song connect)
                 const std::string load_marker = "command=Load";
                 size_t load_pos               = line.find(load_marker);
@@ -630,17 +632,19 @@ void SpotifySource::pump(RingBuffer& ring) {
                         std::string final_album = p->next_meta_album; // can be empty
                         std::string final_cover = p->next_meta_cover_url;
 
-                        // A load event while we're still >32 s from the current
-                        // track's end means a manual in-app skip -- adopt it now.
-                        // Also skip if bytes_consumed has massively overshot (desync).
+                        
+                        // Skip if bytes_consumed has massively overshot (desync).
+                        // Otherwise, rely on p->has_explicit_position (set by command=Load)
+                        // to know if this is a manual skip/mid-song connect.
                         const uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
-                        const bool is_external_skip =
-                            p->track_duration_ms > 0 &&
-                            (p->bytes_consumed >= track_bytes ||
-                             p->bytes_consumed + kExternalSkipGuardMs * kBytesPerMs < track_bytes);
+                        const uint64_t unplayed = ring.readable();
+                        const uint64_t played_bytes =
+                            p->bytes_consumed > unplayed ? (p->bytes_consumed - unplayed) : 0;
+                        const bool is_desync =
+                            p->track_duration_ms > 0 && played_bytes >= track_bytes;
 
-                        // First track, an explicit skip, or an in-app skip: apply at once.
-                        if (p->awaiting_first_track || p->force_next_metadata || is_external_skip) {
+                        // First track, an explicit skip/connect, or a desync: apply at once.
+                        if (p->awaiting_first_track || p->force_next_metadata || p->has_explicit_position || is_desync) {
                             apply_info(final_title, final_artist, final_album, parsed_duration,
                                     final_cover);
 
@@ -653,7 +657,10 @@ void SpotifySource::pump(RingBuffer& ring) {
                                     p->bytes_consumed = p->explicit_position_bytes;
                                 }
                             } else {
-                                p->bytes_consumed = 0;
+                                p->bytes_consumed =
+                                    is_desync && p->bytes_consumed >= track_bytes
+                                        ? p->bytes_consumed - track_bytes
+                                        : 0;
                             }
                             
                             p->has_explicit_position = false;
