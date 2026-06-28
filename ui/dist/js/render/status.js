@@ -1,4 +1,4 @@
-import { setText } from "../dom.js";
+import { setText } from "../lib/dom.js";
 import { t } from "../i18n.js";
 
 export function renderStatus(node, state) {

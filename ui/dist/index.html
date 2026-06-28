@@ -4,6 +4,8 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+    <link rel="icon" type="image/png" href="../assets/default_artwork_128.png">
     <title>FH6 Universal Radio</title>
 
     <link rel="stylesheet" href="css/styles.css" />
@@ -34,8 +36,10 @@
                 <div class="times"><span id="np-pos">0:00</span><span id="np-dur">0:00</span></div>
             </div>
             <div class="transport">
-                <button class="icon-btn" id="t-prev" aria-label="Previous" data-i18n-aria-label="now_playing.previous"></button>
-                <button class="icon-btn primary" id="t-play" aria-label="Play" data-i18n-aria-label="now_playing.play"></button>
+                <button class="icon-btn" id="t-prev" aria-label="Previous"
+                    data-i18n-aria-label="now_playing.previous"></button>
+                <button class="icon-btn primary" id="t-play" aria-label="Play"
+                    data-i18n-aria-label="now_playing.play"></button>
                 <button class="icon-btn" id="t-next" aria-label="Next" data-i18n-aria-label="now_playing.next"></button>
             </div>
         </div>
@@ -48,7 +52,7 @@
         </section>
 
         <section class="card" id="output-card" hidden>
-            <h2>Output</h2>
+            <h2 data-i18n="output.title">Output</h2>
             <label class="slider">
                 <span>Volume</span>
                 <input type="range" id="vol" min="0" max="1" step="0.01" value="1" />
@@ -57,54 +61,104 @@
         </section>
     </main>
 
-    <footer class="credits">
-        <p class="credit-line">
-            <strong>FH6 Universal Radio</strong> &mdash; an open-source mod by
-            <a href="https://github.com/g0ldyy" target="_blank" rel="noopener noreferrer">g0ldyy</a>
-            and
-            <a href="https://github.com/g0ldyy/fh6-universal-radio/graphs/contributors" target="_blank"
-                rel="noopener noreferrer">contributors</a>. Released under
-            <a href="https://github.com/g0ldyy/fh6-universal-radio/blob/main/LICENSE" target="_blank"
-                rel="noopener noreferrer">GPLv3</a>.
-        </p>
-        <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider
-            supporting development:</p>
-        <div class="donate-links">
-            <a class="donate-btn" href="https://github.com/sponsors/g0ldyy" target="_blank"
-                rel="noopener noreferrer"><span aria-hidden="true">&hearts;</span> GitHub Sponsors</a>
-            <a class="donate-btn" href="https://ko-fi.com/g0ldyy" target="_blank" rel="noopener noreferrer"><span
-                    aria-hidden="true">&#9749;</span> Ko-fi</a>
-            <a class="donate-btn" href="https://github.com/g0ldyy/fh6-universal-radio" target="_blank"
-                rel="noopener noreferrer"><span aria-hidden="true">&#9733;</span> Star the repo</a>
-        </div>
-    </footer>
-
-    <aside class="drawer" id="drawer" inert aria-label="Settings">
-        <div class="drawer-head">
-            <h2 data-i18n="settings.open">Settings</h2>
-            <button class="icon-btn" id="close-settings" aria-label="Close settings"
-                data-i18n-aria-label="settings.close"></button>
-        </div>
-        <form id="settings-form" class="drawer-body"></form>
-        <div class="drawer-foot">
-            <div class="drawer-foot-group">
-                <button class="btn ghost" id="backup-config" type="button" data-i18n="settings.backup"
-                    data-i18n-title="settings.backup_title">Backup</button>
-                <button class="btn ghost" id="restore-config" type="button" data-i18n="settings.restore"
-                    data-i18n-title="settings.restore_title">Restore</button>
-                <input type="file" id="restore-file" accept=".json" hidden />
-            </div>
-
-            <div class="drawer-foot-group">
-                <button class="btn ghost" id="reload-config" type="button" data-i18n="settings.reload"
-                    data-i18n-title="settings.reload_title">Reload</button>
-                <button class="btn filled" id="save-config" type="button" data-i18n="settings.save">Save</button>
+    <div class="mini-player" id="mini-player">
+        <div class="mini-player-info">
+            <img class="mini-cover" id="mini-art-img" src="" alt="" />
+            <div class="mini-player-text">
+                <div class="mini-title" id="mini-title">Nothing playing</div>
+                <div class="mini-artist" id="mini-artist"></div>
             </div>
         </div>
-    </aside>
+
+        <div class="mini-player-center">
+            <div class="mini-controls">
+                <button class="icon-btn" id="mini-prev" aria-label="Previous"></button>
+                <button class="icon-btn primary" id="mini-play" aria-label="Play"></button>
+                <button class="icon-btn" id="mini-next" aria-label="Next"></button>
+            </div>
+            <div class="mini-progress-container">
+                <span class="mini-time" id="mini-pos">0:00</span>
+                <div class="mini-bar">
+                    <div class="mini-bar-fill" id="mini-fill"></div>
+                </div>
+                <span class="mini-time" id="mini-dur">0:00</span>
+            </div>
+        </div>
+
+        <div class="mini-player-right">
+            <div class="mini-volume" id="mini-volume">
+                <button class="icon-btn mini-vol-icon" id="mini-vol-toggle" type="button" aria-label="Volume"
+                    data-i18n-aria-label="output.volume">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                </button>
+                <input type="range" id="mini-vol" min="0" max="1" step="0.01" value="1" aria-label="Volume"
+                    data-i18n-aria-label="output.volume" />
+                <span class="vol-tooltip" id="mini-vol-tooltip"></span>
+            </div>
+        </div>
+    </div>
+
     <div class="scrim" id="scrim" hidden></div>
-
     <script src="js/main.js" type="module"></script>
+</body>
+
+<footer class="credits">
+    <p class="credit-line">
+        <strong>FH6 Universal Radio</strong> &mdash; an open-source mod by
+        <a href="https://github.com/g0ldyy" target="_blank" rel="noopener noreferrer">g0ldyy</a>
+        and
+        <a href="https://github.com/g0ldyy/fh6-universal-radio/graphs/contributors" target="_blank"
+            rel="noopener noreferrer">contributors</a>. Released under
+        <a href="https://github.com/g0ldyy/fh6-universal-radio/blob/main/LICENSE" target="_blank"
+            rel="noopener noreferrer">GPLv3</a>.
+    </p>
+    <p class="donate-line" data-i18n="credits.support_text">If this mod makes your drives better, consider
+        supporting development:</p>
+    <div class="donate-links">
+        <a class="donate-btn" href="https://github.com/sponsors/g0ldyy" target="_blank" rel="noopener noreferrer"><span
+                aria-hidden="true">&hearts;</span> GitHub Sponsors</a>
+        <a class="donate-btn" href="https://ko-fi.com/g0ldyy" target="_blank" rel="noopener noreferrer"><span
+                aria-hidden="true">&#9749;</span> Ko-fi</a>
+        <a class="donate-btn" href="https://github.com/g0ldyy/fh6-universal-radio" target="_blank"
+            rel="noopener noreferrer"><span aria-hidden="true">&#9733;</span> Star the repo</a>
+    </div>
+</footer>
+
+<aside class="drawer" id="drawer" inert aria-label="Settings">
+    <div class="drawer-head">
+        <h2 data-i18n="settings.open">Settings</h2>
+        <button class="icon-btn" id="close-settings" aria-label="Close settings"
+            data-i18n-aria-label="settings.close"></button>
+    </div>
+    <form id="settings-form" class="drawer-body"></form>
+    <div class="drawer-foot">
+        <div class="drawer-foot-group">
+            <button class="btn ghost" id="backup-config" type="button" data-i18n="settings.backup"
+                data-i18n-title="settings.backup_title">Backup</button>
+            <button class="btn ghost" id="restore-config" type="button" data-i18n="settings.restore"
+                data-i18n-title="settings.restore_title">Restore</button>
+            <input type="file" id="restore-file" accept=".json" hidden />
+            <button class="btn ghost" id="export-stations" type="button" data-i18n="settings.export_stations"
+                data-i18n-title="settings.export_stations_title">Export YT Music stations</button>
+            <button class="btn ghost" id="import-stations" type="button" data-i18n="settings.import_stations"
+                data-i18n-title="settings.import_stations_title">Import YT Music stations</button>
+            <input type="file" id="import-stations-file" accept=".json" hidden />
+        </div>
+
+        <div class="drawer-foot-group">
+            <button class="btn ghost" id="reload-config" type="button" data-i18n="settings.reload"
+                data-i18n-title="settings.reload_title">Reload</button>
+            <button class="btn filled" id="save-config" type="button" data-i18n="btn.save">Save</button>
+        </div>
+    </div>
+</aside>
+<div class="scrim" id="scrim" hidden></div>
+
+<script src="js/main.js" type="module"></script>
 </body>
 
 </html>

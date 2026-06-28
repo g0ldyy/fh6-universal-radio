@@ -1,0 +1,10 @@
+/* ==========================================================================
+   "SQUARED" SHAPE MODIFIER
+   Independent of the dark/light palette classes — combined with either one
+   (e.g. "theme-dark theme-squared") to force every corner square without
+   needing its own separate color identity.
+   ========================================================================== */
+body.theme-squared,
+body.theme-squared * {
+    border-radius: 0 !important;
+}

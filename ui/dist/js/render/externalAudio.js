@@ -1,5 +1,5 @@
-import { api } from "../api.js";
-import { $, el } from "../dom.js";
+import { api } from "../data/api.js";
+import { $, el } from "../lib/dom.js";
 import { toast } from "../toast.js";
 import { t } from "../i18n.js";
 
@@ -12,18 +12,18 @@ export function createExternalAudio(main, ctx) {
   let loaded = false;
   let loading = false;
 
-  const deviceSelect = el("select", { id: "ext-device", "aria-label": t("ext.device_label") });
-  const sessionSelect = el("select", { id: "ext-session", "aria-label": t("ext.session_label") });
-  const refreshBtn = el("button", { type: "button", class: "btn ghost" }, t("ext.refresh"));
-  const saveBtn = el("button", { type: "button", class: "btn filled" }, t("ext.save"));
+  const deviceSelect = el("select", { id: "ext-device", "aria-label": t("ext.device_label"), dataset: { i18nAriaLabel: "ext.device_label" } });
+  const sessionSelect = el("select", { id: "ext-session", "aria-label": t("ext.session_label"), dataset: { i18nAriaLabel: "ext.session_label" } });
+  const refreshBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "ext.refresh" } }, t("ext.refresh"));
+  const saveBtn = el("button", { type: "button", class: "btn filled", dataset: { i18n: "btn.save" } }, t("btn.save"));
   const hint = el("p", { class: "muted" });
 
   const card = el("section", { class: "card", id: "external-audio-card", hidden: true }, [
-    el("h2", {}, t("source.external_audio")),
-    el("p", { class: "muted" }, t("ext.description")),
-    el("label", { class: "field-label", for: "ext-device" }, t("ext.capture_device")),
+    el("h2", { dataset: { i18n: "source.external_audio" } }, t("source.external_audio")),
+    el("p", { class: "muted", dataset: { i18n: "ext.description" } }, t("ext.description")),
+    el("label", { class: "field-label", for: "ext-device", dataset: { i18n: "ext.capture_device" } }, t("ext.capture_device")),
     el("div", { class: "row" }, [deviceSelect, refreshBtn]),
-    el("label", { class: "field-label", for: "ext-session" }, t("ext.media_session")),
+    el("label", { class: "field-label", for: "ext-session", dataset: { i18n: "ext.media_session" } }, t("ext.media_session")),
     el("div", { class: "row" }, [sessionSelect, saveBtn]),
     hint,
   ]);
@@ -135,6 +135,11 @@ export function createExternalAudio(main, ctx) {
     render,
     invalidate: () => {
       loaded = false;
+      // Forces the option lists to rebuild even if the device/session data
+      // itself hasn't changed — needed after a language change, since their
+      // translated bits (e.g. "current default") are baked into option text.
+      deviceSelect.dataset.sig = "";
+      sessionSelect.dataset.sig = "";
     },
   };
 }

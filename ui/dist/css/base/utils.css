@@ -48,3 +48,45 @@
         transition: none !important;
     }
 }
+
+@media (prefers-reduced-transparency: reduce) {
+    header,
+    .mini-player,
+    .toast,
+    .scrim,
+    .modal-overlay {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    header,
+    .mini-player,
+    .toast {
+        background: var(--surface-card);
+    }
+}
+
+body.perf-mode header,
+body.perf-mode .mini-player,
+body.perf-mode .toast,
+body.perf-mode .scrim,
+body.perf-mode .modal-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.perf-mode header,
+body.perf-mode .mini-player,
+body.perf-mode .toast {
+    background: var(--surface-card);
+}
+
+body.perf-mode .hero-backdrop,
+body.perf-mode::before {
+    display: none;
+}
+
+body.perf-mode .track.current .track-cover,
+body.perf-mode .eq-bar {
+    animation: none !important;
+}

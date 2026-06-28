@@ -1,7 +1,9 @@
-import { setText } from "../dom.js";
-import { fmt, progressRatio } from "../format.js";
+import { setText } from "../lib/dom.js";
+import { fmt, progressRatio, translateLoadingPlaceholder, isLocalUrl } from "../lib/format.js";
 import { icons } from "../icons.js";
 import { t } from "../i18n.js";
+import { prefs } from "../preferences.js";
+import { ensureContrast, getPageBackgroundRgb } from "../lib/color.js";
 
 export function activeSource(state) {
     return state?.sources?.available?.find(s => s.name === state?.sources?.active) || null;
@@ -14,35 +16,41 @@ export function renderNowPlaying(refs, state) {
 
     const hasArt = !!track.artwork_url;
     refs.art.classList.toggle("has-art", hasArt);
-    if (hasArt && refs.img.getAttribute("src") !== track.artwork_url) {
-        const isLocalUrl = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(track.artwork_url);
-        const isExternal = track.artwork_url.startsWith("http") && !isLocalUrl;
-        const src = isExternal
+    // Only consumed by the "Rétro / Vinyle" skin, to spin the cover like a record.
+    refs.art.classList.toggle("is-playing", playing);
+    
+    let src = "";
+    if (hasArt) {
+        const isExternal = track.artwork_url.startsWith("http") && !isLocalUrl(track.artwork_url);
+        src = isExternal
             ? `https://wsrv.nl/?url=${encodeURIComponent(track.artwork_url)}`
             : track.artwork_url;
-        refs.img.crossOrigin = "anonymous";
-        refs.img.src = src;
-        refs.img.onload = () => {
-            if (localStorage.getItem("fh6-dynamic-color") === "false") return;
-            try {
-                const color = extractDominantColor(refs.img);
-                if (color) document.documentElement.style.setProperty("--accent", color);
-            } catch {
-                // CORS: ignore errors from cross-origin images
-            }
-        };
-    }
-    if (!hasArt) {
-        refs.img.removeAttribute("src");
+        
+        if (refs.img.getAttribute("src") !== track.artwork_url) {
+            refs.img.crossOrigin = "anonymous";
+            refs.img.src = src;
+            refs.img.onload = () => {
+                if (!prefs.dynamicColor.get()) return;
+                try {
+                    const color = extractDominantColor(refs.img);
+                    if (color) document.documentElement.style.setProperty("--accent", color);
+                } catch {
+                    // CORS: ignore errors from cross-origin images
+                }
+            };
+        }
+    } else {
+        refs.img.src = "../assets/default_artwork_2048.png";
         document.documentElement.style.setProperty("--accent", "var(--color-sunset-yellow)");
     }
+    
     if (refs.backdrop) refs.backdrop.style.backgroundImage = hasArt ? `url("${track.artwork_url}")` : "";
 
-    setText(refs.title, track.title || t("now_playing.nothing_playing"));
-    setText(
-        refs.artist,
-        track.artist ? (track.album ? `${track.artist}` : track.artist) : "",
-    );
+    const title = translateLoadingPlaceholder(track.title, t);
+    const artist = translateLoadingPlaceholder(track.artist, t);
+
+    setText(refs.title, title || t("now_playing.nothing_playing"));
+    setText(refs.artist, artist ? (track.album ? `${artist}` : artist) : "");
     setText(refs.pos, fmt(track.position_ms));
     setText(refs.dur, fmt(track.duration_ms));
     refs.fill.style.width = progressRatio(track.position_ms, track.duration_ms) * 100 + "%";
@@ -52,6 +60,29 @@ export function renderNowPlaying(refs, state) {
         refs.play.dataset.icon = want;
         refs.play.innerHTML = icons[want];
         refs.play.setAttribute("aria-label", playing ? t("now_playing.pause") : t("now_playing.play"));
+    }
+
+    if (refs.mini) {
+        setText(refs.mini.title, title || t("now_playing.nothing_playing"));
+        setText(refs.mini.artist, artist || "");
+
+        if (hasArt) {
+            if (refs.mini.art.getAttribute("src") !== src) {
+                refs.mini.art.src = src;
+            }
+        } else {
+            refs.mini.art.src = "../assets/default_artwork_128.png";
+        }
+
+        setText(refs.mini.pos, fmt(track.position_ms));
+        setText(refs.mini.dur, fmt(track.duration_ms));
+        refs.mini.fill.style.width = progressRatio(track.position_ms, track.duration_ms) * 100 + "%";
+
+        if (refs.mini.play.dataset.icon !== want) {
+            refs.mini.play.dataset.icon = want;
+            refs.mini.play.innerHTML = icons[want];
+            refs.mini.play.setAttribute("aria-label", playing ? t("now_playing.pause") : t("now_playing.play"));
+        }
     }
 }
 
@@ -83,5 +114,10 @@ export function extractDominantColor(imgEl) {
     g = Math.min(255, Math.round(g * boost));
     b = Math.min(255, Math.round(b * boost));
 
-    return `rgb(${r}, ${g}, ${b})`;
+    // Pale/light covers can otherwise produce an accent that's nearly
+    // invisible as link/focus-ring text against the current background
+    // (mostly a light-theme issue — dark theme rarely has this problem).
+    const [cr, cg, cb] = ensureContrast([r, g, b], getPageBackgroundRgb());
+
+    return `rgb(${cr}, ${cg}, ${cb})`;
 }

@@ -1,5 +1,5 @@
-import { el } from "../dom.js";
-import { changed } from "../store.js";
+import { el } from "../lib/dom.js";
+import { changed } from "../lib/store.js";
 import { t } from "../i18n.js";
 
 const DISPLAY_NAME_MAP = () => ({
@@ -29,7 +29,7 @@ function translateAuthInstructions(text) {
 function detailLine(s) {
   if (s.name === "local_files" && s.details?.track_count != null) {
     const n = s.details.track_count;
-    return `${n} ${t("local_files.tracks")} ${t("source.indexed")}`;
+    return `${n} ${t("label.tracks")} ${t("source.indexed")}`;
   }
   return null;
 }

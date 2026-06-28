@@ -1,12 +1,22 @@
-@import url('root.css');
-@import url('font.css');
-@import url('keyframes.css');
-@import url('layout.css');
-@import url('utils.css');
-@import url('components.css');
-@import url('now-playing.css');
-@import url('settings.css');
-@import url('local-files.css');
-@import url('online-radio.css');
-@import url('youtube-music.css');
-@import url('responsive.css');
+/* Foundations: variables, fonts, keyframes, base layout/utilities */
+@import url('base/root.css');
+@import url('base/font.css');
+@import url('base/keyframes.css');
+@import url('base/layout.css');
+@import url('base/utils.css');
+
+/* Generic, reusable UI components (buttons, modals, toasts, form fields) */
+@import url('components/components.css');
+
+/* Feature-card-specific styles */
+@import url('cards/now-playing.css');
+@import url('cards/settings.css');
+@import url('cards/local-files.css');
+@import url('cards/online-radio.css');
+
+/* Theme skins (Verre/Carbone/Vinyle) — kept after the cards so their
+   structural overrides win the cascade without needing extra specificity */
+@import url('base/skins.css');
+
+/* Responsive overrides — kept last so it wins the cascade */
+@import url('base/responsive.css');

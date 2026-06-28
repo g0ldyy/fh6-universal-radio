@@ -55,6 +55,7 @@
     color: var(--text-muted);
     cursor: pointer;
     font-size: 14px;
+    transition: color 0.15s ease, border-bottom-color 0.15s ease;
 }
 
 .or-tab.on {
@@ -64,6 +65,9 @@
 
 .or-panel {
     margin-top: var(--spacing-16);
+    /* Same logic as .card's "rise" animation — replays automatically
+       whenever [hidden] flips off when switching tabs, no JS needed. */
+    animation: fade 0.2s ease;
 }
 
 .or-panel > input[type="text"] {
@@ -265,34 +269,10 @@
     margin: 0;
 }
 
-.or-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 30;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.5);
-    animation: fade 0.2s ease;
+.or-modal-card .field-label {
+    margin: var(--spacing-12) 0 6px 0;
 }
 
-.or-modal-card {
-    width: min(440px, 92vw);
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-8);
-    padding: var(--spacing-16);
-    border-radius: var(--radius-xl);
-    background: var(--surface-card);
-    border: 1px solid var(--line-strong);
-    box-shadow: var(--shadow-xl);
-}
-
-.or-modal-head h3 {
-    margin: 0 0 var(--spacing-8);
-}
-
-.or-modal-foot {
-    margin-top: var(--spacing-12);
-    justify-content: flex-end;
+.or-modal-card .modal-head {
+    margin: 0;
 }

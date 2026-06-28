@@ -40,6 +40,17 @@ const PAD_BUTTONS = () => [
 // [field, label, type, ...args]. type: checkbox | text | number | select | bands.
 export const SCHEMA = () => [
     [
+        "interface",
+        t("settings.interface.title"),
+        [
+            ["dynamic_color", t("settings.interface.dynamic_color"), "checkbox"],
+            ["perf_mode", t("settings.interface.perf_mode"), "checkbox"],
+            ["theme_mode", t("settings.interface.theme_mode"), "theme-select"],
+            ["view_mode", t("settings.interface.view_mode"), "view-select"],
+            ["language", t("settings.interface.language"), "language-select", t("settings.interface.language_hint")],
+        ]
+    ],
+    [
         "general",
         t("schema.general"),
         [
@@ -64,7 +75,6 @@ export const SCHEMA = () => [
             ["enabled", t("schema.enabled"), "checkbox"],
             ["cookies_path", t("schema.youtube_music.cookies_path"), "text"],
             ["yt_dlp_path", t("schema.youtube_music.yt_dlp_path"), "text"],
-            ["default_playlist", t("schema.youtube_music.default_playlist"), "text"],
         ],
     ],
     [
@@ -116,15 +126,19 @@ export const SCHEMA = () => [
         ],
     ],
     [
-      ["kb_playpause", "Play / Pause (Keyboard)", "keybind-kb", KB_KEYS],
-      ["pad_playpause", "Play / Pause (Controller)", "keybind-pad", PAD_BUTTONS],
-      ["kb_skip", "Next Track (Keyboard)", "keybind-kb", KB_KEYS],
-      ["pad_skip", "Next Track (Controller)", "keybind-pad", PAD_BUTTONS],
-      ["kb_prev", "Previous Track (Keyboard)", "keybind-kb", KB_KEYS],
-      ["pad_prev", "Previous Track (Controller)", "keybind-pad", PAD_BUTTONS],
-      ["kb_next_station", "Cycle Station/Playlist (Keyboard)", "keybind-kb", KB_KEYS],
-      ["pad_next_station", "Cycle Station/Playlist (Controller)", "keybind-pad", PAD_BUTTONS],
-      ["kb_source", "Switch Source (Keyboard)", "keybind-kb", KB_KEYS],
-      ["pad_source", "Switch Source (Controller)", "keybind-pad", PAD_BUTTONS],
+        "hotkeys",
+        t("hotkeys.title"),
+        [
+            ["kb_playpause", t("hotkeys.kb_playpause"), "keybind-kb", KB_KEYS],
+            ["pad_playpause", t("hotkeys.pad_playpause"), "keybind-pad", PAD_BUTTONS],
+            ["kb_skip", t("hotkeys.kb_skip"), "keybind-kb", KB_KEYS],
+            ["pad_skip", t("hotkeys.pad_skip"), "keybind-pad", PAD_BUTTONS],
+            ["kb_prev", t("hotkeys.kb_prev"), "keybind-kb", KB_KEYS],
+            ["pad_prev", t("hotkeys.pad_prev"), "keybind-pad", PAD_BUTTONS],
+            ["kb_next_station", t("hotkeys.kb_next_station"), "keybind-kb", KB_KEYS],
+            ["pad_next_station", t("hotkeys.pad_next_station"), "keybind-pad", PAD_BUTTONS],
+            ["kb_source", t("hotkeys.kb_source"), "keybind-kb", KB_KEYS],
+            ["pad_source", t("hotkeys.pad_source"), "keybind-pad", PAD_BUTTONS],
+        ]
     ]
 ];

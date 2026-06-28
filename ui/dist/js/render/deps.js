@@ -1,6 +1,6 @@
-import { api } from "../api.js";
-import { el } from "../dom.js";
-import { changed } from "../store.js";
+import { api } from "../data/api.js";
+import { el } from "../lib/dom.js";
+import { changed } from "../lib/store.js";
 import { t } from "../i18n.js";
 
 export function depRow(tool) {
@@ -28,9 +28,10 @@ export function createDeps(main) {
   let tools = [];
   const list = el("div", {});
   const card = el("section", { class: "card", id: "deps-card", hidden: true }, [
-    el("h2", {}, t("deps.title")),
+    el("h2", { dataset: { i18n: "deps.title" } }, t("deps.title")),
     el("p", {
       class: "muted",
+      dataset: { i18nHtml: "deps.description" },
       html: t("deps.description"),
     }),
     list,

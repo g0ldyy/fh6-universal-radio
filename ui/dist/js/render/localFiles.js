@@ -1,449 +1,413 @@
-import { api } from "../api.js";
-import { $, el } from "../dom.js";
+import { api } from "../data/api.js";
+import { $, el } from "../lib/dom.js";
 import { icons } from "../icons.js";
 import { toast } from "../toast.js";
-import { t } from "../i18n.js";
-import { renderTrackQueue } from "./playlistQueue.js";
+import { t, tNode } from "../i18n.js";
+import { createStationManager } from "./stationManager.js";
 
-
-const ORDERS = () => [
-	["shuffle", t("local_files.order.shuffle")],
-	["album", t("local_files.order.album")],
-	["name", t("local_files.order.name")],
-	["folder", t("local_files.order.folder")],
+// [value, i18n key] — kept separate from the translated string so the
+// <option> built from it can carry data-i18n and refresh on language change.
+const ORDERS = [
+    ["shuffle", "local_files.order.shuffle"],
+    ["album", "local_files.order.album"],
+    ["name", "local_files.order.name"],
+    ["folder", "local_files.order.folder"],
 ];
-const GROUPINGS = () => [
-	["folder", t("local_files.grouping.folder")],
-	["tags", t("local_files.grouping.tags")],
+const GROUPINGS = [
+    ["folder", "local_files.grouping.folder"],
+    ["tags", "local_files.grouping.tags"],
 ];
-const REPEATS = () => [
-	["all", t("local_files.repeat.all")],
-	["one", t("local_files.repeat.one")],
-	["off", t("local_files.repeat.off")],
+const REPEATS = [
+    ["all", "local_files.repeat.all"],
+    ["one", "local_files.repeat.one"],
+    ["off", "local_files.repeat.off"],
 ];
+const optionList = pairs => pairs.map(([value, key]) => el("option", { value, dataset: { i18n: key } }, t(key)));
 
-// Lowercase + strip diacritics, so "ete" matches "Été" in queue search.
-const fold = s => (s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-
-// Path helpers: case-insensitive, separator-agnostic.
+/**
+ * Normalizes a path string to be case-insensitive and separator-agnostic.
+ *
+ * @param {string} p - The path to normalize
+ * @returns {string} The normalized lowercased path
+ */
 const norm = p => (p || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
+/**
+ * Determines whether a child path resides within a parent directory path.
+ *
+ * @param {string} child - The potential subfolder path
+ * @param {string} parent - The base directory path
+ * @returns {boolean} True if the child is within or equal to the parent
+ */
 const within = (child, parent) => {
-	const c = norm(child);
-	const a = norm(parent);
-	return c === a || c.startsWith(a + "/");
+    const c = norm(child);
+    const a = norm(parent);
+    return c === a || c.startsWith(a + "/");
 };
 
+/**
+ * Creates a default local files station object structure.
+ *
+ * @param {string} name - The name of the station
+ * @returns {object} The new station instance configuration
+ */
 function newStation(name) {
-	return { name, roots: [], excluded: [], recursive: true, order: "shuffle", grouping: "folder", repeat: "all" };
+    return { name, roots: [], excluded: [], recursive: true, order: "shuffle", grouping: "folder", repeat: "all" };
 }
 
-// Lazy folder browser modal. open(onPick) resolves the chosen folder path.
+/**
+ * Instantiates a lazy folder browser modal instance.
+ *
+ * @returns {object} An object containing an `open(onPick)` method
+ */
 function createBrowser() {
-	let dir = "";
-	let onPick = null;
+    let dir = "";
+    let onPick = null;
 
-	const list = el("div", { class: "lf-browse-list" });
-	const crumb = el("div", { class: "lf-browse-crumb muted" });
-	const useBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.browser.use"));
-	const upBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.browser.up"));
-	const closeBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.browser.cancel"));
+    const list = el("div", { class: "browse-list" });
+    const crumb = el("div", { class: "browse-crumb muted" });
+    const useBtn = el("button", { type: "button", class: "btn filled", dataset: { i18n: "local_files.browser.use" } }, t("local_files.browser.use"));
+    const upBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "local_files.browser.up" } }, t("local_files.browser.up"));
+    const closeBtn = el("button", { type: "button", class: "btn ghost danger", dataset: { i18n: "btn.cancel" } }, t("btn.cancel"));
 
-	const modal = el("div", { class: "lf-modal", hidden: true }, [
-		el("div", { class: "lf-modal-card" }, [
-			el("div", { class: "lf-modal-head" }, [el("h3", {}, t("local_files.browser.title")), crumb]),
-			list,
-			el("div", { class: "lf-modal-foot row" }, [closeBtn, upBtn, useBtn]),
-		]),
-	]);
-	document.body.append(modal);
+    const modal = el("div", { class: "modal-overlay", hidden: true }, [
+        el("div", { class: "modal-card" }, [
+            el("div", { class: "modal-head" }, [el("h3", { dataset: { i18n: "local_files.browser.title" } }, t("local_files.browser.title")), crumb]),
+            list,
+            el("div", { class: "modal-foot row" }, [closeBtn, upBtn, useBtn]),
+        ]),
+    ]);
+    document.body.append(modal);
 
-	async function go(path) {
-		dir = path || "";
-		let r;
-		try {
-			r = await api.browseFs(dir);
-		} catch (e) {
-			toast(e.message, true);
-			return;
-		}
-		dir = r.path || "";
-		crumb.textContent = dir || t("local_files.browser.crumb_root");
-		upBtn.disabled = false;
-		useBtn.disabled = !dir;
-		list.replaceChildren(
-			...(r.entries || []).map(entry => {
-				const row = el("button", { type: "button", class: "lf-browse-row" }, [
-					el("span", { class: "lf-browse-name" }, entry.name || entry.path),
-					entry.has_children ? el("span", { class: "lf-chevron" }, "›") : null,
-				]);
-				row.dataset.parent = r.parent || "";
-				row.addEventListener("click", () => go(entry.path));
-				return row;
-			}),
-		);
-		list.dataset.parent = r.parent || "";
-		if (!(r.entries || []).length) { list.append(el("p", { class: "muted" }, dir ? "No subfolders here." : "No drives found.")); }
-	}
+    async function go(path) {
+        dir = path || "";
+        let r;
+        try {
+            r = await api.browseFs(dir);
+        } catch (e) {
+            toast(e.message, true);
+            return;
+        }
+        dir = r.path || "";
+        crumb.textContent = dir || t("local_files.browser.crumb_root");
+        upBtn.disabled = false;
+        useBtn.disabled = !dir;
+        list.replaceChildren(
+            ...(r.entries || []).map(entry => {
+                const row = el("button", { type: "button", class: "browse-row" }, [
+                    el("span", { class: "browse-name" }, entry.name || entry.path),
+                    entry.has_children ? el("span", { class: "chevron" }, "›") : null,
+                ]);
+                row.dataset.parent = r.parent || "";
+                row.addEventListener("click", () => go(entry.path));
+                return row;
+            }),
+        );
+        list.dataset.parent = r.parent || "";
+        if (!(r.entries || []).length) {
+            list.append(el("p", { class: "muted" }, dir ? t("local_files.browser.no_subfolders") : t("local_files.browser.no_drives")));
+        }
+    }
 
-	upBtn.addEventListener("click", () => go(list.dataset.parent || ""));
-	closeBtn.addEventListener("click", () => (modal.hidden = true));
-	modal.addEventListener("click", e => {
-		if (e.target === modal) modal.hidden = true;
-	});
-	useBtn.addEventListener("click", () => {
-		if (!dir) return;
-		modal.hidden = true;
-		onPick?.(dir);
-	});
+    upBtn.addEventListener("click", () => go(list.dataset.parent || ""));
+    closeBtn.addEventListener("click", () => {
+        modal.hidden = true;
+        document.body.style.overflow = "";
+    });
+    modal.addEventListener("click", e => {
+        if (e.target === modal) modal.hidden = true;
+        document.body.style.overflow = "";
+    });
+    useBtn.addEventListener("click", () => {
+        if (!dir) return;
+        modal.hidden = true;
+        onPick?.(dir);
+    });
 
-	return {
-		open(cb) {
-			onPick = cb;
-			modal.hidden = false;
-			go("");
-		},
-	};
+    return {
+        open(cb) {
+            onPick = cb;
+            modal.hidden = false;
+            document.body.style.overflow = "hidden";
+            go("");
+        },
+    };
 }
 
-// Local Files card: stations (presets), folder selection, ordering and queue.
+/**
+ * Renders and manages the Local Files station source UI component.
+ * Allows file system browsing, root configuration, exclusion tree nesting, and sorting.
+ *
+ * @param {HTMLElement} main - The main container element to inject the card into
+ * @param {object} ctx - Application context containing state and lifecycle hooks
+ * @param {() => object} ctx.getState - Returns the global application state
+ * @param {() => Promise<void>} [ctx.onSaved] - Optional callback triggered after successful mutations
+ */
 export function createLocalFiles(main, ctx) {
-	let stations = [];
-	let activeStation = "";
-	let selected = 0;
-	let queue = { cursor: 0, tracks: [] };
-	let search = "";
-	let loaded = false;
-	const expanded = new Set(); // expanded tree folder paths (normalized)
+    const browser = createBrowser();
+    const expanded = new Set(); // holds normalized tree folder paths that are currently expanded
 
-	const browser = createBrowser();
+    const rootsBox = el("div", { class: "roots" });
+    const addFolderBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "local_files.add_folder" } }, t("local_files.add_folder"));
+    const treeBox = el("div", { class: "tree" });
+    const orderSelect = el("select", {
+        "aria-label": "Play order",
+        dataset: { i18nAriaLabel: "local_files.order" },
+    }, optionList(ORDERS));
+    const groupingSelect = el("select", {
+        "aria-label": "Album grouping",
+        dataset: { i18nAriaLabel: "local_files.grouping" },
+    }, optionList(GROUPINGS));
+    const repeatSelect = el("select", {
+        "aria-label": "Repeat mode",
+        dataset: { i18nAriaLabel: "local_files.repeat" },
+    }, optionList(REPEATS));
+    const saveBtn = el("button", { type: "button", class: "btn filled", dataset: { i18n: "btn.save" } }, t("btn.save"));
+    const summaryEl = el("p", { class: "muted", hidden: true });
+    const reshuffleBtn = el("button", {
+        type: "button",
+        class: "icon-btn",
+        "aria-label": "Reshuffle",
+        dataset: { i18nAriaLabel: "local_files.reshuffle" },
+        html: icons.shuffle,
+    });
 
-	const stationSelect = el("select", { id: "lf-station", "aria-label": "Station preset" });
-	const onAirBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.set_on_air"));
-	const newBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.new"));
-	const renameBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.rename"));
-	const deleteBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.delete"));
+    let lastDetails = null;
 
-	const rootsBox = el("div", { class: "lf-roots" });
-	const addFolderBtn = el("button", { type: "button", class: "btn ghost" }, t("local_files.add_folder"));
-	const treeBox = el("div", { class: "lf-tree" });
-	const orderSelect = el("select", { "aria-label": "Play order" },
-		ORDERS().map(([v, label]) => el("option", { value: v }, label)));
-	const groupingSelect = el("select", { "aria-label": "Album grouping" },
-		GROUPINGS().map(([v, label]) => el("option", { value: v }, label)));
-	const repeatSelect = el("select", { "aria-label": "Repeat mode" },
-		REPEATS().map(([v, label]) => el("option", { value: v }, label)));
-	const saveBtn = el("button", { type: "button", class: "btn filled" }, t("local_files.save"));
+    const station = createStationManager({
+        api: api.localFiles,
+        newStation,
+        defaultNameKey: "local_files.default_station_name",
+        ctx,
+        queue: {
+            getTitle: track => track.title || t("label.unknown_title"),
+            getSubtitle: track => track.folder || null,
+            getCoverUrl: track => track.cover_url,
+            getSearchFields: track => [track.title || "", track.artist || "", track.folder || ""],
+        },
+        getSig: (details, track) => `${details?.track_count ?? -1}|${details?.index_version ?? -1}|${track?.title ?? ""}|${track?.artist ?? ""}`,
+        onStationChange: s => {
+            if (s) {
+                s.roots ??= [];
+                s.excluded ??= [];
+            }
+            renderRoots();
+            renderTree();
+            renderModes();
+            renderSummary();
+        },
+        onSync: details => {
+            lastDetails = details;
+            renderSummary();
+        },
+    });
 
-	const searchInput = el("input", { type: "text", placeholder: t("local_files.search"), autocomplete: "off" });
-	const reshuffleBtn = el("button", { type: "button", class: "icon-btn", "aria-label": "Reshuffle", html: icons.shuffle });
-	const trackList = el("ul", { class: "lf-tracklist" });
-	const queueCount = el("span", { class: "muted" });
+    const { stationSelect, onAirBtn, newBtn, duplicateBtn, renameBtn, deleteBtn, queueCount, searchInput, trackList } = station.els;
 
-	const card = el("section", { class: "card", id: "local-files-card", hidden: true }, [
-		el("h2", {}, t("local_files.title")),
-		el("div", { class: "lf-stationbar row" }, [stationSelect, onAirBtn]),
-		el("div", { class: "row lf-stationtools" }, [newBtn, renameBtn, deleteBtn]),
-		el("div", { class: "lf-editor" }, [
-			el("div", { class: "lf-editor-section lf-editor-section--folders" }, [
-				el("label", { class: "field-label lf-editor-section__label" }, t("local_files.source_folders")),
-				el("div", { class: "lf-editor-section__body" }, [
-					rootsBox,
-					el("div", { class: "row lf-editor-section__actions" }, [addFolderBtn]),
-				]),
-			]),
-			el("div", { class: "lf-editor-section lf-editor-section--exclude" }, [
-				el("label", { class: "field-label lf-editor-section__label" }, t("local_files.exclude_subfolders")),
-				el("div", { class: "lf-editor-section__body" }, [
-					treeBox,
-				]),
-			]),
-			el("div", { class: "lf-editor-section lf-editor-section--modes" }, [
-				el("label", { class: "field-label lf-editor-section__label" }, t("local_files.options")),
-				el("div", { class: "lf-modes row lf-editor-section__body" }, [
-					el("label", { class: "lf-mode" }, [t("local_files.order"), orderSelect]),
-					el("label", { class: "lf-mode", id: "lf-grouping-field" }, [t("local_files.grouping"), groupingSelect]),
-					el("label", { class: "lf-mode" }, [t("local_files.repeat"), repeatSelect]),
-				]),
-			]),
-			el("div", { class: "row lf-editor-foot" }, [saveBtn]),
-		]),
-		el("div", { class: "lf-queue" }, [
-			el("div", { class: "lf-queue-head row" }, [
-				el("label", { class: "field-label" }, t("local_files.queue")),
-				queueCount,
-				reshuffleBtn,
-			]),
-			searchInput,
-			trackList,
-		]),
-	]);
+    const card = el("section", { class: "card", id: "local-files-card", hidden: true }, [
+        el("h2", { dataset: { i18n: "local_files.title" } }, t("local_files.title")),
+        summaryEl,
+        el("div", { class: "stationbar row" }, [stationSelect, onAirBtn]),
+        el("div", { class: "row stationtools" }, [newBtn, duplicateBtn, renameBtn, deleteBtn]),
+        el("div", { class: "editor" }, [
+            el("div", { class: "editor-section editor-section--folders" }, [
+                el("label", { class: "field-label editor-section__label", dataset: { i18n: "local_files.source_folders" } }, t("local_files.source_folders")),
+                el("div", { class: "editor-section__body" }, [
+                    rootsBox,
+                    el("div", { class: "row editor-section__actions" }, [addFolderBtn]),
+                ]),
+            ]),
+            el("div", { class: "editor-section editor-section--exclude" }, [
+                el("label", { class: "field-label editor-section__label", dataset: { i18n: "local_files.exclude_subfolders" } }, t("local_files.exclude_subfolders")),
+                el("div", { class: "editor-section__body" }, [treeBox]),
+            ]),
+            el("div", { class: "editor-section editor-section--modes" }, [
+                el("label", { class: "field-label editor-section__label", dataset: { i18n: "local_files.options" } }, t("local_files.options")),
+                el("div", { class: "modes row editor-section__body" }, [
+                    el("label", { class: "mode" }, [tNode("local_files.order"), orderSelect]),
+                    el("label", { class: "mode", id: "grouping-field" }, [tNode("local_files.grouping"), groupingSelect]),
+                    el("label", { class: "mode" }, [tNode("local_files.repeat"), repeatSelect]),
+                ]),
+            ]),
+            el("div", { class: "row editor-foot" }, [saveBtn]),
+        ]),
+        el("div", { class: "queue" }, [
+            el("div", { class: "queue-head row" }, [
+                el("label", { class: "field-label", dataset: { i18n: "label.queue" } }, t("label.queue")),
+                queueCount,
+                reshuffleBtn,
+            ]),
+            searchInput,
+            trackList,
+        ]),
+    ]);
 
-	const sourcesCard = $("#sources", main)?.closest(".card");
-	if (sourcesCard) sourcesCard.insertAdjacentElement("afterend", card);
-	else main.append(card);
+    const sourcesCard = $("#sources", main)?.closest(".card");
+    if (sourcesCard) sourcesCard.insertAdjacentElement("afterend", card);
+    else main.append(card);
 
-	const cur = () => stations[selected];
-
-	async function load(force = false) {
-		if (loaded && !force) return;
-		try {
-			const r = await api.getLocalStations();
-			stations = Array.isArray(r.stations) && r.stations.length ? r.stations : [newStation(t("local_files.default_station_name"))];
-			stations.forEach(s => {
-				s.roots ??= [];
-				s.excluded ??= [];
-			});
-			activeStation = r.active_station || stations[0].name;
-			selected = Math.max(0, stations.findIndex(s => s.name === activeStation));
-			loaded = true;
-		} catch {
-			return;
-		}
-		renderEditor();
-		loadQueue();
-	}
-
-	async function loadQueue() {
-		try {
-			queue = await api.getLocalQueue();
-		} catch {
-			queue = { cursor: 0, tracks: [] };
-		}
-		renderQueue();
-	}
-
-	function renderStations() {
-		stationSelect.replaceChildren(
-			...stations.map((s, i) =>
-				el("option", { value: String(i), selected: i === selected },
-					s.name + (s.name === activeStation ? `  • ${t("local_files.on_air")}` : "")),
-			),
-		);
-		deleteBtn.disabled = stations.length <= 1;
-		const isOnAir = cur()?.name === activeStation;
-		onAirBtn.disabled = isOnAir;
-		onAirBtn.textContent = isOnAir ? t("local_files.already_on_air") : t("local_files.set_on_air");
-	}
-
-	function renderRoots() {
-		const s = cur();
-		rootsBox.replaceChildren(
-			...(s.roots.length
-				? s.roots.map((root, i) => {
-					const remove = el("button", { type: "button", class: "lf-x", "aria-label": "Remove folder" }, "✕");
-					remove.addEventListener("click", () => {
-						s.roots.splice(i, 1);
-						s.excluded = s.excluded.filter(ex => s.roots.some(r => within(ex, r)));
-						renderRoots();
-						renderTree();
-					});
-					return el("div", { class: "lf-root" }, [el("span", { class: "lf-root-path" }, root), remove]);
-				})
-				: []),
-		);
-	}
-
-	function treeRow(s, entry, depth) {
-		const state = s.excluded.some(ex => norm(ex) === norm(entry.path))
-			? "excluded"
-			: s.excluded.some(ex => within(entry.path, ex))
-				? "ancestor"
-				: "included";
-		const isOpen = expanded.has(norm(entry.path));
-
-		const box = el("input", { type: "checkbox" });
-		box.checked = state !== "excluded";
-		box.indeterminate = state === "ancestor";
-		box.addEventListener("change", () => {
-			if (box.checked) s.excluded = s.excluded.filter(ex => norm(ex) !== norm(entry.path));
-			else s.excluded.push(entry.path);
-			renderTree();
-		});
-
-		const children = el("div", {});
-
-		const caret = el("button", {
-			type: "button",
-			class: "lf-caret" + (entry.has_children ? "" : " empty"),
-			"aria-label": "Expand",
-		}, entry.has_children ? (isOpen ? "▾" : "▸") : "·");
-		if (entry.has_children) {
-			caret.addEventListener("click", () => {
-				if (expanded.has(norm(entry.path))) expanded.delete(norm(entry.path));
-				else expanded.add(norm(entry.path));
-				renderTree();
-			});
-		}
-
-		const row = el("div", { class: "lf-tree-row", style: `padding-left:${depth * 16}px` }, [
-			caret,
-			el("label", { class: "lf-tree-label" + (state === "ancestor" ? " muted" : "") }, [
-				box,
-				el("span", {}, entry.name || entry.path),
-			]),
-		]);
-
-		const wrap = el("div", {}, [row, children]);
-		if (entry.has_children && isOpen) {
-			api
-				.browseFs(entry.path)
-				.then(r => {
-					children.replaceChildren(...(r.entries || []).map(c => treeRow(s, c, depth + 1)));
-				})
-				.catch(() => { });
-		}
-		return wrap;
-	}
-
-	function renderTree() {
-		const s = cur();
-		if (!s.roots.length) {
-			treeBox.replaceChildren(el("p", { class: "muted" }, "Add a folder above to pick which subfolders to include."));
-			return;
-		}
-		treeBox.replaceChildren(
-			...s.roots.map(root => treeRow(s, { name: root, path: root, has_children: true }, 0)),
-		);
-	}
-
-	function renderModes() {
-		const s = cur();
-		orderSelect.value = s.order;
-		groupingSelect.value = s.grouping;
-		repeatSelect.value = s.repeat;
-		$("#lf-grouping-field").hidden = s.order !== "album";
-	}
-
-	function renderEditor() {
-		if (!cur()) return;
-		renderStations();
-		renderRoots();
-		renderTree();
-		renderModes();
-	}
-
-	function renderQueue() {
-		queueCount.textContent = `${queue.tracks?.length || 0} ${t("local_files.tracks")}`;
-
-		renderTrackQueue(trackList, queue, search, {
-			getTitle: track => track.title || t("local_files.unknown_title"),
-			getSubtitle: track => track.folder || null,
-			getCoverUrl: track => track.cover_url,
-			getSearchFields: track => [track.title || "", track.artist || "", track.folder || ""],
-			onTrackClick: async track => {
-				try {
-					await api.playLocalIndex(track.index);
-					queue.cursor = track.index;
-					renderQueue();
-				} catch (e) {
-					toast(e.message, true);
-				}
-			},
-			emptyKey: "local_files.queue_empty",
-			noMatchesKey: "local_files.no_matches",
-			unknownTitleKey: "local_files.unknown_title",
-		});
-	}
-
-  // --- lifecycle ------------------------------------------------------------
-  let lastTrackCount = -1;
-  let lastIndexVersion = -1;
-  let lastTrackSig = ""; 
-  function render() {
-    const state = ctx.getState();
-    const isActive = state?.sources?.active === "local_files";
-    card.hidden = !isActive;
-    if (!isActive) return;
-    load();
-    // Refresh the queue (titles, artists, current-track highlight) when the
-    // track count changes (rescan) or the metadata index advances.
-    const lf = state?.sources?.available?.find(s => s.name === "local_files");
-
-    const liveActiveStation = lf?.details?.active_station;
-    if (loaded && liveActiveStation && liveActiveStation !== activeStation) {
-      activeStation = liveActiveStation;
-      selected = Math.max(0, stations.findIndex(s => s.name === activeStation));
-      renderEditor();
+    function renderRoots() {
+        const s = station.cur();
+        if (!s) return;
+        rootsBox.replaceChildren(
+            ...(s.roots.length
+                ? s.roots.map((root, i) => {
+                    const remove = el("button", { type: "button", class: "x", "aria-label": "Remove folder" }, "✕");
+                    remove.addEventListener("click", () => {
+                        s.roots.splice(i, 1);
+                        s.excluded = s.excluded.filter(ex => s.roots.some(r => within(ex, r)));
+                        renderRoots();
+                        renderTree();
+                        renderSummary();
+                    });
+                    return el("div", { class: "root" }, [el("span", { class: "root-path" }, root), remove]);
+                })
+                : []),
+        );
     }
 
-    const tc = lf?.details?.track_count ?? -1;
-    const iv = lf?.details?.index_version ?? -1;
-    const currentTrackSig = state?.track?.title + "|" + state?.track?.artist;
-    if (loaded && (tc !== lastTrackCount || iv !== lastIndexVersion || currentTrackSig !== lastTrackSig)) {
-      lastTrackCount = tc;
-      lastIndexVersion = iv;
-      lastTrackSig = currentTrackSig; // update the signature
-      loadQueue();
+    function treeRow(s, entry, depth) {
+        const state = s.excluded.some(ex => norm(ex) === norm(entry.path))
+            ? "excluded"
+            : s.excluded.some(ex => within(entry.path, ex))
+                ? "ancestor"
+                : "included";
+        const isOpen = expanded.has(norm(entry.path));
+
+        const box = el("input", { type: "checkbox" });
+        box.checked = state !== "excluded";
+        box.indeterminate = state === "ancestor";
+        box.addEventListener("change", () => {
+            if (box.checked) s.excluded = s.excluded.filter(ex => norm(ex) !== norm(entry.path));
+            else s.excluded.push(entry.path);
+            renderTree();
+        });
+
+        const children = el("div", {});
+
+        const caret = el("button", {
+            type: "button",
+            class: "caret" + (entry.has_children ? "" : " empty"),
+            "aria-label": entry.has_children ? (isOpen ? t("local_files.tree.collapse") : t("local_files.tree.expand")) : undefined,
+            "aria-expanded": entry.has_children ? String(isOpen) : undefined,
+        }, entry.has_children ? (isOpen ? "▾" : "▸") : "·");
+        if (entry.has_children) {
+            caret.addEventListener("click", () => {
+                if (expanded.has(norm(entry.path))) expanded.delete(norm(entry.path));
+                else expanded.add(norm(entry.path));
+                renderTree();
+            });
+        }
+
+        const row = el("div", { class: "tree-row", style: `padding-left:${depth * 16}px` }, [
+            caret,
+            el("label", { class: "tree-label" + (state === "ancestor" ? " muted" : "") }, [
+                box,
+                el("span", {}, entry.name || entry.path),
+            ]),
+        ]);
+
+        const wrap = el("div", {}, [row, children]);
+        if (entry.has_children && isOpen) {
+            api
+                .browseFs(entry.path)
+                .then(r => {
+                    children.replaceChildren(...(r.entries || []).map(c => treeRow(s, c, depth + 1)));
+                })
+                .catch(() => { });
+        }
+        return wrap;
     }
-  }
 
-	saveBtn.addEventListener("click", async () => {
-		try {
-			const r = await api.putLocalStations(stations, activeStation);
-			toast(`${t("local_files.save")} · ${r.track_count} ${t("local_files.tracks")}`);
-			await ctx.onSaved?.();
-			loadQueue();
-		} catch (e) {
-			toast(e.message, true);
-		}
-	});
-	onAirBtn.addEventListener("click", async () => {
-		const name = cur().name;
-		try {
-			await api.putLocalStations(stations, name);
-			await api.activateLocalStation(name);
-			activeStation = name;
-			renderStations();
-			toast(`${t("local_files.on_air")}: ${name}`);
-			await ctx.onSaved?.();
-			loadQueue();
-		} catch (e) {
-			toast(e.message, true);
-		}
-	});
-	searchInput.addEventListener("input", () => {
-		search = searchInput.value;
-		renderQueue();
-	});
-	reshuffleBtn.addEventListener("click", async () => {
-		try {
-			await api.reshuffleLocal();
-			loadQueue();
-		} catch (e) {
-			toast(e.message, true);
-		}
-	});
+    function renderTree() {
+        const s = station.cur();
+        if (!s) return;
+        if (!s.roots.length) {
+            treeBox.replaceChildren(el("p", { class: "muted" }, t("local_files.tree_empty_hint")));
+            return;
+        }
+        treeBox.replaceChildren(...s.roots.map(root => treeRow(s, { name: root, path: root, has_children: true }, 0)));
+    }
 
-	// --- lifecycle ------------------------------------------------------------
-	let lastTrackCount = -1;
-	let lastIndexVersion = -1;
-	let lastTrackTitle = "";
+    function renderModes() {
+        const s = station.cur();
+        if (!s) return;
+        orderSelect.value = s.order;
+        groupingSelect.value = s.grouping;
+        repeatSelect.value = s.repeat;
+        $("#grouping-field", card).hidden = s.order !== "album";
+    }
 
-	function render() {
-		const state = ctx.getState();
-		const isActive = state?.sources?.active === "local_files";
-		card.hidden = !isActive;
-		if (!isActive) return;
-		load();
+    // Folder count is always accurate for whichever station is selected
+    // (it's just s.roots.length, known client-side). Track count is only
+    // shown when the selected station is the one actually on air — it's the
+    // only one the backend streams live stats for, so showing it for a
+    // different station would just be the wrong number.
+    function renderSummary() {
+        const s = station.cur();
+        if (!s) {
+            summaryEl.hidden = true;
+            return;
+        }
+        const folderCount = s.roots?.length ?? 0;
+        const isOnAir = s.name === station.getActiveStation();
+        const trackCount = isOnAir ? lastDetails?.track_count : null;
 
-		const lf = state?.sources?.available?.find(s => s.name === "local_files");
-		const tc = lf?.details?.track_count ?? -1;
-		const iv = lf?.details?.index_version ?? -1;
-		const title = state?.track?.title ?? "";
+        const parts = [];
+        if (trackCount != null) parts.push(`${trackCount} ${t("label.tracks")}`);
+        parts.push(`${folderCount} ${t("local_files.summary.folders")}`);
 
-		if (loaded && (tc !== lastTrackCount || iv !== lastIndexVersion || title !== lastTrackTitle)) {
-			lastTrackCount = tc;
-			lastIndexVersion = iv;
-			lastTrackTitle = title;
-			loadQueue();
-		}
-	}
+        summaryEl.textContent = parts.join(" · ");
+        summaryEl.hidden = false;
+    }
 
-	return {
-		render,
-		invalidate: () => {
-			loaded = false;
-		},
-		reloadQueue: loadQueue,
-	};
+    addFolderBtn.addEventListener("click", () => {
+        browser.open(path => {
+            const s = station.cur();
+            if (!s.roots.some(r => norm(r) === norm(path))) s.roots.push(path);
+            renderRoots();
+            renderTree();
+            renderSummary();
+        });
+    });
+    orderSelect.addEventListener("change", () => {
+        station.cur().order = orderSelect.value;
+        renderModes();
+    });
+    groupingSelect.addEventListener("change", () => (station.cur().grouping = groupingSelect.value));
+    repeatSelect.addEventListener("change", () => (station.cur().repeat = repeatSelect.value));
+
+    saveBtn.addEventListener("click", async () => {
+        try {
+            const r = await station.save();
+            toast(`${t("btn.save")} · ${r.track_count} ${t("label.tracks")}`);
+        } catch {
+            // Error handling already deferred to the station manager
+        }
+    });
+
+    reshuffleBtn.addEventListener("click", async () => {
+        try {
+            await api.reshuffleLocal();
+            station.loadQueue();
+        } catch (e) {
+            toast(e.message, true);
+        }
+    });
+
+    function render() {
+        const state = ctx.getState();
+        const isActive = state?.sources?.active === "local_files";
+        card.hidden = !isActive;
+        if (!isActive) return;
+        station.load();
+        const details = state?.sources?.available?.find(s => s.name === "local_files")?.details;
+        station.sync(details, state?.track);
+    }
+
+    return {
+        render,
+        invalidate: station.invalidate,
+        reloadQueue: station.loadQueue,
+    };
 }

@@ -8,6 +8,30 @@
     }
 }
 
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toast-fade-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
 @keyframes cover-pulse {
 
     0%,
@@ -29,28 +53,5 @@
 
     50% {
         transform: scaleY(1);
-    }
-}
-
-@keyframes vinyl-spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-@keyframes title-scroll {
-
-    0%,
-    15% {
-        transform: translateX(0);
-    }
-
-    85%,
-    100% {
-        transform: translateX(var(--scroll-dist));
     }
 }

@@ -1,22 +1,26 @@
-import { api } from "../api.js";
-import { $, el } from "../dom.js";
+import { api } from "../data/api.js";
+import { $, el, highlightText } from "../lib/dom.js";
 import { toast } from "../toast.js";
-import { searchStations, registerClick } from "../radioBrowser.js";
+import { searchStations, registerClick } from "../data/radioBrowser.js";
 import { t } from "../i18n.js";
+import { translateLoadingPlaceholder, isLocalUrl } from "../lib/format.js";
+import { debounce } from "../lib/dom.js";
+import { confirmAction } from "./confirmModal.js";
 
 // Lowercase + strip diacritics, so "jazz" matches "Jázz" in the station filter.
 const fold = s => (s || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 // Genre chips shown on the empty state and above the directory search.
-const GENRES = () => [
-    t("genre.lofi"),
-    t("genre.jazz"),
-    t("genre.rock"),
-    t("genre.electronic"),
-    t("genre.classical"),
-    t("genre.news"),
-    t("genre.pop"),
-    t("genre.hip_hop"),
+// Kept as i18n keys (not translated strings) so chips can carry data-i18n.
+const GENRE_KEYS = [
+  "genre.lofi",
+  "genre.jazz",
+  "genre.rock",
+  "genre.electronic",
+  "genre.classical",
+  "genre.news",
+  "genre.pop",
+  "genre.hip_hop",
 ];
 
 // A small curated country list for the directory filter (ISO 3166-1 alpha-2).
@@ -80,41 +84,52 @@ export function createOnlineRadio(main, ctx) {
   let historySig = "";
 
   // --- cast bar -------------------------------------------------------------
-  const urlInput = el("input", { type: "text", id: "or-url", placeholder: t("online_radio.url_placeholder"), autocomplete: "off" });
-  const playBtn = el("button", { type: "submit", class: "btn filled" }, t("online_radio.play"));
-  const saveBtn = el("button", { type: "button", class: "btn ghost" }, t("online_radio.save"));
+  const urlInput = el("input", {
+    type: "text", id: "or-url", placeholder: t("online_radio.url_placeholder"),
+    dataset: { i18nPlaceholder: "online_radio.url_placeholder" }, autocomplete: "off",
+  });
+  const playBtn = el("button", { type: "submit", class: "btn filled", dataset: { i18n: "btn.play" } }, t("btn.play"));
+  const saveBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "btn.save" } }, t("btn.save"));
   const castForm = el("form", { id: "or-cast", class: "row" }, [urlInput, playBtn, saveBtn]);
 
   // --- live track history ---------------------------------------------------
   const history = el("div", { class: "or-history", hidden: true });
 
   // --- tabs -----------------------------------------------------------------
-  const mineTab = el("button", { type: "button", class: "or-tab on" }, t("online_radio.my_stations"));
-  const discoverTab = el("button", { type: "button", class: "or-tab" }, t("online_radio.discover"));
+  const mineTab = el("button", { type: "button", class: "or-tab on", dataset: { i18n: "online_radio.my_stations" } }, t("online_radio.my_stations"));
+  const discoverTab = el("button", { type: "button", class: "or-tab", dataset: { i18n: "online_radio.discover" } }, t("online_radio.discover"));
   const tabs = el("div", { class: "or-tabs" }, [mineTab, discoverTab]);
 
   // --- my stations panel ----------------------------------------------------
-  const filterInput = el("input", { type: "text", placeholder: t("online_radio.filter_placeholder"), autocomplete: "off" });
+  const filterInput = el("input", {
+    type: "text", placeholder: t("online_radio.filter_placeholder"),
+    dataset: { i18nPlaceholder: "online_radio.filter_placeholder" }, autocomplete: "off",
+  });
+  const summaryEl = el("p", { class: "muted", hidden: true });
   const recentsWrap = el("div", { class: "or-recents", hidden: true });
   const recentsRow = el("div", { class: "or-chiprow" });
   const mineList = el("div", { class: "or-stations" });
-  const minePanel = el("div", { class: "or-panel" }, [filterInput, recentsWrap, mineList]);
-  recentsWrap.append(el("label", { class: "field-label" }, t("online_radio.recently_played")), recentsRow);
+  const minePanel = el("div", { class: "or-panel" }, [summaryEl, filterInput, recentsWrap, mineList]);
+  recentsWrap.append(el("label", { class: "field-label", dataset: { i18n: "online_radio.recently_played" } }, t("online_radio.recently_played")), recentsRow);
 
   // --- discover panel -------------------------------------------------------
-  const dq = el("input", { type: "text", placeholder: t("online_radio.search_placeholder"), autocomplete: "off" });
-  const dCountry = el("select", { "aria-label": "Country" }, COUNTRIES().map(([v, label]) => el("option", { value: v }, label)));
-  const dSearchBtn = el("button", { type: "submit", class: "btn filled" }, t("online_radio.search"));
+  const dq = el("input", {
+    type: "text", placeholder: t("online_radio.search_placeholder"),
+    dataset: { i18nPlaceholder: "online_radio.search_placeholder" }, autocomplete: "off",
+  });
+  const dCountry = el("select", { "aria-label": "Country" }, COUNTRIES().map(([v, label], i) =>
+    el("option", { value: v, dataset: i === 0 ? { i18n: "online_radio.any_country" } : {} }, label)));
+  const dSearchBtn = el("button", { type: "submit", class: "btn filled", dataset: { i18n: "online_radio.search" } }, t("online_radio.search"));
   const dForm = el("form", { class: "row or-discover-form" }, [dq, dCountry, dSearchBtn]);
-  const genreRow = el("div", { class: "or-chiprow or-genres" }, genreChips(GENRES()));
+  const genreRow = el("div", { class: "or-chiprow or-genres" }, genreChips(GENRE_KEYS));
   const dResults = el("div", { class: "or-stations" });
 
-  function genreChips(list) {
-    return list.map(g => {
-      const chip = el("button", { type: "button", class: "or-chip" }, g);
+  function genreChips(keys) {
+    return keys.map(key => {
+      const chip = el("button", { type: "button", class: "or-chip", dataset: { i18n: key } }, t(key));
       chip.addEventListener("click", () => {
         switchTab("discover");
-        dq.value = g;
+        dq.value = t(key);
         runSearch();
       });
       return chip;
@@ -123,8 +138,8 @@ export function createOnlineRadio(main, ctx) {
   const discoverPanel = el("div", { class: "or-panel", hidden: true }, [dForm, genreRow, dResults]);
 
   const card = el("section", { class: "card", id: "online-radio-card", hidden: true }, [
-    el("h2", {}, t("online_radio.title")),
-    el("p", { class: "muted" }, t("online_radio.description")),
+    el("h2", { dataset: { i18n: "online_radio.title" } }, t("online_radio.title")),
+    el("p", { class: "muted", dataset: { i18n: "online_radio.description" } }, t("online_radio.description")),
     castForm,
     history,
     tabs,
@@ -169,14 +184,14 @@ export function createOnlineRadio(main, ctx) {
 
   function addStation(st) {
     if (!st.url) return;
-    if (stations.some(s => s.url === st.url)) return toast(t("online_radio.station_already_saved"));
+    if (stations.some(s => s.url === st.url)) return toast(t("error.station_exists"));
     stations = [...stations, normalize(st)];
     renderMine();
     persist();
   }
 
   // --- rendering: my stations ----------------------------------------------
-  function stationCard(s, idx) {
+  function stationCard(s, idx, terms = []) {
     const favBtn = el("button", {
       type: "button",
       class: "or-icon" + (s.favorite ? " on" : ""),
@@ -194,8 +209,14 @@ export function createOnlineRadio(main, ctx) {
         renderMine();
         persist();
       }));
-    const delBtn = el("button", { type: "button", class: "or-icon", title: t("online_radio.delete") }, "🗑");
-    delBtn.addEventListener("click", () => {
+    const delBtn = el("button", { type: "button", class: "or-icon", title: t("btn.delete") }, "🗑");
+    delBtn.addEventListener("click", async () => {
+      const ok = await confirmAction({
+        title: t("local_files.delete_station"),
+        message: t("local_files.delete_confirm", { name: s.name || s.url }),
+      });
+      if (!ok) return;
+
       stations = stations.filter((_, i) => i !== idx);
       renderMine();
       persist();
@@ -206,13 +227,13 @@ export function createOnlineRadio(main, ctx) {
     const downBtn = el("button", { type: "button", class: "or-icon", title: t("online_radio.move_down"), disabled: idx === stations.length - 1 }, "↓");
     downBtn.addEventListener("click", () => move(idx, 1));
 
-    const playBtn0 = el("button", { type: "button", class: "btn filled or-play" }, t("online_radio.play"));
+    const playBtn0 = el("button", { type: "button", class: "btn filled or-play" }, t("btn.play"));
     playBtn0.addEventListener("click", () => play(s));
 
     return el("div", { class: "or-card" }, [
       stationLogo(s.favicon),
       el("div", { class: "or-card-main" }, [
-        el("span", { class: "or-name" }, s.name || s.url),
+        el("span", { class: "or-name" }, highlightText(s.name || s.url, terms)),
         badgeText(s) ? el("span", { class: "or-badges muted" }, badgeText(s)) : null,
       ]),
       el("div", { class: "or-card-actions" }, [playBtn0, favBtn, editBtn, upBtn, downBtn, delBtn]),
@@ -234,6 +255,9 @@ export function createOnlineRadio(main, ctx) {
   }
 
   function renderMine() {
+    summaryEl.hidden = !stations.length;
+    summaryEl.textContent = `${stations.length} ${t("label.stations")}`;
+
     const order = stations
       .map((s, i) => ({ s, i }))
       .filter(({ s }) => matches(s))
@@ -243,14 +267,15 @@ export function createOnlineRadio(main, ctx) {
     if (!order.length) {
       return void mineList.replaceChildren(el("p", { class: "muted" }, t("online_radio.no_filter_match")));
     }
-    mineList.replaceChildren(...order.map(({ s, i }) => stationCard(s, i)));
+    const terms = (filter || "").split(/\s+/).filter(Boolean);
+    mineList.replaceChildren(...order.map(({ s, i }) => stationCard(s, i, terms)));
   }
 
   function emptyState() {
     return el("div", { class: "or-empty" }, [
       el("p", {}, t("online_radio.no_stations")),
       el("p", { class: "muted" }, t("online_radio.no_stations_hint")),
-      el("div", { class: "or-chiprow" }, genreChips(GENRES().slice(0, 6))),
+      el("div", { class: "or-chiprow" }, genreChips(GENRE_KEYS.slice(0, 6))),
     ]);
   }
 
@@ -258,7 +283,7 @@ export function createOnlineRadio(main, ctx) {
     recentsWrap.hidden = !recents.length;
     recentsRow.replaceChildren(
       ...recents.map(r => {
-        const chip = el("button", { type: "button", class: "or-recent", title: `${t("online_radio.play")} ${r.name}` }, [
+        const chip = el("button", { type: "button", class: "or-recent", title: `${t("btn.play")} ${r.name}` }, [
           stationLogo(r.favicon, true),
           el("span", { class: "or-recent-name" }, r.name || r.url),
         ]);
@@ -269,15 +294,15 @@ export function createOnlineRadio(main, ctx) {
   }
 
   // --- rendering: discover --------------------------------------------------
-  function resultCard(s) {
-    const playBtn0 = el("button", { type: "button", class: "btn filled or-play" }, t("online_radio.play"));
+  function resultCard(s, terms = []) {
+    const playBtn0 = el("button", { type: "button", class: "btn filled or-play" }, t("btn.play"));
     playBtn0.addEventListener("click", () => play(s));
     const addBtn = el("button", { type: "button", class: "btn ghost" }, t("online_radio.add"));
     addBtn.addEventListener("click", () => addStation(s));
     return el("div", { class: "or-card" }, [
       stationLogo(s.favicon),
       el("div", { class: "or-card-main" }, [
-        el("span", { class: "or-name" }, s.name),
+        el("span", { class: "or-name" }, highlightText(s.name, terms)),
         badgeText(s) ? el("span", { class: "or-badges muted" }, badgeText(s)) : null,
       ]),
       el("div", { class: "or-card-actions" }, [playBtn0, addBtn]),
@@ -294,7 +319,8 @@ export function createOnlineRadio(main, ctx) {
       if (!rows.length) {
         return void dResults.replaceChildren(el("p", { class: "muted" }, t("online_radio.no_results")));
       }
-      dResults.replaceChildren(...rows.map(resultCard));
+      const terms = dq.value.trim().split(/\s+/).filter(Boolean);
+      dResults.replaceChildren(...rows.map(s => resultCard(s, terms)));
     } catch (e) {
       if (token !== searchToken) return;
       const retry = el("button", { type: "button", class: "btn ghost" }, t("online_radio.retry"));
@@ -320,7 +346,7 @@ export function createOnlineRadio(main, ctx) {
     if (!rows.length) return;
     history.replaceChildren(
       el("label", { class: "field-label" }, t("online_radio.track_history")),
-      el("ul", { class: "or-history-list" }, rows.map(row => el("li", {}, row))),
+      el("ul", { class: "or-history-list" }, rows.map(row => el("li", {}, translateLoadingPlaceholder(row, t)))),
     );
   }
 
@@ -334,7 +360,7 @@ export function createOnlineRadio(main, ctx) {
   });
   saveBtn.addEventListener("click", () => {
     const url = urlInput.value.trim();
-    if (!url) return toast(t("online_radio.url_required_save"), true);
+    if (!url) return toast(t("error.enter_url"), true);
     editor.open({ name: "", url }, st => {
       addStation(st);
       urlInput.value = "";
@@ -342,10 +368,11 @@ export function createOnlineRadio(main, ctx) {
   });
   mineTab.addEventListener("click", () => switchTab("mine"));
   discoverTab.addEventListener("click", () => switchTab("discover"));
-  filterInput.addEventListener("input", () => {
+  const applyFilter = debounce(() => {
     filter = filterInput.value;
     renderMine();
   });
+  filterInput.addEventListener("input", applyFilter);
   dForm.addEventListener("submit", e => {
     e.preventDefault();
     runSearch();
@@ -385,45 +412,54 @@ export function createOnlineRadio(main, ctx) {
 }
 
 function stationLogo(url, small = false) {
-    const cls = "or-logo" + (small ? " small" : "");
-    if (!url) return el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪");
+  const cls = "or-logo" + (small ? " small" : "");
+  if (!url) return el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪");
 
-    const isLocalUrl = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url);
-    const src = isLocalUrl ? url : `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=64&h=64&fit=cover`;
+  const src = isLocalUrl(url) ? url : `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=64&h=64&fit=cover`;
 
-    const img = el("img", { class: cls, alt: "", loading: "lazy", src });
-    img.addEventListener("error", () => img.replaceWith(el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪")));
-    return img;
+  const img = el("img", { class: cls, alt: "", loading: "lazy", src });
+  img.addEventListener("error", () => img.replaceWith(el("div", { class: cls + " placeholder", "aria-hidden": "true" }, "♪")));
+  return img;
 }
 
 // Modal for adding / editing a station (name + URL). Replaces window.prompt().
 function createEditor() {
   let onSave = null;
-  const nameInput = el("input", { type: "text", placeholder: t("online_radio.station_name"), autocomplete: "off" });
-  const urlInput = el("input", { type: "text", placeholder: t("online_radio.stream_url"), autocomplete: "off" });
-  const saveBtn = el("button", { type: "button", class: "btn filled" }, t("online_radio.save"));
-  const cancelBtn = el("button", { type: "button", class: "btn ghost" }, t("online_radio.cancel") ?? "Cancel");
+  const nameInput = el("input", {
+    type: "text", placeholder: t("online_radio.station_name"),
+    dataset: { i18nPlaceholder: "online_radio.station_name" }, autocomplete: "off",
+  });
+  const urlInput = el("input", {
+    type: "text", placeholder: t("online_radio.stream_url"),
+    dataset: { i18nPlaceholder: "online_radio.stream_url" }, autocomplete: "off",
+  });
+  const saveBtn = el("button", { type: "button", class: "btn filled", dataset: { i18n: "btn.save" } }, t("btn.save"));
+  const cancelBtn = el("button", { type: "button", class: "btn ghost danger", dataset: { i18n: "btn.cancel" } }, t("btn.cancel") ?? "Cancel");
   const title = el("h3", {}, t("online_radio.save_station"));
 
-  const modal = el("div", { class: "or-modal", hidden: true }, [
-    el("div", { class: "or-modal-card" }, [
-      el("div", { class: "or-modal-head" }, [title]),
-      el("label", { class: "field-label" }, t("online_radio.station_name")),
+  const modal = el("div", { class: "modal-overlay", hidden: true}, [
+    el("div", { class: "modal-card or-modal-card" }, [
+      el("div", { class: "modal-head" }, [title]),
+      el("label", { class: "field-label", dataset: { i18n: "online_radio.station_name" } }, t("online_radio.station_name")),
       nameInput,
-      el("label", { class: "field-label" }, t("online_radio.stream_url")),
+      el("label", { class: "field-label", dataset: { i18n: "online_radio.stream_url" } }, t("online_radio.stream_url")),
       urlInput,
-      el("div", { class: "or-modal-foot row" }, [saveBtn, cancelBtn]),
+      el("div", { class: "modal-foot end row" }, [cancelBtn, saveBtn]),
     ]),
   ]);
   document.body.append(modal);
 
-  const close = () => (modal.hidden = true);
+  const close = () => {
+    modal.hidden = true;
+    document.body.style.overflow = "";
+  };
   const submit = () => {
     const name = nameInput.value.trim();
     const url = urlInput.value.trim();
-    if (!url) return toast(t("online_radio.url_required"), true);
+    if (!url) return toast(t("error.url_required"), true);
     close();
     onSave?.({ name: name || url, url });
+    document.body.style.overflow = "";
   };
 
   cancelBtn.addEventListener("click", close);
@@ -439,6 +475,7 @@ function createEditor() {
       urlInput.value = station.url || "";
       modal.hidden = false;
       (station.name ? urlInput : nameInput).focus();
+      document.body.style.overflow = "hidden";
     },
   };
 }

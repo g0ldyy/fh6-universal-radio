@@ -8,7 +8,7 @@ header {
     align-items: center;
     justify-content: space-between;
     padding: var(--spacing-16) var(--spacing-32);
-    background: rgba(16, 16, 18, 0.55);
+    background: var(--surface-overlay);
     backdrop-filter: blur(20px) saturate(1.4);
     -webkit-backdrop-filter: blur(20px) saturate(1.4);
     border-bottom: 1px solid var(--line);
@@ -64,6 +64,9 @@ main {
     border-radius: var(--radius-xl);
     padding: var(--spacing-20);
     box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.7);
+    /* Replays automatically whenever [hidden] flips off (display:none -> flow),
+       e.g. switching the active source card — no JS needed to retrigger it. */
+    animation: rise 0.25s ease;
 }
 
 .card.elevated {

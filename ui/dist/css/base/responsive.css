@@ -1,0 +1,248 @@
+@media (max-width: 1050px) {
+
+    .view-minimal .mini-volume input[type="range"] {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 10px);
+        transform: translateX(-50%);
+        width: 4px;
+        height: 150px;
+        padding: 14px 10px;
+        background: var(--surface-card);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
+        writing-mode: vertical-lr;
+        direction: rtl;
+    }
+
+    .view-minimal .mini-volume input[type="range"]::-moz-range-track {
+        width: 100%;
+        height: 100%;
+    }
+
+    .view-minimal .mini-volume.open input[type="range"] {
+        display: block;
+    }
+
+}
+
+@media (max-width: 640px) {
+    header {
+        padding: var(--spacing-16) var(--spacing-20);
+    }
+
+    main {
+        padding: var(--spacing-24);
+        gap: var(--spacing-24);
+    }
+
+    body.view-minimal main {
+        padding: var(--spacing-120) var(--spacing-24) 0 var(--spacing-24);
+    }
+
+    .hero {
+        min-height: clamp(300px, 58vh, 460px);
+        padding: var(--spacing-120) var(--spacing-20) var(--spacing-20);
+    }
+
+    .credits {
+        padding: var(--spacing-24) var(--spacing-20);
+    }
+
+    .stationtools,
+    .editor-foot {
+        flex-direction: column;
+    }
+
+    .stationtools .btn,
+    .editor-foot .btn {
+        width: 100%;
+    }
+
+    .modes.editor-section__body {
+        flex-direction: column;
+    }
+
+    .mode {
+        width: 100%;
+    }
+
+    .editor-section__body,
+    .modal-foot {
+        flex-direction: column;
+    }
+
+    .editor-section__body>*,
+    .editor-section__body .editor-section__actions .btn,
+    .modal-foot .btn {
+        width: 100%;
+    }
+
+    .slider {
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        gap: var(--spacing-8);
+    }
+
+    .slider span {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .slider output {
+        grid-column: 2;
+        grid-row: 1;
+        text-align: right;
+    }
+
+    .slider input[type="range"] {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        width: 100%;
+    }
+
+    .source-note {
+        max-height: none;
+        opacity: 1;
+        margin-top: 4px;
+    }
+
+    .drawer {
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .drawer-body {
+        padding: var(--spacing-12);
+        overflow-x: hidden;
+    }
+
+    form.row:not([id="yt-cast"]) {
+        flex-direction: column;
+    }
+
+    form.row:not([id="yt-cast"])>* {
+        width: 100%;
+    }
+
+    .or-card {
+        flex-wrap: wrap;
+        gap: var(--spacing-8);
+    }
+
+    .or-card-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .or-card-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .or-play {
+        flex: 1;
+    }
+
+    .or-stations {
+        max-height: none;
+    }
+
+    .stationbar {
+        flex-direction: column;
+        padding-bottom: var(--spacing-12);
+        border-bottom: 1px solid var(--line);
+    }
+
+    .stationbar>* {
+        width: 100%;
+    }
+
+    .mini-player {
+        height: 76px;
+        padding: 0 10px;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        border: 0;
+        border-top: 1px solid var(--line);
+        border-radius: 0;
+    }
+
+    .mini-player-info {
+        flex: 1;
+        min-width: 0;
+        gap: 10px;
+    }
+
+    .mini-cover {
+        width: 55px;
+        height: 55px;
+    }
+
+    .mini-title {
+        font-size: 13px;
+    }
+
+    .mini-artist {
+        font-size: 11px;
+    }
+
+    .mini-player-center {
+        flex: initial;
+        max-width: none;
+        flex-direction: row;
+        align-items: center;
+        margin-left: auto;
+        gap: 0;
+    }
+
+    .mini-controls {
+        margin-left: 0;
+    }
+
+    .mini-controls .icon-btn.primary {
+        width: 40px;
+        height: 40px;
+    }
+
+    .mini-player-right {
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+
+    .mini-progress-container {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        gap: 0;
+    }
+
+    .mini-time {
+        display: none;
+    }
+
+    .mini-bar {
+        width: 100%;
+        height: 3px;
+        border-radius: 0;
+        background: rgba(255, 255, 255, 0.08);
+        margin: 0;
+    }
+
+    .mini-bar:hover {
+        height: 3px;
+    }
+
+    .mini-bar-fill {
+        border-radius: 0;
+    }
+}

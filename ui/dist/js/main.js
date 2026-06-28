@@ -1,20 +1,28 @@
-import { $ } from "./dom.js";
-import { api } from "./api.js";
-import { connect } from "./events.js";
+import { $ } from "./lib/dom.js";
+import { api } from "./data/api.js";
+import { connect } from "./data/events.js";
 import { icons } from "./icons.js";
 import { toast } from "./toast.js";
 import { renderStatus } from "./render/status.js";
 import { renderNowPlaying, extractDominantColor } from "./render/nowPlaying.js";
 import { renderSources } from "./render/sources.js";
 import { createOutput } from "./render/output.js";
-import { renderSettings, collectSettings } from "./render/settings.js";
+import {
+    renderSettings, collectSettings, applyInterfacePrefs,
+    markModifiedFields, resetFieldToBaseline,
+} from "./render/settings.js";
 import { createDeps } from "./render/deps.js";
 import { createExternalAudio } from "./render/externalAudio.js";
 import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
 import { createYoutubeMusic } from "./render/youtubeMusic.js";
 import { createJellyfin } from "./render/jellyfin.js";
-import { initI18n, onLangChange, t, setLang, getLang} from "./i18n.js";
+import { initI18n, onLangChange, t, setLang, getLang } from "./i18n.js";
+import { prefs } from "./preferences.js";
+import { downloadJson, todayStamp } from "./lib/download.js";
+import { buildStationPack, mergeStationPack } from "./data/stationPack.js";
+import { resetMemo } from "./lib/store.js";
+import { confirmAction } from "./render/confirmModal.js";
 
 let state = null;
 let cfg = null;
@@ -31,6 +39,18 @@ const refs = {
         pos: $("#np-pos"),
         dur: $("#np-dur"),
         play: $("#t-play"),
+        mini: {
+            player: document.querySelector("#mini-player"),
+            art: document.querySelector("#mini-art-img"),
+            title: document.querySelector("#mini-title"),
+            artist: document.querySelector("#mini-artist"),
+            play: document.querySelector("#mini-play"),
+            prev: document.querySelector("#mini-prev"),
+            next: document.querySelector("#mini-next"),
+            pos: document.querySelector("#mini-pos"),
+            dur: document.querySelector("#mini-dur"),
+            fill: document.querySelector("#mini-fill")
+        }
     },
     sources: $("#sources"),
     sourceCard: $("#source-card"),
@@ -45,6 +65,9 @@ $("#open-settings").innerHTML = icons.gear;
 $("#close-settings").innerHTML = icons.close;
 $("#t-prev").innerHTML = icons.prev;
 $("#t-next").innerHTML = icons.next;
+
+if (refs.np.mini && refs.np.mini.prev) refs.np.mini.prev.innerHTML = icons.prev;
+if (refs.np.mini && refs.np.mini.next) refs.np.mini.next.innerHTML = icons.next;
 
 const mainEl = $("main");
 
@@ -77,8 +100,6 @@ async function transport(action) {
         await new Promise(r => setTimeout(r, 300));
         state = await api.getState().catch(() => state);
         render();
-        // Some transports may change the queue so refresh it if needed.
-        // Maybe fix the playback ??
         if (source === "local_files" && (act === "next" || act === "previous")) localFiles.reloadQueue();
     } catch (e) {
         toast(e.message, true);
@@ -87,6 +108,20 @@ async function transport(action) {
 
 const background = [$("header"), mainEl, $(".credits")];
 let lastFocus = null;
+let formBaseline = null;
+
+// Called whenever the form is freshly rendered from a known-saved source
+// (opened, reloaded from disk, or just saved) so later dirty-checks and the
+// "modified field" markers compare against that baseline instead of
+// whatever was on screen before.
+function snapshotForm() {
+    formBaseline = collectSettings(refs.form);
+    markModifiedFields(refs.form, formBaseline);
+}
+
+function isFormDirty() {
+    return formBaseline !== null && JSON.stringify(collectSettings(refs.form)) !== JSON.stringify(formBaseline);
+}
 
 function openDrawer() {
     lastFocus = document.activeElement;
@@ -108,6 +143,22 @@ function closeDrawer() {
     document.body.style.overflow = "";
 }
 
+// Guards closeDrawer() with a confirmation if the form has unsaved changes —
+// used by the close button, the scrim, and Escape, but not by the Save
+// handler itself (which closes immediately after persisting).
+async function requestCloseDrawer() {
+    if (!refs.drawer.classList.contains("open")) return;
+    if (isFormDirty()) {
+        const ok = await confirmAction({
+            title: t("settings.discard_title"),
+            message: t("settings.discard_message"),
+            confirmLabel: t("settings.discard_confirm"),
+        });
+        if (!ok) return;
+    }
+    closeDrawer();
+}
+
 function render() {
     if (!state) return;
     renderStatus(refs.status, state);
@@ -123,68 +174,95 @@ function render() {
     refs.sourceCard.hidden = false;
     refs.outputCard.hidden = !state.sources?.active;
 
-    const available = state.sources?.available || [];
-    const active = state.sources?.active;
+    document.body.classList.toggle("view-minimal", prefs.viewMode.get() === "minimal");
 }
 
-// --- BACKUP CONFIGURATION ---
 const backupBtn = document.getElementById("backup-config");
 if (backupBtn) {
     backupBtn.addEventListener("click", async () => {
         try {
             const config = await api.getConfig();
-
-            const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-
-            const dateStr = new Date().toISOString().split("T")[0];
-            a.download = `fh6-radio-settings-${dateStr}.json`;
-
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            toast("Backup downloaded successfully");
+            downloadJson(config, `fh6-radio-settings-${todayStamp()}.json`);
+            toast(t("settings.backup_downloaded"));
         } catch (err) {
             console.error("Failed to backup config:", err);
-            toast("Failed to backup settings.", true);
+            toast(t("error.backup_failed"), true);
         }
     });
 }
 
-// --- RESTORE CONFIGURATION ---
+const exportStationsBtn = document.getElementById("export-stations");
+if (exportStationsBtn) {
+    exportStationsBtn.addEventListener("click", async () => {
+        try {
+            const config = await api.getConfig();
+            downloadJson(buildStationPack(config), `fh6-radio-stations-${todayStamp()}.json`);
+            toast(t("settings.stations_exported"));
+        } catch (err) {
+            console.error("Failed to export station pack:", err);
+            toast(t("error.unknown"), true);
+        }
+    });
+}
+
+const importStationsBtn = document.getElementById("import-stations");
+const importStationsFile = document.getElementById("import-stations-file");
+if (importStationsBtn && importStationsFile) {
+    importStationsBtn.addEventListener("click", () => importStationsFile.click());
+    importStationsFile.addEventListener("change", async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const pack = JSON.parse(text);
+            const freshCfg = await api.getConfig();
+            const { patch, added } = mergeStationPack(freshCfg, pack);
+            cfg = await api.putConfig(patch);
+            youtubeMusic.invalidate();
+            state = await api.getState().catch(() => state);
+            render();
+            toast(t("settings.stations_imported", { count: String(added) }));
+        } catch (err) {
+            console.error("Failed to import station pack:", err);
+            toast(t("error.invalid_station_pack"), true);
+        } finally {
+            e.target.value = "";
+        }
+    });
+}
+
 const restoreBtn = document.getElementById("restore-config");
 const restoreFile = document.getElementById("restore-file");
 
 if (restoreBtn && restoreFile) {
     restoreBtn.addEventListener("click", () => restoreFile.click());
-
     restoreFile.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         try {
+            const ok = await confirmAction({
+                title: t("settings.restore_confirm_title"),
+                message: t("settings.restore_confirm_message"),
+                confirmLabel: t("settings.restore"),
+            });
+            if (!ok) return;
+
             const text = await file.text();
             const patch = JSON.parse(text);
-
             cfg = await api.putConfig(patch);
-
             externalAudio.invalidate();
             localFiles.invalidate();
             onlineRadio.invalidate();
             youtubeMusic.invalidate();
             jellyfin.invalidate();
             renderSettings(refs.form, cfg);
+            snapshotForm();
             state = await api.getState().catch(() => state);
             render();
-
-            toast("Settings restored successfully!");
+            toast(t("settings.restored"));
         } catch (err) {
             console.error("Failed to restore config:", err);
-            toast("Failed to restore settings. Invalid JSON file.", true);
+            toast(t("error.restore_failed"), true);
         } finally {
             e.target.value = "";
         }
@@ -195,6 +273,24 @@ $("#t-play").addEventListener("click", () => transport("play"));
 $("#t-next").addEventListener("click", () => transport("next"));
 $("#t-prev").addEventListener("click", () => transport("previous"));
 
+if (refs.np.mini && refs.np.mini.play) refs.np.mini.play.addEventListener("click", () => transport("play"));
+if (refs.np.mini && refs.np.mini.next) refs.np.mini.next.addEventListener("click", () => transport("next"));
+if (refs.np.mini && refs.np.mini.prev) refs.np.mini.prev.addEventListener("click", () => transport("previous"));
+
+const miniVolToggle = document.getElementById("mini-vol-toggle");
+const miniVolume = document.getElementById("mini-volume");
+if (miniVolToggle && miniVolume) {
+    miniVolToggle.addEventListener("click", e => {
+        e.stopPropagation();
+        miniVolume.classList.toggle("open");
+    });
+    document.addEventListener("click", e => {
+        if (miniVolume.classList.contains("open") && !miniVolume.contains(e.target)) {
+            miniVolume.classList.remove("open");
+        }
+    });
+}
+
 $("#open-settings").addEventListener("click", async () => {
     try {
         cfg = await api.getConfig();
@@ -203,42 +299,65 @@ $("#open-settings").addEventListener("click", async () => {
         return;
     }
     renderSettings(refs.form, cfg);
+    snapshotForm();
     openDrawer();
 });
 
-$("#close-settings").addEventListener("click", closeDrawer);
-refs.scrim.addEventListener("click", closeDrawer);
+$("#close-settings").addEventListener("click", requestCloseDrawer);
+refs.scrim.addEventListener("click", requestCloseDrawer);
 document.addEventListener("keydown", e => {
-    if (e.key === "Escape") closeDrawer();
+    if (e.key === "Escape") requestCloseDrawer();
+});
+
+refs.form.addEventListener("input", () => markModifiedFields(refs.form, formBaseline));
+refs.form.addEventListener("change", () => markModifiedFields(refs.form, formBaseline));
+
+refs.form.addEventListener("click", e => {
+    const btn = e.target.closest(".field-reset-btn");
+    if (!btn) return;
+    const field = btn.closest(".field");
+    const { resetSection, resetKey } = field.dataset;
+    resetFieldToBaseline(field, resetSection, resetKey, formBaseline);
 });
 
 $("#save-config").addEventListener("click", async () => {
     try {
-        cfg = await api.putConfig(collectSettings(refs.form));
+        const serverConfigPatch = applyInterfacePrefs(collectSettings(refs.form));
+        cfg = await api.putConfig(serverConfigPatch);
         externalAudio.invalidate();
         localFiles.invalidate();
         onlineRadio.invalidate();
-        youtubeMusic.invalidate()
-        jellyfin.invalidate()
+        youtubeMusic.invalidate();
+        jellyfin.invalidate();
         state = await api.getState().catch(() => state);
         render();
         toast(t("settings.saved"));
         closeDrawer();
 
-        const dynamicCheckbox = document.querySelector("#f-dynamic-color");
+        const dynamicCheckbox = document.querySelector("#f-interface-dynamic_color");
+        const perfCheckbox = document.querySelector("#f-interface-perf_mode");
+        const langSelect = document.querySelector("#f-interface-language");
+        const viewSelect = document.querySelector("#f-interface-view_mode");
+        const currentMode = viewSelect ? viewSelect.value : prefs.viewMode.get();
+        const themeSelect = document.querySelector("#f-interface-theme_mode");
         const enabled = dynamicCheckbox ? dynamicCheckbox.checked : true;
-        const langSelect = document.querySelector("#f-language");
         const img = refs.np.img;
 
-        localStorage.setItem("fh6-dynamic-color", String(enabled));
+        document.body.classList.toggle("view-minimal", currentMode === "minimal");
+        document.body.classList.toggle("perf-mode", perfCheckbox ? perfCheckbox.checked : false);
+        if (themeSelect) applyTheme(themeSelect.value);
 
-        if (langSelect && langSelect.value !== getLang()) await setLang(langSelect.value);
+        if (langSelect && langSelect.value !== getLang()) {
+            await setLang(langSelect.value);
+        }
+
         if (enabled && img?.complete && img?.naturalWidth) {
             const color = extractDominantColor(img);
             if (color) document.documentElement.style.setProperty("--accent", color);
         } else if (!enabled) {
             document.documentElement.style.setProperty("--accent", "var(--color-sunset-yellow)");
         }
+
     } catch (e) {
         toast(e.message, true);
     }
@@ -251,6 +370,7 @@ $("#reload-config").addEventListener("click", async () => {
         localFiles.invalidate();
         onlineRadio.invalidate();
         renderSettings(refs.form, cfg);
+        snapshotForm();
         render();
         toast(t("settings.reloaded"));
     } catch (e) {
@@ -258,7 +378,6 @@ $("#reload-config").addEventListener("click", async () => {
     }
 });
 
-// Apply i18n to the entire page
 function applyI18n() {
     document.querySelectorAll("[data-i18n]").forEach(el => {
         el.textContent = t(el.dataset.i18n);
@@ -272,20 +391,67 @@ function applyI18n() {
     document.querySelectorAll("[data-i18n-title]").forEach(el => {
         el.title = t(el.dataset.i18nTitle);
     });
+    document.querySelectorAll("[data-i18n-html]").forEach(el => {
+        el.innerHTML = t(el.dataset.i18nHtml);
+    });
+}
+
+// Base palette (mutually exclusive) vs. the "squared" shape modifier
+// (independent, just forces every border-radius to 0) — a theme value like
+// "dark-squared" combines one of each, so "Dark Squared"/"Light Squared"
+// don't need their own separate color palette.
+const BASE_THEME_CLASSES = ["theme-light", "theme-dark"];
+
+// No "system/auto" mode anymore — anything unrecognized (including the old
+// "auto" value from before it was removed) falls back to dark.
+function applyTheme(themeMode) {
+    const body = document.body;
+    const isSquared = themeMode.endsWith("-squared");
+    const base = isSquared ? themeMode.slice(0, -"-squared".length) : themeMode;
+
+    body.classList.remove(...BASE_THEME_CLASSES);
+    const cls = BASE_THEME_CLASSES.includes(`theme-${base}`) ? `theme-${base}` : "theme-dark";
+    body.classList.add(cls);
+    body.classList.toggle("theme-squared", isSquared);
+}
+
+// Re-applies translations in place after setLang() switches language, instead
+// of a full page reload. Static [data-i18n] text and state-driven dynamic
+// content (now playing, sources, settings form, station/queue lists) all
+// refresh; a few labels baked into buttons at card creation time only update
+// the next time that card's data changes or the page is next loaded.
+function refreshAfterLangChange() {
+    document.documentElement.lang = getLang();
+    applyI18n();
+    resetMemo();
+    externalAudio.invalidate();
+    localFiles.invalidate();
+    onlineRadio.invalidate();
+    youtubeMusic.invalidate();
+    jellyfin.invalidate();
+    if (refs.drawer.classList.contains("open")) {
+        renderSettings(refs.form, cfg);
+        snapshotForm();
+    }
+    if (state) render();
 }
 
 async function boot() {
     await initI18n();
+    document.documentElement.lang = getLang();
     applyI18n();
+    onLangChange(refreshAfterLangChange);
 
-    // initialize the rest of the app after i18n is ready
-    renderOutput = createOutput($("#vol"), $("#vol-out"), async gain => {
+    document.body.classList.toggle("view-minimal", prefs.viewMode.get() === "minimal");
+    document.body.classList.toggle("perf-mode", prefs.perfMode.get());
+
+    renderOutput = createOutput($("#vol"), $("#mini-vol"), $("#vol-out"), async gain => {
         try {
             await api.setGain(gain);
         } catch (e) {
             toast(e.message, true);
         }
-    });
+    }, $("#mini-vol-tooltip"));
 
     deps = createDeps(mainEl);
 
@@ -329,7 +495,6 @@ async function boot() {
         },
     });
 
-
     jellyfin = createJellyfin(mainEl, {
         getState: () => state,
         getConfig: () => cfg,
@@ -339,6 +504,14 @@ async function boot() {
             render();
         },
     });
+
+    let savedTheme = prefs.themeMode.get();
+    if (savedTheme === "auto") {
+        // Migrate users who had the now-removed "system" mode saved.
+        savedTheme = "dark";
+        prefs.themeMode.set(savedTheme);
+    }
+    applyTheme(savedTheme);
 
     try {
         cfg = await api.getConfig();

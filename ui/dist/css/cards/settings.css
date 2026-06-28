@@ -1,7 +1,7 @@
 .drawer {
     position: fixed;
     inset: 0 0 0 auto;
-    z-index: 10;
+    z-index: 9999;
     width: min(600px, 100%);
     display: flex;
     flex-direction: column;
@@ -23,6 +23,7 @@
     justify-content: space-between;
     padding: var(--spacing-20) var(--spacing-24);
 }
+
 .drawer-head {
     border-bottom: 1px solid var(--line);
 }
@@ -79,6 +80,8 @@
 }
 
 .drawer-foot-group:first-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     width: 100%;
     padding-bottom: var(--spacing-12);
     border-bottom: 1px solid var(--line);
@@ -86,20 +89,18 @@
 
 .drawer-foot-group .btn {
     width: 100%;
-    white-space: nowrap;
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .drawer-foot-group:first-child .btn {
-    flex-direction: row;
-    justify-content: flex-start;
-    gap: 8px;
+    justify-content: center;
+    gap: 6px;
     border-color: var(--line);
     color: var(--text-muted);
-    font-size: 13px;
-    padding: 8px 12px;
+    font-size: 12px;
+    padding: 6px 8px;
 }
 
 .drawer-foot-group:first-child .btn:hover {
@@ -118,6 +119,7 @@
 }
 
 .field {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -126,6 +128,50 @@
 .field label {
     font-size: 12px;
     color: var(--text-muted);
+}
+
+.field-modified > label::after {
+    content: "•";
+    margin-left: 5px;
+    color: var(--accent);
+}
+
+.field-reset-btn {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.field-reset-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.field-reset-btn:hover {
+    color: var(--text);
+}
+
+.field-modified .field-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.field input.invalid {
+    border-color: var(--alert);
+}
+
+.field-error {
+    font-size: 11px;
+    color: var(--alert);
 }
 
 .field.checkbox {
@@ -137,12 +183,6 @@
 .field.checkbox label {
     font-size: 14px;
     color: var(--text);
-}
-
-.field.checkbox input {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--accent);
 }
 
 .field.bands {
@@ -169,4 +209,9 @@
     font-size: 11px;
     color: var(--text-muted);
     font-weight: var(--font-weight-light);
+}
+
+.section-disabled>.field:not(.checkbox) {
+    opacity: 0.5;
+    pointer-events: none;
 }
