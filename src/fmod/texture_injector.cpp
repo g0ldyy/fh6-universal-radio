@@ -143,9 +143,25 @@ void TextureInjector::update_artwork_url(const std::string& url) {
             }
 
             // calculate aspect-ratio preserving dimensions
+            // wait until the DX12 hook discovers the target UI size
+            int target_h = 0;
+            const auto height_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while ((target_h = target_height_.load()) == 0) {
+                if (latest_job_id_.load() != my_job_id) return;
+                if (std::chrono::steady_clock::now() >= height_deadline) {
+                    log::warn("[dx12] job {}: timed out waiting for target texture height", my_job_id);
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+
+            if (target_h != 104 && target_h != 196) {
+                log::warn("[dx12] job {}: unsupported target texture height {}", my_job_id, target_h);
+                return;
+            }
+
             int square_size = 104;
             int target_w = 196;
-            int target_h = 104;
             
             // border settings
             int border_thickness = is_default_artwork ? 0 : 4; 
@@ -160,7 +176,7 @@ void TextureInjector::update_artwork_url(const std::string& url) {
             stbir_resize_uint8_linear(img_data, width, height, 0, resized_data.data(), new_w, new_h, 0, STBIR_RGBA);
             stbi_image_free(img_data);
 
-            // create transparent padded canvas
+            // create transparent padded canvas to what DX12 requested
             std::vector<unsigned char> padded_data(target_w * target_h * 4, 0);
 
             // calculate source offsets to center-crop
@@ -190,23 +206,23 @@ void TextureInjector::update_artwork_url(const std::string& url) {
             unsigned char b_b = (unsigned char)(avg_b * brightness_factor);
             unsigned char b_a = 255;
 
-            // copy the cropped square into the far left, applying the border
-            for (int y = 0; y < square_size; ++y) {
+            // stretches the y-axis if target_h is 196
+            for (int y = 0; y < target_h; ++y) {
                 for (int x = 0; x < square_size; ++x) {
                     int dst_idx = (y * target_w + x) * 4; 
 
-                    // check if the current pixel falls within the border perimeter
+                    // map the current y back to the 104-pixel source space
+                    int orig_y = (y * square_size) / target_h; 
+
                     if (x < border_thickness || x >= square_size - border_thickness ||
-                        y < border_thickness || y >= square_size - border_thickness) {
+                        orig_y < border_thickness || orig_y >= square_size - border_thickness) {
                         
-                        // draw the dynamic border color
                         padded_data[dst_idx]   = b_r;
                         padded_data[dst_idx+1] = b_g;
                         padded_data[dst_idx+2] = b_b;
                         padded_data[dst_idx+3] = b_a;
                     } else {
-                        // draw the image pixel
-                        int src_idx = ((y + src_offset_y) * new_w + (x + src_offset_x)) * 4;
+                        int src_idx = ((orig_y + src_offset_y) * new_w + (x + src_offset_x)) * 4;
                         padded_data[dst_idx]   = resized_data[src_idx];
                         padded_data[dst_idx+1] = resized_data[src_idx+1];
                         padded_data[dst_idx+2] = resized_data[src_idx+2];
@@ -219,7 +235,8 @@ void TextureInjector::update_artwork_url(const std::string& url) {
 
             log::info("[dx12] job {}: compressing to BC7 with texconv...", my_job_id);
 
-            std::string texconv_cmd = "\"" + texconv_path + "\" -f BC7_UNORM -w 196 -h 104 -m 1 -pmalpha -gpu 0 -y -o \"" + temp_dir_str + "\" \"" + png_path + "\"";
+            // export to the dynamic size requested
+            std::string texconv_cmd = "\"" + texconv_path + "\" -f BC7_UNORM -w 196 -h " + std::to_string(target_h) + " -m 1 -pmalpha -gpu 0 -y -o \"" + temp_dir_str + "\" \"" + png_path + "\"";
             std::vector<char> cmd_buf(texconv_cmd.begin(), texconv_cmd.end());
             cmd_buf.push_back('\0');
             
@@ -270,7 +287,7 @@ void TextureInjector::update_artwork_url(const std::string& url) {
 
                             std::lock_guard<std::mutex> lock(mtx_);
                             width_ = 196; 
-                            height_ = 104;
+                            height_ = target_h;
                             pending_pixels_ = std::move(bc7_payload); 
                             has_new_image_ = true;
                             log::info("[dx12] job {} complete", my_job_id);

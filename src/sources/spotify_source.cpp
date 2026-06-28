@@ -73,6 +73,8 @@ struct SpotifySource::Pipe {
 
     // tracks the total PCM bytes pumped to calculate UI time syncing
     uint64_t bytes_consumed = 0;
+    uint64_t explicit_position_bytes = 0; // tracks mid-song loads
+    bool has_explicit_position = false;   // flags if a custom position was parsed
 
     // gapless & prefetch tracking
     std::string pending_title;
@@ -369,6 +371,8 @@ void SpotifySource::transport_skip(bool forward) {
     std::scoped_lock lk{mu_};
     if (pipe_) {
         pipe_->bytes_consumed      = 0;
+        pipe_->explicit_position_bytes = 0;
+        pipe_->has_explicit_position   = false;
         pipe_->has_pending         = false; // clear any queued prefetch
         pipe_->track_duration_ms   = 0;     // don't wait on the old duration
         pipe_->force_next_metadata = true;  // adopt the next track immediately
@@ -551,8 +555,51 @@ void SpotifySource::pump(RingBuffer& ring) {
                                 std::stoull(line.substr(seek_pos + seek_marker.length(),
                                                         end - (seek_pos + seek_marker.length())));
                             p->bytes_consumed = parsed_seek * kBytesPerMs;
+                            p->explicit_position_bytes = p->bytes_consumed;
+                            p->has_explicit_position   = true;
                         } catch (...) {}
                         continue; // parsed successfully, move to next line
+                    }
+                }
+
+                // catch warning about invalid start position out-of-bounds
+                if (line.find("Invalid start position") != std::string::npos &&
+                    line.find("starting track from the beginning") != std::string::npos) {
+                    p->explicit_position_bytes = 0;
+                    p->has_explicit_position   = true;
+                    continue; // overriding the last bad load command
+                }
+
+                // catch Load events for initial position sync (mid-song connect)
+                const std::string load_marker = "command=Load";
+                size_t load_pos               = line.find(load_marker);
+                if (load_pos != std::string::npos) {
+                    // reset state before attempting to parse a new one
+                    p->has_explicit_position   = false;
+                    p->explicit_position_bytes = 0;
+
+                    size_t pos_ms_idx = line.find("position_ms", load_pos);
+                    size_t digit_pos  = std::string::npos;
+                    
+                    if (pos_ms_idx != std::string::npos) {
+                        digit_pos = line.find_first_of("0123456789", pos_ms_idx);
+                    } else {
+                        size_t end = line.rfind(')');
+                        if (end != std::string::npos && end > load_pos) {
+                            size_t last_comma = line.rfind(',', end);
+                            if (last_comma != std::string::npos) {
+                                digit_pos = line.find_first_of("0123456789", last_comma);
+                                if (digit_pos >= end) digit_pos = std::string::npos;
+                            }
+                        }
+                    }
+
+                    if (digit_pos != std::string::npos) {
+                        try {
+                            uint64_t parsed_pos = std::stoull(line.substr(digit_pos));
+                            p->explicit_position_bytes = parsed_pos * kBytesPerMs;
+                            p->has_explicit_position   = true;
+                        } catch (...) {}
                     }
                 }
 
@@ -585,19 +632,34 @@ void SpotifySource::pump(RingBuffer& ring) {
 
                         // A load event while we're still >32 s from the current
                         // track's end means a manual in-app skip -- adopt it now.
+                        // Also skip if bytes_consumed has massively overshot (desync).
                         const uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
                         const bool is_external_skip =
                             p->track_duration_ms > 0 &&
-                            p->bytes_consumed + kExternalSkipGuardMs * kBytesPerMs < track_bytes;
+                            (p->bytes_consumed >= track_bytes ||
+                             p->bytes_consumed + kExternalSkipGuardMs * kBytesPerMs < track_bytes);
 
                         // First track, an explicit skip, or an in-app skip: apply at once.
                         if (p->awaiting_first_track || p->force_next_metadata || is_external_skip) {
                             apply_info(final_title, final_artist, final_album, parsed_duration,
                                     final_cover);
-                            p->bytes_consumed       = 0;
-                            p->awaiting_first_track = false;
-                            p->force_next_metadata  = false;
-                            p->stall_ticks          = 0;
+
+                            if (p->has_explicit_position) {
+                                // sanity check to reject clock-drift desyncs
+                                uint64_t max_bytes = parsed_duration * kBytesPerMs;
+                                if (p->explicit_position_bytes > max_bytes) {
+                                    p->bytes_consumed = 0; 
+                                } else {
+                                    p->bytes_consumed = p->explicit_position_bytes;
+                                }
+                            } else {
+                                p->bytes_consumed = 0;
+                            }
+                            
+                            p->has_explicit_position = false;
+                            p->awaiting_first_track  = false;
+                            p->force_next_metadata   = false;
+                            p->stall_ticks           = 0;
                         } else {
                             // queue it for the gapless transition
                             p->pending_title       = final_title;
@@ -606,6 +668,7 @@ void SpotifySource::pump(RingBuffer& ring) {
                             p->pending_duration_ms = parsed_duration;
                             p->pending_cover_url   = final_cover;
                             p->has_pending         = true;
+                            p->has_explicit_position = false; 
                         }
                     }
                 }
@@ -623,29 +686,14 @@ void SpotifySource::pump(RingBuffer& ring) {
         return;
     }
 
-    if (avail == 0) {
-        p->stall_ticks++;
-        // if pipe is dry for just 5 ticks (~80ms)
-        if (p->stall_ticks > 5) {
-            // the user manually skipped during the final 30 seconds of the song
-            if (p->has_pending) {
-                apply_info(p->pending_title, p->pending_artist, p->pending_album,
-                        p->pending_duration_ms, p->pending_cover_url);
-                p->bytes_consumed = 0;
-            }
-            // catch-all for extreme network lag / dead stream (stall for > 800ms)
-            else if (p->stall_ticks > 50) {
-                p->force_next_metadata = true;
-            }
-        }
-    } else {
-        p->stall_ticks = 0;
-    }
-
     // natural gapless transition
     if (p->has_pending && p->track_duration_ms > 0) {
         uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
-        if (p->bytes_consumed >= track_bytes) {
+        uint64_t unplayed = ring.readable();
+        uint64_t played_bytes = p->bytes_consumed > unplayed ? (p->bytes_consumed - unplayed) : 0;
+
+        // trigger the metadata swap based on played_bytes
+        if (played_bytes >= track_bytes) {
             apply_info(p->pending_title, p->pending_artist, p->pending_album,
                     p->pending_duration_ms, p->pending_cover_url);
             // carry the remainder so the timer stays exact

@@ -26,6 +26,8 @@ public:
     // lets the control loop know if currently building a new texture
     bool is_processing() const { return is_processing_.load(); }
 
+    void set_target_height(int height) { target_height_.store(height); }
+
     void set_worker_client(std::shared_ptr<worker::WorkerClient> w) { 
         std::lock_guard<std::mutex> lock(mtx_);
         worker_ = std::move(w); 
@@ -50,6 +52,7 @@ private:
 
     std::atomic<bool> is_processing_{false}; 
     std::atomic<uint64_t> latest_job_id_{0};
+    std::atomic<int> target_height_{0};
 
     std::shared_ptr<worker::WorkerClient> worker_;
     ConfigStore* config_store_ = nullptr;

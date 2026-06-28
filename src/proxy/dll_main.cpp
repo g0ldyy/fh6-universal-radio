@@ -23,7 +23,8 @@
 
 void InitDX12HookThread();
 
-uint64_t EXPECTED_STREAMER_HASH = 0x69F6C569FDFE6B09ULL; // hash for streamer mode logo
+uint64_t EXPECTED_STREAMER_HASH = 0x22BC7164008461C9ULL; // hash for streamer mode logo (196x104)
+uint64_t EXPECTED_ALT_HASH      = 0xF5223D52CFA65930ULL; // hash for modified icon (196x196)
 
 struct TrackedTexture {
     Microsoft::WRL::ComPtr<ID3D12Resource> ptr;
@@ -34,11 +35,16 @@ std::mutex g_TextureMutex;
 std::vector<TrackedTexture> g_UnverifiedResources;
 std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> g_StreamerModeResources;
 
-uint64_t CalculateFNV1a(const uint8_t* data, size_t length) {
+// hashes the packed pixel blocks, ignoring uninitialized GPU padding bytes in the buffer
+uint64_t CalculateFNV1aPitched(const uint8_t* data, UINT blocksX, UINT blocksY, UINT alignedRowPitch) {
     uint64_t hash = 0xcbf29ce484222325ull;
-    for (size_t i = 0; i < length; ++i) {
-        hash ^= data[i];
-        hash *= 0x100000001b3ull;
+    UINT tightRowPitch = blocksX * 16;
+    for (UINT y = 0; y < blocksY; ++y) {
+        const uint8_t* rowStart = data + (y * alignedRowPitch);
+        for (UINT x = 0; x < tightRowPitch; ++x) {
+            hash ^= rowStart[x];
+            hash *= 0x100000001b3ull;
+        }
     }
     return hash;
 }
@@ -54,7 +60,7 @@ bool IsTargetTexture(ID3D12Resource* pResource) {
     __try {
         D3D12_RESOURCE_DESC desc = pResource->GetDesc();
         return (desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
-                desc.Width == 196 && desc.Height == 104 &&
+                desc.Width == 196 && (desc.Height == 104 || desc.Height == 196) &&
                 (desc.Format == DXGI_FORMAT_BC7_UNORM || desc.Format == DXGI_FORMAT_BC7_UNORM_SRGB));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false; 
@@ -64,10 +70,15 @@ bool IsTargetTexture(ID3D12Resource* pResource) {
 void ProcessFingerprintResult(uint64_t hash, ID3D12Resource* pRes) {
     fh6::log::info("[dx12] fingerprint checksum: 0x{:X}", hash);
     
-    if (EXPECTED_STREAMER_HASH == 0 || hash == EXPECTED_STREAMER_HASH) {
+    if (EXPECTED_STREAMER_HASH == 0 || hash == EXPECTED_STREAMER_HASH || hash == EXPECTED_ALT_HASH) {
         std::lock_guard<std::mutex> lock(g_TextureMutex);
         g_StreamerModeResources.emplace_back(pRes);
-        fh6::log::info("[dx12] ---> added to streamer mode array");
+        
+        // notify TextureInjector of the UI height required
+        D3D12_RESOURCE_DESC desc = pRes->GetDesc();
+        fh6::TextureInjector::instance().set_target_height(desc.Height);
+
+        fh6::log::info("[dx12] ---> added to streamer mode array, requesting {}px payload", desc.Height);
     }
 }
 
@@ -78,7 +89,6 @@ __declspec(noinline) bool SafeExecuteFingerprint(
     ID3D12CommandAllocator* pRbAllocator,
     ID3D12Resource* pReadbackRes,
     UINT alignedRowPitch,
-    UINT64 readbackSize,
     ID3D12Resource* pRes)
 {
     __try {
@@ -97,8 +107,12 @@ __declspec(noinline) bool SafeExecuteFingerprint(
         D3D12_TEXTURE_COPY_LOCATION srcLoc = { pRes, D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX, 0 };
         D3D12_TEXTURE_COPY_LOCATION dstLoc = { pReadbackRes, D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT, {} };
         dstLoc.PlacedFootprint.Footprint.Format = DXGI_FORMAT_BC7_UNORM;
-        dstLoc.PlacedFootprint.Footprint.Width = 196; dstLoc.PlacedFootprint.Footprint.Height = 104;
-        dstLoc.PlacedFootprint.Footprint.Depth = 1; dstLoc.PlacedFootprint.Footprint.RowPitch = alignedRowPitch;
+        
+        // match the readback size dynamically to the resource
+        dstLoc.PlacedFootprint.Footprint.Width = static_cast<UINT>(desc.Width);
+        dstLoc.PlacedFootprint.Footprint.Height = desc.Height;
+        dstLoc.PlacedFootprint.Footprint.Depth = 1; 
+        dstLoc.PlacedFootprint.Footprint.RowPitch = alignedRowPitch;
 
         pRbCmdList->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, nullptr);
 
@@ -132,7 +146,9 @@ __declspec(noinline) bool SafeExecuteFingerprint(
 
         uint8_t* pMapped = nullptr;
         if (SUCCEEDED(pReadbackRes->Map(0, nullptr, (void**)&pMapped))) {
-            uint64_t hash = CalculateFNV1a(pMapped, readbackSize);
+            UINT blocksX = (static_cast<UINT>(desc.Width) + 3) / 4;
+            UINT blocksY = (desc.Height + 3) / 4;
+            uint64_t hash = CalculateFNV1aPitched(pMapped, blocksX, blocksY, alignedRowPitch);
             pReadbackRes->Unmap(0, nullptr);
 
             ProcessFingerprintResult(hash, pRes);
@@ -167,6 +183,19 @@ __declspec(noinline) bool SafeExecuteInjection(
             destLoc.pResource = pDestRes;
             destLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
             destLoc.SubresourceIndex = 0;
+            
+            // limit the source copy region to the targets height
+            // if the target is 196x104, it only reads the top 104 rows of the 196x196 payload
+            // if the target is 196x196, it reads all 196 rows, adding transparency over garbage pixels in the bottom half of the payload
+            D3D12_BOX srcBox = {};
+            srcBox.left = 0;
+            srcBox.top = 0;
+            srcBox.front = 0;
+            const UINT srcWidth = pSrcLoc->PlacedFootprint.Footprint.Width;
+            const UINT srcHeight = pSrcLoc->PlacedFootprint.Footprint.Height;
+            srcBox.right = std::min<UINT>(static_cast<UINT>(desc.Width), srcWidth);
+            srcBox.bottom = std::min<UINT>(static_cast<UINT>(desc.Height), srcHeight);
+            srcBox.back = 1;
 
             D3D12_RESOURCE_BARRIER barrier = {};
             barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -176,7 +205,7 @@ __declspec(noinline) bool SafeExecuteInjection(
             barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
             pCmdList->ResourceBarrier(1, &barrier);
 
-            pCmdList->CopyTextureRegion(&destLoc, 0, 0, 0, pSrcLoc, nullptr);
+            pCmdList->CopyTextureRegion(&destLoc, 0, 0, 0, pSrcLoc, &srcBox);
 
             std::swap(barrier.Transition.StateBefore, barrier.Transition.StateAfter);
             pCmdList->ResourceBarrier(1, &barrier);
@@ -220,6 +249,9 @@ CreateShaderResourceView_t OriginalCreateSRV = nullptr;
 
 void __stdcall HookedCreateSRV(ID3D12Device* pDevice, ID3D12Resource* pResource, const D3D12_SHADER_RESOURCE_VIEW_DESC* pDesc, D3D12_CPU_DESCRIPTOR_HANDLE DestDescriptor) 
 {
+    D3D12_SHADER_RESOURCE_VIEW_DESC customDesc = {};
+    const D3D12_SHADER_RESOURCE_VIEW_DESC* pFinalDesc = pDesc;
+
     if (IsTargetTexture(pResource)) {
         static auto last_time = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();
@@ -243,10 +275,32 @@ void __stdcall HookedCreateSRV(ID3D12Device* pDevice, ID3D12Resource* pResource,
             
         if (!found && it == g_StreamerModeResources.end()) {
             g_UnverifiedResources.push_back({pResource, now});
-            fh6::log::info("[dx12] found a 196x104 texture @ {}", (void*)pResource);
+            fh6::log::info("[dx12] found a target texture @ {}", (void*)pResource);
+        }
+
+        // apply mipmap = 1 to force rendering engine to only read subresource 0
+        if (pDesc) {
+            customDesc = *pDesc;
+            if (customDesc.ViewDimension == D3D12_SRV_DIMENSION_TEXTURE2D) {
+                customDesc.Texture2D.MipLevels = 1; 
+                pFinalDesc = &customDesc;
+            } else if (customDesc.ViewDimension == D3D12_SRV_DIMENSION_TEXTURE2DARRAY) {
+                customDesc.Texture2DArray.MipLevels = 1; 
+                pFinalDesc = &customDesc;
+            }
+        } else {
+            D3D12_RESOURCE_DESC resDesc = pResource->GetDesc();
+            customDesc.Format = resDesc.Format;
+            customDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            customDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            customDesc.Texture2D.MostDetailedMip = 0;
+            customDesc.Texture2D.MipLevels = 1; 
+            customDesc.Texture2D.PlaneSlice = 0;
+            customDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+            pFinalDesc = &customDesc;
         }
     }
-    OriginalCreateSRV(pDevice, pResource, pDesc, DestDescriptor);
+    OriginalCreateSRV(pDevice, pResource, pFinalDesc, DestDescriptor);
 }
 
 // ==============================================================================
@@ -279,20 +333,21 @@ void __stdcall HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCom
         }
 
         // ==========================================================================
-        // 2. GPU READBACK FINGERPRINTING
+        // GPU READBACK FINGERPRINTING
         // ==========================================================================
         if (!ready_to_fingerprint.empty()) {
             fh6::log::info("[dx12] fingerprinting {} textures...", ready_to_fingerprint.size());
             
-            UINT blocksX = (196 + 3) / 4;  
-            UINT blocksY = (104 + 3) / 4;  
-            UINT alignedRowPitch = ((blocksX * 16) + 255) & ~255; 
-            UINT64 readbackSize = alignedRowPitch * blocksY;
+            // accommodate max possible height (196) for discovery mapping
+            UINT maxBlocksX = (196 + 3) / 4;  
+            UINT maxBlocksY = (196 + 3) / 4;  
+            UINT alignedRowPitch = ((maxBlocksX * 16) + 255) & ~255; 
+            UINT64 maxReadbackSize = alignedRowPitch * maxBlocksY;
 
             D3D12_HEAP_PROPERTIES rbHeap = { D3D12_HEAP_TYPE_READBACK };
             D3D12_RESOURCE_DESC rbDesc = {};
             rbDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-            rbDesc.Width = readbackSize;
+            rbDesc.Width = maxReadbackSize;
             rbDesc.Height = 1; rbDesc.DepthOrArraySize = 1; rbDesc.MipLevels = 1;
             rbDesc.SampleDesc.Count = 1; rbDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
             
@@ -306,7 +361,7 @@ void __stdcall HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCom
                     SUCCEEDED(pDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pRbAllocator, nullptr, __uuidof(ID3D12GraphicsCommandList), (void**)&pRbCmdList))) {
 
                     for (const auto& pRes : ready_to_fingerprint) {
-                        SafeExecuteFingerprint(pDevice, pQueue, pRbCmdList, pRbAllocator, pReadbackRes, alignedRowPitch, readbackSize, pRes.Get());
+                        SafeExecuteFingerprint(pDevice, pQueue, pRbCmdList, pRbAllocator, pReadbackRes, alignedRowPitch, pRes.Get());
                     }
                     pRbCmdList->Release(); 
                     pRbAllocator->Release();
@@ -316,7 +371,7 @@ void __stdcall HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCom
         }
 
         // ==========================================================================
-        // 3. INJECTION
+        // INJECTION
         // ==========================================================================
         std::vector<ID3D12Resource*> streamer_copy;
         {
@@ -334,14 +389,16 @@ void __stdcall HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCom
             if (fh6::TextureInjector::instance().pop_pending_pixels(new_pixels, w, h)) {
                 fh6::log::info("[dx12] intercepted ExecuteCommandLists - processing GPU upload...");
                 
+                // process 196x196 payload dimensions
                 UINT blocksX = (w + 3) / 4;  
                 UINT blocksY = (h + 3) / 4;  
                 UINT tightRowPitch = blocksX * 16; 
                 UINT alignedRowPitch = (tightRowPitch + 255) & ~255; 
-                UINT64 uploadBufferSize = alignedRowPitch * blocksY;
+                UINT64 uploadBufferSize = static_cast<UINT64>(alignedRowPitch) * blocksY;
 
+                // allow both sizes dynamically
                 const size_t requiredPayloadSize = static_cast<size_t>(tightRowPitch) * blocksY;
-                if (w != 196 || h != 104 || new_pixels.size() < requiredPayloadSize) {
+                if (w != 196 || (h != 104 && h != 196) || new_pixels.size() < requiredPayloadSize) {
                     fh6::log::warn("[dx12] invalid BC7 payload: {}x{}, {} bytes", w, h, new_pixels.size());
                     pDevice->Release();
                     OriginalExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);
