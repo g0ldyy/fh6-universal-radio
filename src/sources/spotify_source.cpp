@@ -637,8 +637,11 @@ void SpotifySource::pump(RingBuffer& ring) {
                         // Otherwise, rely on p->has_explicit_position (set by command=Load)
                         // to know if this is a manual skip/mid-song connect.
                         const uint64_t track_bytes = p->track_duration_ms * kBytesPerMs;
-                        const bool is_desync = 
-                            p->track_duration_ms > 0 && p->bytes_consumed >= track_bytes;
+                        const uint64_t unplayed = ring.readable();
+                        const uint64_t played_bytes =
+                            p->bytes_consumed > unplayed ? (p->bytes_consumed - unplayed) : 0;
+                        const bool is_desync =
+                            p->track_duration_ms > 0 && played_bytes >= track_bytes;
 
                         // First track, an explicit skip/connect, or a desync: apply at once.
                         if (p->awaiting_first_track || p->force_next_metadata || p->has_explicit_position || is_desync) {
@@ -654,7 +657,10 @@ void SpotifySource::pump(RingBuffer& ring) {
                                     p->bytes_consumed = p->explicit_position_bytes;
                                 }
                             } else {
-                                p->bytes_consumed = 0;
+                                p->bytes_consumed =
+                                    is_desync && p->bytes_consumed >= track_bytes
+                                        ? p->bytes_consumed - track_bytes
+                                        : 0;
                             }
                             
                             p->has_explicit_position = false;
