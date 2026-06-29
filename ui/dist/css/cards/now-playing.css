@@ -59,7 +59,6 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    /* display: none; */
 }
 
 /* .hero.has-art .cover img {
@@ -100,6 +99,12 @@ body.theme-light .hero.has-art .hero-backdrop {
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+}
+
+body.theme-light .now-title,
+body.theme-light .now-artist {
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.18);
 }
 
 .now-artist {
@@ -107,11 +112,12 @@ body.theme-light .hero.has-art .hero-backdrop {
     font-size: clamp(15px, 4vw, 17px);
     font-weight: var(--font-weight-medium);
     font-family: var(--font-space-grotesk);
-    color: var(--color-vivid-pink);
+    color: var(--accent);
     letter-spacing: -0.01em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
 }
 
 .progress {
@@ -309,7 +315,7 @@ body.theme-light .hero.has-art .hero-backdrop {
     font-size: 12px;
     font-weight: var(--font-weight-medium);
     font-family: var(--font-space-grotesk);
-    color: var(--color-vivid-pink);
+    color: var(--accent);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -333,8 +339,6 @@ body.theme-light .hero.has-art .hero-backdrop {
 .mini-controls .icon-btn {
     width: 32px;
     height: 32px;
-    /* background: transparent;
-    border: none; */
     cursor: pointer;
     color: var(--text-muted);
     display: flex;

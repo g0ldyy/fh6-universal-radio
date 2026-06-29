@@ -100,7 +100,6 @@ async function transport(action) {
         await new Promise(r => setTimeout(r, 300));
         state = await api.getState().catch(() => state);
         render();
-        if (source === "local_files" && (act === "next" || act === "previous")) localFiles.reloadQueue();
     } catch (e) {
         toast(e.message, true);
     }
@@ -187,46 +186,6 @@ if (backupBtn) {
         } catch (err) {
             console.error("Failed to backup config:", err);
             toast(t("error.backup_failed"), true);
-        }
-    });
-}
-
-const exportStationsBtn = document.getElementById("export-stations");
-if (exportStationsBtn) {
-    exportStationsBtn.addEventListener("click", async () => {
-        try {
-            const config = await api.getConfig();
-            downloadJson(buildStationPack(config), `fh6-radio-stations-${todayStamp()}.json`);
-            toast(t("settings.stations_exported"));
-        } catch (err) {
-            console.error("Failed to export station pack:", err);
-            toast(t("error.unknown"), true);
-        }
-    });
-}
-
-const importStationsBtn = document.getElementById("import-stations");
-const importStationsFile = document.getElementById("import-stations-file");
-if (importStationsBtn && importStationsFile) {
-    importStationsBtn.addEventListener("click", () => importStationsFile.click());
-    importStationsFile.addEventListener("change", async e => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-            const text = await file.text();
-            const pack = JSON.parse(text);
-            const freshCfg = await api.getConfig();
-            const { patch, added } = mergeStationPack(freshCfg, pack);
-            cfg = await api.putConfig(patch);
-            youtubeMusic.invalidate();
-            state = await api.getState().catch(() => state);
-            render();
-            toast(t("settings.stations_imported", { count: String(added) }));
-        } catch (err) {
-            console.error("Failed to import station pack:", err);
-            toast(t("error.invalid_station_pack"), true);
-        } finally {
-            e.target.value = "";
         }
     });
 }
@@ -369,6 +328,8 @@ $("#reload-config").addEventListener("click", async () => {
         externalAudio.invalidate();
         localFiles.invalidate();
         onlineRadio.invalidate();
+        youtubeMusic.invalidate();
+        jellyfin.invalidate();
         renderSettings(refs.form, cfg);
         snapshotForm();
         render();
@@ -396,14 +357,8 @@ function applyI18n() {
     });
 }
 
-// Base palette (mutually exclusive) vs. the "squared" shape modifier
-// (independent, just forces every border-radius to 0) — a theme value like
-// "dark-squared" combines one of each, so "Dark Squared"/"Light Squared"
-// don't need their own separate color palette.
 const BASE_THEME_CLASSES = ["theme-light", "theme-dark"];
 
-// No "system/auto" mode anymore — anything unrecognized (including the old
-// "auto" value from before it was removed) falls back to dark.
 function applyTheme(themeMode) {
     const body = document.body;
     const isSquared = themeMode.endsWith("-squared");
@@ -415,11 +370,6 @@ function applyTheme(themeMode) {
     body.classList.toggle("theme-squared", isSquared);
 }
 
-// Re-applies translations in place after setLang() switches language, instead
-// of a full page reload. Static [data-i18n] text and state-driven dynamic
-// content (now playing, sources, settings form, station/queue lists) all
-// refresh; a few labels baked into buttons at card creation time only update
-// the next time that card's data changes or the page is next loaded.
 function refreshAfterLangChange() {
     document.documentElement.lang = getLang();
     applyI18n();
@@ -495,6 +445,39 @@ async function boot() {
         },
     });
 
+    const { exportBtn, importBtn, importFileInput } = youtubeMusic.els;
+    exportBtn.addEventListener("click", async () => {
+        try {
+            const config = await api.getConfig();
+            downloadJson(buildStationPack(config), `fh6-radio-stations-${todayStamp()}.json`);
+            toast(t("settings.stations_exported"));
+        } catch (err) {
+            console.error("Failed to export station pack:", err);
+            toast(t("error.unknown"), true);
+        }
+    });
+    importBtn.addEventListener("click", () => importFileInput.click());
+    importFileInput.addEventListener("change", async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const pack = JSON.parse(text);
+            const freshCfg = await api.getConfig();
+            const { patch, added } = mergeStationPack(freshCfg, pack);
+            cfg = await api.putConfig(patch);
+            youtubeMusic.invalidate();
+            state = await api.getState().catch(() => state);
+            render();
+            toast(t("settings.stations_imported", { count: String(added) }));
+        } catch (err) {
+            console.error("Failed to import station pack:", err);
+            toast(t("error.invalid_station_pack"), true);
+        } finally {
+            e.target.value = "";
+        }
+    });
+
     jellyfin = createJellyfin(mainEl, {
         getState: () => state,
         getConfig: () => cfg,
@@ -507,7 +490,6 @@ async function boot() {
 
     let savedTheme = prefs.themeMode.get();
     if (savedTheme === "auto") {
-        // Migrate users who had the now-removed "system" mode saved.
         savedTheme = "dark";
         prefs.themeMode.set(savedTheme);
     }

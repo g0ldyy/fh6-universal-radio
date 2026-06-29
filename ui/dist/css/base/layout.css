@@ -64,8 +64,6 @@ main {
     border-radius: var(--radius-xl);
     padding: var(--spacing-20);
     box-shadow: 0 18px 40px -28px rgba(0, 0, 0, 0.7);
-    /* Replays automatically whenever [hidden] flips off (display:none -> flow),
-       e.g. switching the active source card — no JS needed to retrigger it. */
     animation: rise 0.25s ease;
 }
 
@@ -80,6 +78,12 @@ main {
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-muted);
+}
+
+.card#external-audio-card .field-label{
+    margin-bottom: var(--spacing-8);
+    padding-left: 0;
+    border-left: 0;
 }
 
 .muted {

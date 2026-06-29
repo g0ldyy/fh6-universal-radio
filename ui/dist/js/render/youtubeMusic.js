@@ -33,6 +33,15 @@ export function createYoutubeMusic(main, ctx) {
         dataset: { i18nAriaLabel: "youtube_music.shuffle" }, html: icons.shuffle,
     });
     const summaryEl = el("p", { class: "muted", hidden: true });
+    const exportBtn = el("button", {
+        type: "button", class: "btn ghost", title: t("settings.export_stations_title"),
+        dataset: { i18n: "settings.export_stations", i18nTitle: "settings.export_stations_title" },
+    }, t("settings.export_stations"));
+    const importBtn = el("button", {
+        type: "button", class: "btn ghost", title: t("settings.import_stations_title"),
+        dataset: { i18n: "settings.import_stations", i18nTitle: "settings.import_stations_title" },
+    }, t("settings.import_stations"));
+    const importFileInput = el("input", { type: "file", accept: ".json", hidden: true });
     let lastDetails = null;
 
     function renderSummary() {
@@ -87,6 +96,8 @@ export function createYoutubeMusic(main, ctx) {
         summaryEl,
         el("div", { class: "stationbar row" }, [stationSelect, onAirBtn]),
         el("div", { class: "row stationtools" }, [newBtn, duplicateBtn, renameBtn, deleteBtn]),
+        el("div", { class: "row stationtools" }, [exportBtn, importBtn]),
+        importFileInput,
         el("div", { class: "editor" }, [
             el("label", { class: "field-label", dataset: { i18n: "youtube_music.playlist_or_video_url" } }, t("youtube_music.playlist_or_video_url")),
             urlInput,
@@ -154,5 +165,5 @@ export function createYoutubeMusic(main, ctx) {
         station.sync(details);
     }
 
-    return { render, invalidate: station.invalidate };
+    return { render, invalidate: station.invalidate, els: { exportBtn, importBtn, importFileInput } };
 }

@@ -9,6 +9,21 @@ export function activeSource(state) {
     return state?.sources?.available?.find(s => s.name === state?.sources?.active) || null;
 }
 
+// Vanilla Radio has no real track metadata to show, so the backend sends a
+// static, hardcoded-in-English placeholder for title/artist instead. Map
+// those known literal strings to their translated equivalents — same
+// best-effort approach as translateLoadingPlaceholder().
+const BACKEND_LITERALS = {
+    "Vanilla Radio": "source.vanilla_radio",
+    "In-game Audio": "source.in_game_audio",
+    "Streaming via Spotify Connect": "source.spotify_streaming",
+};
+
+function translateBackendLiteral(value, t) {
+    const key = BACKEND_LITERALS[value];
+    return key ? t(key) : value;
+}
+
 export function renderNowPlaying(refs, state) {
     const track = state?.track || {};
     const source = activeSource(state);
@@ -16,17 +31,16 @@ export function renderNowPlaying(refs, state) {
 
     const hasArt = !!track.artwork_url;
     refs.art.classList.toggle("has-art", hasArt);
-    // Only consumed by the "Rétro / Vinyle" skin, to spin the cover like a record.
     refs.art.classList.toggle("is-playing", playing);
-    
+
     let src = "";
     if (hasArt) {
         const isExternal = track.artwork_url.startsWith("http") && !isLocalUrl(track.artwork_url);
         src = isExternal
             ? `https://wsrv.nl/?url=${encodeURIComponent(track.artwork_url)}`
             : track.artwork_url;
-        
-        if (refs.img.getAttribute("src") !== track.artwork_url) {
+
+        if (refs.img.getAttribute("src") !== src) {
             refs.img.crossOrigin = "anonymous";
             refs.img.src = src;
             refs.img.onload = () => {
@@ -40,17 +54,27 @@ export function renderNowPlaying(refs, state) {
             };
         }
     } else {
-        refs.img.src = "../assets/default_artwork_2048.png";
-        document.documentElement.style.setProperty("--accent", "var(--color-sunset-yellow)");
+        if (refs.img.getAttribute("src") !== "../assets/default_artwork_2048.png") {
+            refs.img.src = "../assets/default_artwork_2048.png";
+        }
+        // Only reset to the static fallback when there's genuinely nothing
+        // loaded (no title either) — playback_state can briefly report
+        // "stopped" between tracks (e.g. YouTube Music re-fetching the next
+        // video's metadata) while a title is still set and playback is about
+        // to resume, which caused a yellow flash if we reset on that alone.
+        if (!track.title) {
+            document.documentElement.style.setProperty("--accent", "var(--color-sunset-yellow)");
+        }
     }
-    
+
     if (refs.backdrop) refs.backdrop.style.backgroundImage = hasArt ? `url("${track.artwork_url}")` : "";
 
-    const title = translateLoadingPlaceholder(track.title, t);
-    const artist = translateLoadingPlaceholder(track.artist, t);
+    const title = translateBackendLiteral(translateLoadingPlaceholder(track.title, t), t);
+    const artist = translateBackendLiteral(translateLoadingPlaceholder(track.artist, t), t);
+    const album = translateLoadingPlaceholder(track.album, t);
 
     setText(refs.title, title || t("now_playing.nothing_playing"));
-    setText(refs.artist, artist ? (track.album ? `${artist}` : artist) : "");
+    setText(refs.artist, artist ? (album ? `${artist} · ${album}` : artist) : "");
     setText(refs.pos, fmt(track.position_ms));
     setText(refs.dur, fmt(track.duration_ms));
     refs.fill.style.width = progressRatio(track.position_ms, track.duration_ms) * 100 + "%";
@@ -64,7 +88,7 @@ export function renderNowPlaying(refs, state) {
 
     if (refs.mini) {
         setText(refs.mini.title, title || t("now_playing.nothing_playing"));
-        setText(refs.mini.artist, artist || "");
+        setText(refs.mini.artist, artist ? (album ? `${artist} · ${album}` : artist) : "");
 
         if (hasArt) {
             if (refs.mini.art.getAttribute("src") !== src) {

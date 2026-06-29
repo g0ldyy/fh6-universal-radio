@@ -22,7 +22,6 @@
 
 .editor {
     margin-top: var(--spacing-16);
-    padding-top: var(--spacing-16);
     border-top: 1px solid var(--line);
     display: flex;
     flex-direction: column;
@@ -159,6 +158,7 @@
 
 .tree-label.muted {
     opacity: 0.5;
+    margin: 0;
 }
 
 .modes {

@@ -270,8 +270,10 @@ export function createLocalFiles(main, ctx) {
         const state = s.excluded.some(ex => norm(ex) === norm(entry.path))
             ? "excluded"
             : s.excluded.some(ex => within(entry.path, ex))
-                ? "ancestor"
-                : "included";
+                ? "excluded"
+                : s.excluded.some(ex => within(ex, entry.path))
+                    ? "ancestor"
+                    : "included";
         const isOpen = expanded.has(norm(entry.path));
 
         const box = el("input", { type: "checkbox" });
@@ -301,7 +303,7 @@ export function createLocalFiles(main, ctx) {
 
         const row = el("div", { class: "tree-row", style: `padding-left:${depth * 16}px` }, [
             caret,
-            el("label", { class: "tree-label" + (state === "ancestor" ? " muted" : "") }, [
+            el("label", { class: "tree-label" + (state === "excluded" ? " muted" : "") }, [
                 box,
                 el("span", {}, entry.name || entry.path),
             ]),
@@ -338,11 +340,6 @@ export function createLocalFiles(main, ctx) {
         $("#grouping-field", card).hidden = s.order !== "album";
     }
 
-    // Folder count is always accurate for whichever station is selected
-    // (it's just s.roots.length, known client-side). Track count is only
-    // shown when the selected station is the one actually on air — it's the
-    // only one the backend streams live stats for, so showing it for a
-    // different station would just be the wrong number.
     function renderSummary() {
         const s = station.cur();
         if (!s) {
@@ -408,6 +405,5 @@ export function createLocalFiles(main, ctx) {
     return {
         render,
         invalidate: station.invalidate,
-        reloadQueue: station.loadQueue,
     };
 }

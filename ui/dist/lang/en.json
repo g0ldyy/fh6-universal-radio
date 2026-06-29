@@ -63,9 +63,9 @@
 
   // The "station pack" export/import only covers YouTube Music stations
   // (it's the only library safely shareable between players).
-  "settings.export_stations": "Export YT Music stations",
+  "settings.export_stations": "Export stations",
   "settings.export_stations_title": "Download a shareable pack of your YouTube Music stations",
-  "settings.import_stations": "Import YT Music stations",
+  "settings.import_stations": "Import stations",
   "settings.import_stations_title": "Add YouTube Music stations from a shared pack file",
   "settings.stations_exported": "Station pack downloaded",
   "settings.stations_imported": "{count} station(s) added",
@@ -85,6 +85,8 @@
   "source.online_radio": "Online Radio",
   "source.external_audio": "External Audio",
   "source.vanilla_radio": "Vanilla Radio",
+  "source.in_game_audio": "In-game Audio",
+  "source.spotify_streaming": "Streaming via Spotify Connect",
   "source.stopped": "Stopped",
   "source.playing": "Playing",
   "source.state.playing": "Playing",

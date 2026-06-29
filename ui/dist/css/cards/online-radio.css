@@ -8,6 +8,8 @@
 
 .or-history .field-label {
     margin: 0 0 var(--spacing-8) 0;
+    padding-left: 0;
+    border-left: 0;
 }
 
 .or-history-list {
@@ -65,8 +67,6 @@
 
 .or-panel {
     margin-top: var(--spacing-16);
-    /* Same logic as .card's "rise" animation — replays automatically
-       whenever [hidden] flips off when switching tabs, no JS needed. */
     animation: fade 0.2s ease;
 }
 

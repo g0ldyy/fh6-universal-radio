@@ -165,6 +165,26 @@ input[type="checkbox"] {
     height: 16px;
     accent-color: var(--accent);
 }
+input[type="checkbox"]:indeterminate {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    position: relative;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+}
+
+input[type="checkbox"]:indeterminate::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 2px;
+    background: #fff;
+    transform: translate(-50%, -50%);
+}
 
 select:hover {
     border-color: var(--line-strong);

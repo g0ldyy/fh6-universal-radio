@@ -35,7 +35,9 @@
     display: block;
     font-size: 13px;
     color: var(--text-muted);
-    margin: var(--spacing-12) 0 6px;
+    margin: var(--spacing-12) 0 0 0;
+    padding-left: 8px;
+    border-left: 2px solid var(--accent);
 }
 
 [hidden] {

@@ -8,5 +8,3 @@ include/stb
 
 # Dependency directories
 node_modules/
-
-ui/dist/.vscode
