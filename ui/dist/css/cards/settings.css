@@ -1,0 +1,217 @@
+.drawer {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 9999;
+    width: min(600px, 100%);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-card);
+    border-left: 1px solid var(--line);
+    box-shadow: var(--shadow-xl);
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.drawer.open {
+    transform: translateX(0);
+}
+
+.drawer-head,
+.drawer-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-20) var(--spacing-24);
+}
+
+.drawer-head {
+    border-bottom: 1px solid var(--line);
+}
+
+.drawer-foot {
+    border-top: 1px solid var(--line);
+}
+
+.drawer-head h2 {
+    margin: 0;
+    font-family: var(--font-editorial-new);
+    font-weight: var(--font-weight-regular);
+    font-size: 24px;
+    color: var(--text-strong);
+}
+
+.drawer-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-16);
+    padding: var(--spacing-24);
+    overflow-y: auto;
+}
+
+.drawer-body fieldset {
+    margin: 0;
+    padding: var(--spacing-16);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-12);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+}
+
+.drawer-body legend {
+    padding: 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.drawer-foot {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-12);
+}
+
+.drawer-foot-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+}
+
+.drawer-foot-group:first-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    padding-bottom: var(--spacing-12);
+    border-bottom: 1px solid var(--line);
+}
+
+.drawer-foot-group .btn {
+    width: 100%;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drawer-foot-group:first-child .btn {
+    justify-content: center;
+    gap: 6px;
+    border-color: var(--line);
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
+.drawer-foot-group:first-child .btn:hover {
+    color: var(--text);
+    border-color: var(--line-strong);
+}
+
+.drawer-foot-group:last-child {
+    width: 100%;
+    flex-direction: row;
+    gap: var(--spacing-8);
+}
+
+.drawer-foot-group:last-child .btn {
+    flex: 1;
+}
+
+.field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.field label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.field-modified > label::after {
+    content: "•";
+    margin-left: 5px;
+    color: var(--accent);
+}
+
+.field-reset-btn {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.field-reset-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.field-reset-btn:hover {
+    color: var(--text);
+}
+
+.field-modified .field-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.field input.invalid {
+    border-color: var(--alert);
+}
+
+.field-error {
+    font-size: 11px;
+    color: var(--alert);
+}
+
+.field.checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+
+.field.checkbox label {
+    font-size: 14px;
+    color: var(--text);
+}
+
+.field.bands {
+    gap: var(--spacing-8);
+}
+
+.band {
+    display: grid;
+    grid-template-columns: 72px 1fr 64px;
+    align-items: center;
+    gap: 10px;
+}
+
+.band-label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.band output {
+    font-size: 12px;
+}
+
+.field-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: var(--font-weight-light);
+}
+
+.section-disabled>.field:not(.checkbox) {
+    opacity: 0.5;
+    pointer-events: none;
+}

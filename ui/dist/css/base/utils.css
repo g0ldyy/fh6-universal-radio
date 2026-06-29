@@ -1,0 +1,94 @@
+.status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+}
+
+.status.ok::before {
+    background: var(--ok);
+    box-shadow: 0 0 10px var(--ok);
+    animation: pulse 2.4s ease-in-out infinite;
+}
+
+.status.err::before {
+    background: var(--alert);
+    box-shadow: 0 0 10px var(--alert);
+}
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-8);
+}
+
+.field-label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: var(--spacing-12) 0 0 0;
+    padding-left: 8px;
+    border-left: 2px solid var(--accent);
+}
+
+[hidden] {
+    display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    header,
+    .mini-player,
+    .toast,
+    .scrim,
+    .modal-overlay {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    header,
+    .mini-player,
+    .toast {
+        background: var(--surface-card);
+    }
+}
+
+body.perf-mode header,
+body.perf-mode .mini-player,
+body.perf-mode .toast,
+body.perf-mode .scrim,
+body.perf-mode .modal-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+body.perf-mode header,
+body.perf-mode .mini-player,
+body.perf-mode .toast {
+    background: var(--surface-card);
+}
+
+body.perf-mode .hero-backdrop,
+body.perf-mode::before {
+    display: none;
+}
+
+body.perf-mode .track.current .track-cover,
+body.perf-mode .eq-bar {
+    animation: none !important;
+}

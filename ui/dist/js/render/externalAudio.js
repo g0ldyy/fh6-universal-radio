@@ -1,9 +1,8 @@
-import { api } from "../api.js";
-import { $, el } from "../dom.js";
+import { api } from "../data/api.js";
+import { $, el } from "../lib/dom.js";
 import { toast } from "../toast.js";
+import { t } from "../i18n.js";
 
-// External Audio card: pick a WASAPI capture device and a media session.
-// Self-contained device/session state; ctx bridges back to the app config.
 export function createExternalAudio(main, ctx) {
   let devices = [];
   let endpoint = "";
@@ -13,22 +12,18 @@ export function createExternalAudio(main, ctx) {
   let loaded = false;
   let loading = false;
 
-  const deviceSelect = el("select", { id: "ext-device", "aria-label": "External Audio capture device" });
-  const sessionSelect = el("select", { id: "ext-session", "aria-label": "External Audio media session" });
-  const refreshBtn = el("button", { type: "button", class: "btn ghost" }, "Refresh");
-  const saveBtn = el("button", { type: "button", class: "btn filled" }, "Save");
+  const deviceSelect = el("select", { id: "ext-device", "aria-label": t("ext.device_label"), dataset: { i18nAriaLabel: "ext.device_label" } });
+  const sessionSelect = el("select", { id: "ext-session", "aria-label": t("ext.session_label"), dataset: { i18nAriaLabel: "ext.session_label" } });
+  const refreshBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "ext.refresh" } }, t("ext.refresh"));
+  const saveBtn = el("button", { type: "button", class: "btn filled", dataset: { i18n: "btn.save" } }, t("btn.save"));
   const hint = el("p", { class: "muted" });
 
   const card = el("section", { class: "card", id: "external-audio-card", hidden: true }, [
-    el("h2", {}, "External Audio"),
-    el(
-      "p",
-      { class: "muted" },
-      "Select the Windows playback device used for audio capture and the media session used for metadata and next/previous commands.",
-    ),
-    el("label", { class: "field-label", for: "ext-device" }, "Capture device"),
+    el("h2", { dataset: { i18n: "source.external_audio" } }, t("source.external_audio")),
+    el("p", { class: "muted", dataset: { i18n: "ext.description" } }, t("ext.description")),
+    el("label", { class: "field-label", for: "ext-device", dataset: { i18n: "ext.capture_device" } }, t("ext.capture_device")),
     el("div", { class: "row" }, [deviceSelect, refreshBtn]),
-    el("label", { class: "field-label", for: "ext-session" }, "Media session"),
+    el("label", { class: "field-label", for: "ext-session", dataset: { i18n: "ext.media_session" } }, t("ext.media_session")),
     el("div", { class: "row" }, [sessionSelect, saveBtn]),
     hint,
   ]);
@@ -75,7 +70,7 @@ export function createExternalAudio(main, ctx) {
         endpoint_id: r.endpoint_id ?? deviceSelect.value,
         media_session_id: r.media_session_id ?? sessionSelect.value,
       });
-      toast("External Audio settings saved");
+      toast(t("ext.saved"));
     } catch (e) {
       toast(e.message, true);
     }
@@ -83,7 +78,6 @@ export function createExternalAudio(main, ctx) {
 
   function render() {
     const state = ctx.getState();
-    // Only show the External Audio card while it's the source on air.
     const onAir = state?.sources?.active === "external_audio";
     card.hidden = !onAir;
     if (!onAir) return;
@@ -94,12 +88,12 @@ export function createExternalAudio(main, ctx) {
     if (deviceSelect.dataset.sig !== deviceSig) {
       deviceSelect.dataset.sig = deviceSig;
       deviceSelect.replaceChildren(
-        el("option", { value: "", selected: endpoint === "" }, "Default Windows playback device"),
+        el("option", { value: "", selected: endpoint === "" }, t("ext.default_device")),
         ...devices.map(d =>
           el(
             "option",
             { value: d.id, selected: endpoint === d.id },
-            `${d.name || d.id}${d.is_default ? " (current default)" : ""}`,
+            `${d.name || d.id}${d.is_default ? ` (${t("ext.current_default")})` : ""}`,
           ),
         ),
       );
@@ -110,17 +104,17 @@ export function createExternalAudio(main, ctx) {
       sessionSelect.dataset.sig = sessionSig;
       if (!sessionsAvailable) {
         sessionSelect.replaceChildren(
-          el("option", { value: "", selected: true }, "Media session API is not available in this build"),
+          el("option", { value: "", selected: true }, t("ext.session_unavailable")),
         );
         sessionSelect.disabled = true;
       } else {
         sessionSelect.replaceChildren(
-          el("option", { value: "", selected: sessionId === "" }, "Current Windows media session"),
+          el("option", { value: "", selected: sessionId === "" }, t("ext.current_session")),
           ...sessions.map(s =>
             el(
               "option",
               { value: s.id, selected: sessionId === s.id },
-              `${s.name || s.id}${s.is_current ? " (current)" : ""}`,
+              `${s.name || s.id}${s.is_current ? ` (${t("ext.current")})` : ""}`,
             ),
           ),
         );
@@ -131,16 +125,21 @@ export function createExternalAudio(main, ctx) {
     const available = state?.sources?.available?.some(s => s.name === "external_audio");
     const active = state?.sources?.active === "external_audio";
     hint.textContent = !available
-      ? "Enabled, but the source hasn't registered yet."
+      ? t("ext.hint.not_available")
       : active
-        ? "Active and on air."
-        : "Ready. Switch to External Audio in Sources to go on air.";
+        ? t("ext.hint.active")
+        : t("ext.hint.ready");
   }
 
   return {
     render,
     invalidate: () => {
       loaded = false;
+      // Forces the option lists to rebuild even if the device/session data
+      // itself hasn't changed — needed after a language change, since their
+      // translated bits (e.g. "current default") are baked into option text.
+      deviceSelect.dataset.sig = "";
+      sessionSelect.dataset.sig = "";
     },
   };
 }

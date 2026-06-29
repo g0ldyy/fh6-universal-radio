@@ -1,13 +1,16 @@
-import { api } from "../api.js";
-import { el } from "../dom.js";
-import { changed } from "../store.js";
+import { api } from "../data/api.js";
+import { el } from "../lib/dom.js";
+import { changed } from "../lib/store.js";
+import { t } from "../i18n.js";
 
 export function depRow(tool) {
-  let label = "ready";
+  let label = t("deps.ready");
   let cls = "";
   if (tool.downloading) {
     const pct = tool.total_bytes ? Math.round((tool.downloaded_bytes / tool.total_bytes) * 100) : null;
-    label = pct === null ? `downloading ${(tool.downloaded_bytes / 1e6).toFixed(1)} MB` : `downloading ${pct}%`;
+    label = pct === null
+      ? t("deps.downloading_mb", { mb: (tool.downloaded_bytes / 1e6).toFixed(1) })
+      : t("deps.downloading_pct", { pct });
   } else if (tool.error) {
     label = tool.error;
     cls = "err";
@@ -25,10 +28,11 @@ export function createDeps(main) {
   let tools = [];
   const list = el("div", {});
   const card = el("section", { class: "card", id: "deps-card", hidden: true }, [
-    el("h2", {}, "Dependencies"),
+    el("h2", { dataset: { i18n: "deps.title" } }, t("deps.title")),
     el("p", {
       class: "muted",
-      html: "Fetching the tools the providers need (ffmpeg, yt-dlp, librespot) into <code>fh6-radio/bin</code>.",
+      dataset: { i18nHtml: "deps.description" },
+      html: t("deps.description"),
     }),
     list,
   ]);
@@ -47,7 +51,7 @@ export function createDeps(main) {
       tools = Array.isArray(r.tools) ? r.tools : [];
       render();
     } catch {
-      /* keep last */
+      // keep last
     }
     setTimeout(poll, tools.some(t => t.downloading) ? 1000 : 5000);
   }

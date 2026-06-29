@@ -1,0 +1,352 @@
+{
+  // HOW TO ADD A NEW LANGUAGE
+  // 1. Copy this file to lang/<code>.json (e.g. lang/de.json for German).
+  // 2. Translate only the values (the text right of each ":"). Never touch
+  //    the keys (the text in quotes on the left), and never remove/rename a
+  //    placeholder like {name}, {count}, {pct} — the app fills those in at
+  //    runtime. A few values also contain "\n" (newline) — keep it as-is.
+  // 3. Update _meta below to your language.
+  // 4. Add { "code": "<code>", "label": "🇩🇪 Deutsch" } to the SUPPORTED
+  //    array in js/i18n.js so it shows up in the language picker.
+  // 5. These "//" comments are stripped before parsing — they're not valid
+  //    JSON, so any JSON validator/linter will flag them; that's expected.
+
+  "_meta": {
+    "language": "English",
+    "code": "en",
+    "author": "g0ldyy"
+  },
+
+  // ─── Brand & connection status (header) ────────────────────────────────
+  "brand.title": "FH6 Universal Radio",
+  "status.connecting": "Connecting…",
+  "status.ok": "Connected",
+  "status.error": "Connection error",
+
+  // ─── Settings drawer: chrome, interface prefs, backup/restore ──────────
+  "settings.open": "Settings",
+  "settings.close": "Close",
+  "settings.reload": "Reload from disk",
+  "settings.reload_title": "Reload from disk",
+  "settings.saved": "Saved",
+  "settings.reloaded": "Reloaded from disk",
+  "settings.discard_title": "Discard changes?",
+  "settings.discard_message": "You have unsaved changes that will be lost.",
+  "settings.discard_confirm": "Discard",
+  "settings.reset_field": "Reset this field",
+  "settings.value_out_of_range": "Must be between {min} and {max}",
+
+  "settings.interface.title": "Interface",
+  "settings.interface.dynamic_color": "Dynamic accent color",
+  "settings.interface.perf_mode": "Performance mode",
+  "settings.interface.language": "Language",
+  "settings.interface.language_hint": "Spot a typo or missing language? Help us fix it on GitHub!",
+  "settings.interface.view_mode": "View Mode",
+  "settings.interface.view.default": "Default",
+  "settings.interface.view.minimal": "Minimal",
+  "settings.interface.theme_mode": "App Theme",
+  "settings.interface.theme.dark": "Dark",
+  "settings.interface.theme.light": "Light",
+  "settings.interface.theme.dark_squared": "Dark Squared",
+  "settings.interface.theme.light_squared": "Light Squared",
+
+  "settings.backup": "Backup",
+  "settings.backup_title": "Download settings backup",
+  "settings.backup_downloaded": "Backup downloaded successfully",
+  "error.backup_failed": "Failed to backup settings.",
+  "settings.restore": "Restore",
+  "settings.restore_title": "Restore settings from file",
+  "settings.restore_confirm_title": "Restore settings?",
+  "settings.restore_confirm_message": "This will overwrite your current settings with the contents of the backup file. This cannot be undone.",
+  "settings.restored": "Settings restored successfully!",
+  "error.restore_failed": "Failed to restore settings. Invalid JSON file.",
+
+  // The "station pack" export/import only covers YouTube Music stations
+  // (it's the only library safely shareable between players).
+  "settings.export_stations": "Export stations",
+  "settings.export_stations_title": "Download a shareable pack of your YouTube Music stations",
+  "settings.import_stations": "Import stations",
+  "settings.import_stations_title": "Add YouTube Music stations from a shared pack file",
+  "settings.stations_exported": "Station pack downloaded",
+  "settings.stations_imported": "{count} station(s) added",
+  "error.invalid_station_pack": "Invalid station pack file.",
+
+  // ─── Now Playing (hero + mini player) ──────────────────────────────────
+  "now_playing.nothing_playing": "Nothing playing",
+  "now_playing.play": "Play",
+  "now_playing.pause": "Pause",
+  "now_playing.previous": "Previous",
+  "now_playing.next": "Next",
+
+  // ─── Sources list ───────────────────────────────────────────────────────
+  "source.title": "SOURCE",
+  "source.no_source": "No source configured",
+  "source.local_files": "Local Files",
+  "source.online_radio": "Online Radio",
+  "source.external_audio": "External Audio",
+  "source.vanilla_radio": "Vanilla Radio",
+  "source.in_game_audio": "In-game Audio",
+  "source.spotify_streaming": "Streaming via Spotify Connect",
+  "source.stopped": "Stopped",
+  "source.playing": "Playing",
+  "source.state.playing": "Playing",
+  "source.state.stopped": "Stopped",
+  "source.state.paused": "Paused",
+  "source.indexed": "indexed",
+  "source.needs_auth": "Needs Auth",
+  "source.auth.authenticated": "Authenticated",
+  "source.auth.needs_auth": "Needs Auth",
+  "source.auth.error": "Error",
+  // \n = line break, shown as a multi-line tip under the source tile.
+  "source.auth_instructions.spotify": "1. Ensure your PC and phone are on the same Wi-Fi network.\n2. Open the Spotify app on your phone.\n3. Tap the 'Devices' icon and select 'FH6 Universal Radio'.\nOnce connected, credentials will automatically save to the cache folder.",
+  "source.auth_instructions.local_files": "Add a music folder to this station in the Local Files card, then Save.",
+
+  // ─── Global hotkeys (keyboard / controller) ─────────────────────────────
+  "hotkeys.title": "Global Hotkeys",
+  "hotkeys.none": "None",
+  "hotkeys.double_tap": "Double-Tap",
+  "hotkeys.custom": "Custom...",
+  "hotkeys.press_kb": "Click and press a key...",
+  "hotkeys.press_pad": "Click and press a controller button...",
+  // Keyboard key dropdown options.
+  "hotkeys.kb.page_up": "Page Up",
+  "hotkeys.kb.page_down": "Page Down",
+  "hotkeys.kb.home": "Home",
+  "hotkeys.kb.end": "End",
+  // Controller button dropdown options.
+  "hotkeys.pad.lb": "Left Bumper (LB)",
+  "hotkeys.pad.x": "X Button",
+  "hotkeys.pad.b": "B Button",
+  "hotkeys.pad.ls": "Left Stick Click (LS)",
+  "hotkeys.pad.lb_x": "LB + X",
+  "hotkeys.pad.lb_b": "LB + B",
+  "hotkeys.pad.lb_ls": "LB + LS",
+  "hotkeys.pad.x_b": "X + B",
+  "hotkeys.pad.lb_x_b": "LB + X + B",
+  // Field labels, one keyboard + one controller binding per action.
+  "hotkeys.kb_playpause": "Play / Pause (Keyboard)",
+  "hotkeys.pad_playpause": "Play / Pause (Controller)",
+  "hotkeys.kb_skip": "Skip Track (Keyboard)",
+  "hotkeys.pad_skip": "Skip Track (Controller)",
+  "hotkeys.kb_prev": "Previous Track (Keyboard)",
+  "hotkeys.pad_prev": "Previous Track (Controller)",
+  "hotkeys.kb_next_station": "Cycle Station/Playlist (Keyboard)",
+  "hotkeys.pad_next_station": "Cycle Station/Playlist (Controller)",
+  "hotkeys.kb_source": "Switch Source (Keyboard)",
+  "hotkeys.pad_source": "Switch Source (Controller)",
+
+  // ─── Output (volume) ────────────────────────────────────────────────────
+  "output.title": "Output",
+  "output.volume": "Volume",
+
+  // ─── Local Files card ───────────────────────────────────────────────────
+  "local_files.title": "Local Files",
+  "local_files.summary.folders": "folders",
+  "local_files.source_folders": "Source folders",
+  "local_files.add_folder": "Add folder",
+  "local_files.exclude_subfolders": "Exclude subfolders (uncheck to skip)",
+  "local_files.tree_empty_hint": "Add a folder above to pick which subfolders to include.",
+  "local_files.tree.expand": "Expand",
+  "local_files.tree.collapse": "Collapse",
+  "local_files.options": "Playback options",
+  "local_files.order": "Order",
+  "local_files.order.shuffle": "Shuffle",
+  "local_files.order.album": "Albums",
+  "local_files.order.name": "Name (A-Z)",
+  "local_files.order.folder": "Folder",
+  "local_files.grouping": "Grouping",
+  "local_files.grouping.folder": "By folder",
+  "local_files.grouping.tags": "By tags",
+  "local_files.repeat": "Repeat",
+  "local_files.repeat.all": "Repeat all",
+  "local_files.repeat.one": "Repeat one",
+  "local_files.repeat.off": "No repeat",
+  "local_files.reshuffle": "Reshuffle",
+  "local_files.search": "Search the queue…",
+  "local_files.default_station_name": "My Music",
+  "local_files.no_stations": "No stations yet. Create one to get started.",
+  "local_files.rename_station": "Rename station",
+  "local_files.station_renamed": "Station renamed",
+  "local_files.delete_station": "Delete station",
+  "local_files.delete_confirm": "Delete station \"{name}\"?",
+  "local_files.station_deleted": "Station deleted",
+  // Folder browser modal (used to pick a music folder).
+  "local_files.browser.title": "Choose a folder",
+  "local_files.browser.crumb_root": "This PC",
+  "local_files.browser.up": "Up",
+  "local_files.browser.use": "Use this folder",
+  "local_files.browser.loading": "Loading…",
+  "local_files.browser.no_subfolders": "No subfolders here.",
+  "local_files.browser.no_drives": "No drives found.",
+
+  // ─── Online Radio card ──────────────────────────────────────────────────
+  "online_radio.title": "Online Radio",
+  "online_radio.description": "Tune any stream, save your favourites, or discover thousands of stations worldwide.",
+  "online_radio.url_placeholder": "Paste a stream URL…",
+  "online_radio.my_stations": "My Stations",
+  "online_radio.discover": "Discover",
+  "online_radio.filter_placeholder": "Filter your stations…",
+  "online_radio.no_filter_match": "No stations match your filter.",
+  "online_radio.recently_played": "Recently played",
+  "online_radio.track_history": "Track history",
+  "online_radio.search": "Search",
+  "online_radio.search_placeholder": "Search stations…",
+  "online_radio.searching": "Searching…",
+  "online_radio.no_results": "No stations found. Try another search.",
+  "online_radio.retry": "Retry",
+  "online_radio.any_country": "— Any country —",
+  "online_radio.no_stations": "No saved stations yet.",
+  "online_radio.no_stations_hint": "Discover thousands of stations, or paste a stream URL above.",
+  "online_radio.add": "＋ Save",
+  "online_radio.save_station": "Save station",
+  "online_radio.edit_station": "Edit station",
+  "online_radio.station_name": "Name",
+  "online_radio.stream_url": "Stream URL",
+  "online_radio.station_saved": "Station saved",
+  "online_radio.station_removed": "Station removed",
+  "online_radio.tuning": "Tuning into {name}…",
+  "online_radio.favourite": "Favourite",
+  "online_radio.unfavourite": "Unfavourite",
+  "online_radio.edit": "Edit",
+  "online_radio.move_up": "Move up",
+  "online_radio.move_down": "Move down",
+  "error.station_exists": "That station is already saved.",
+  "error.station_name_exists": "A station with that name exists",
+  "error.url_required": "A stream URL is required.",
+  "error.enter_url": "Enter a URL first to save.",
+
+  // Genre quick-filter chips shown above the Online Radio directory search.
+  "genre.lofi": "lofi",
+  "genre.jazz": "jazz",
+  "genre.rock": "rock",
+  "genre.electronic": "electronic",
+  "genre.classical": "classical",
+  "genre.news": "news",
+  "genre.pop": "pop",
+  "genre.hip_hop": "hip hop",
+
+  // ─── YouTube Music card ─────────────────────────────────────────────────
+  "youtube_music.title": "YouTube Music",
+  "youtube_music.description": "Paste any YouTube or YouTube Music URL (single video or playlist). The radio switches source and starts streaming immediately.",
+  "youtube_music.playlist_or_video_url": "Playlist or Video URL",
+  "youtube_music.url_placeholder": "Paste a YouTube or YT Music URL…",
+  "youtube_music.default_station_name": "My Playlist",
+  "youtube_music.saved_stations": "Saved YouTube Music stations",
+  "youtube_music.shuffle": "Shuffle",
+
+  // ─── Jellyfin card ──────────────────────────────────────────────────────
+  "jellyfin.title": "Jellyfin",
+  "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",
+  "jellyfin.playlist_id": "Playlist ID",
+  "jellyfin.playlist_placeholder": "Playlist ID…",
+  "jellyfin.use_favorites": "Use Favorites (ignores Playlist ID)",
+  "jellyfin.toggle_shuffle": "Toggle Shuffle",
+  "jellyfin.default_station_name": "My Playlist",
+  "jellyfin.new_station_name": "New Station",
+  "jellyfin.stations_saved": "Saved Jellyfin stations",
+  "jellyfin.playing": "Playing playlist…",
+
+  // ─── External Audio card ────────────────────────────────────────────────
+  "ext.description": "Select the Windows playback device used for audio capture and the media session used for metadata and next/previous commands.",
+  "ext.capture_device": "Capture device",
+  "ext.device_label": "External Audio capture device",
+  "ext.default_device": "Default Windows playback device",
+  "ext.current_default": "current default",
+  "ext.media_session": "Media session",
+  "ext.session_label": "External Audio media session",
+  "ext.current_session": "Current Windows media session",
+  "ext.current": "current",
+  "ext.session_unavailable": "Media session API is not available in this build",
+  "ext.refresh": "Refresh",
+  "ext.saved": "External Audio settings saved",
+  "ext.hint.not_available": "Enabled, but the source hasn't registered yet.",
+  "ext.hint.ready": "Ready. Switch to External Audio in Sources to go on air.",
+  "ext.hint.active": "Active and on air.",
+
+  // ─── Dependencies card (ffmpeg / yt-dlp / librespot downloads) ─────────
+  "deps.title": "Dependencies",
+  // Contains a <code> tag — keep it (renders as literal HTML, not escaped).
+  "deps.description": "Fetching the tools the providers need (ffmpeg, yt-dlp, librespot) into <code>fh6-radio/bin</code>.",
+  "deps.ready": "ready",
+  "deps.downloading_mb": "downloading {mb} MB",
+  "deps.downloading_pct": "downloading {pct}%",
+
+  // ─── Settings drawer: schema-driven form fields ─────────────────────────
+  "schema.enabled": "Enabled",
+  "schema.select.none": "— None —",
+  "schema.select.no_stations": "— No stations saved —",
+
+  "schema.general": "General",
+  "schema.general.port": "Port",
+  "schema.general.ring_buffer": "Ring buffer (MB)",
+  "schema.general.default_source": "Default source",
+  "schema.general.fallback_source": "Fallback source",
+  "schema.general.ffmpeg_path": "ffmpeg path (optional)",
+
+  "schema.youtube_music.cookies_path": "cookies.txt (optional)",
+  "schema.youtube_music.yt_dlp_path": "yt-dlp path (optional)",
+  "schema.youtube_music.shuffle": "Shuffle",
+
+  "schema.jellyfin.server_url": "Server URL",
+  "schema.jellyfin.user_id": "User ID",
+  "schema.jellyfin.api_key": "API Key",
+  "schema.jellyfin.use_favorites": "Use Favorites",
+
+  "schema.spotify.librespot_path": "librespot.exe path",
+  "schema.spotify.cache_dir": "Cache directory",
+
+  "schema.online_radio.enabled": "Enable Online Radio",
+  "schema.online_radio.default_station": "Default station",
+
+  "schema.audio": "Audio",
+  "schema.audio.output_gain": "Output gain",
+
+  "schema.playback": "Playback",
+  "schema.playback.race_start": "Race start",
+  "schema.playback.race_start.next": "Next",
+  "schema.playback.race_start.restart": "Restart",
+  "schema.playback.race_start.ignore": "Ignore",
+  "schema.playback.race_start.off": "Off",
+  "schema.playback.quick_skip": "Quick station skip",
+  "schema.playback.normalize": "Normalize loudness",
+  "schema.playback.equalizer": "Equalizer",
+  "schema.playback.eq_bands": "Equalizer bands",
+  "schema.playback.force_stereo": "Force stereo audio",
+  "schema.playback.prebuffer": "Pre-buffer next track",
+
+  // ─── Generic buttons, labels, toasts, misc errors ──────────────────────
+  "btn.set_on_air": "Set on air",
+  "btn.on_air": "On air",
+  "btn.already_on_air": "Already on air",
+  "btn.new": "New",
+  "btn.duplicate": "Duplicate",
+  "btn.rename": "Rename",
+  "btn.delete": "Delete",
+  "btn.cancel": "Cancel",
+  "btn.cast": "Cast",
+  "btn.save": "Save",
+  "btn.play": "Play",
+
+  "label.loading": "(loading)",
+  "label.queue": "Queue",
+  "label.queue_empty": "Queue is empty.",
+  "label.tracks": "tracks",
+  "label.stations": "stations",
+  "label.no_matches": "No matches.",
+  "label.unknown_title": "Unknown Title",
+  "label.station_name": "Station name",
+  "label.copy_of": "{name} (copy)",
+  "label.copy_of_n": "{name} (copy {n})",
+  "label.station_preset": "Station preset",
+  "label.search_playlist_placeholder": "Search the playlist…",
+
+  "toast.shuffle_on": "Shuffle on",
+  "toast.shuffle_off": "Shuffle off",
+  "toast.casting": "Casting to {service}...",
+
+  "error.value_required": "A value is required.",
+  "error.unknown": "An unknown error occurred.",
+
+  // ─── Footer ─────────────────────────────────────────────────────────────
+  "credits.support_text": "If this mod makes your drives better, consider supporting development."
+}

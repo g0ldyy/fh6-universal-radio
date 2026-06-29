@@ -1,0 +1,4 @@
+body.theme-squared,
+body.theme-squared * {
+    border-radius: 0 !important;
+}
