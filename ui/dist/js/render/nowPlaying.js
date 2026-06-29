@@ -9,10 +9,6 @@ export function activeSource(state) {
     return state?.sources?.available?.find(s => s.name === state?.sources?.active) || null;
 }
 
-// Vanilla Radio has no real track metadata to show, so the backend sends a
-// static, hardcoded-in-English placeholder for title/artist instead. Map
-// those known literal strings to their translated equivalents — same
-// best-effort approach as translateLoadingPlaceholder().
 const BACKEND_LITERALS = {
     "Vanilla Radio": "source.vanilla_radio",
     "In-game Audio": "source.in_game_audio",
@@ -57,11 +53,6 @@ export function renderNowPlaying(refs, state) {
         if (refs.img.getAttribute("src") !== "../assets/default_artwork_2048.png") {
             refs.img.src = "../assets/default_artwork_2048.png";
         }
-        // Only reset to the static fallback when there's genuinely nothing
-        // loaded (no title either) — playback_state can briefly report
-        // "stopped" between tracks (e.g. YouTube Music re-fetching the next
-        // video's metadata) while a title is still set and playback is about
-        // to resume, which caused a yellow flash if we reset on that alone.
         if (!track.title) {
             document.documentElement.style.setProperty("--accent", "var(--color-sunset-yellow)");
         }
