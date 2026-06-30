@@ -40,6 +40,7 @@ struct GeneralConfig {
     std::string default_source  = "online_radio";
     std::string fallback_source = "local_files";
     std::filesystem::path ffmpeg_path; // empty = look up on PATH; shared by all sources
+    std::filesystem::path yt_dlp_path; // empty = look up on PATH; shared by all sources that require it
 };
 
 // A named preset of folders + playback rules.
@@ -69,8 +70,20 @@ struct YouTubeStation {
 struct YouTubeMusicConfig {
     bool enabled = false;
     std::filesystem::path cookies_path;
-    std::filesystem::path yt_dlp_path; // empty = look up on PATH
     std::vector<YouTubeStation> stations;
+    std::string active_station; // station name; empty/unknown => first station
+    bool shuffle = true;
+};
+
+struct SoundCloudStation {
+    std::string name;
+    std::string url;
+};
+
+struct SoundCloudConfig {
+    bool enabled = false;
+    std::filesystem::path cookies_path;
+    std::vector<SoundCloudStation> stations;
     std::string active_station; // station name; empty/unknown => first station
     bool shuffle = true;
 };
@@ -140,6 +153,7 @@ struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
     YouTubeMusicConfig youtube_music;
+    SoundCloudConfig soundcloud;
     AudioConfig audio;
     JellyfinConfig jellyfin;
     ExternalAudioConfig external_audio;

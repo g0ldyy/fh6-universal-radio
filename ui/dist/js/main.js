@@ -16,6 +16,7 @@ import { createExternalAudio } from "./render/externalAudio.js";
 import { createLocalFiles } from "./render/localFiles.js";
 import { createOnlineRadio } from "./render/onlineRadio.js";
 import { createYoutubeMusic } from "./render/youtubeMusic.js";
+import { createSoundcloud } from "./render/soundcloud.js";
 import { createJellyfin } from "./render/jellyfin.js";
 import { initI18n, onLangChange, t, setLang, getLang } from "./i18n.js";
 import { prefs } from "./preferences.js";
@@ -77,6 +78,7 @@ let externalAudio;
 let localFiles;
 let onlineRadio;
 let youtubeMusic;
+let soundcloud;
 let jellyfin;
 
 async function switchSource(name) {
@@ -168,6 +170,7 @@ function render() {
     localFiles.render();
     onlineRadio.render();
     youtubeMusic.render();
+    soundcloud.render();
     jellyfin.render();
 
     refs.sourceCard.hidden = false;
@@ -213,6 +216,7 @@ if (restoreBtn && restoreFile) {
             localFiles.invalidate();
             onlineRadio.invalidate();
             youtubeMusic.invalidate();
+            soundcloud.invalidate();
             jellyfin.invalidate();
             renderSettings(refs.form, cfg);
             snapshotForm();
@@ -287,6 +291,7 @@ $("#save-config").addEventListener("click", async () => {
         localFiles.invalidate();
         onlineRadio.invalidate();
         youtubeMusic.invalidate();
+        soundcloud.invalidate();
         jellyfin.invalidate();
         state = await api.getState().catch(() => state);
         render();
@@ -329,6 +334,7 @@ $("#reload-config").addEventListener("click", async () => {
         localFiles.invalidate();
         onlineRadio.invalidate();
         youtubeMusic.invalidate();
+        soundcloud.invalidate();
         jellyfin.invalidate();
         renderSettings(refs.form, cfg);
         snapshotForm();
@@ -378,6 +384,7 @@ function refreshAfterLangChange() {
     localFiles.invalidate();
     onlineRadio.invalidate();
     youtubeMusic.invalidate();
+    soundcloud.invalidate();
     jellyfin.invalidate();
     if (refs.drawer.classList.contains("open")) {
         renderSettings(refs.form, cfg);
@@ -449,13 +456,14 @@ async function boot() {
     exportBtn.addEventListener("click", async () => {
         try {
             const config = await api.getConfig();
-            downloadJson(buildStationPack(config), `fh6-radio-stations-${todayStamp()}.json`);
+            downloadJson(buildStationPack(config, "youtube_music"), `fh6-radio-youtubemusic-stations-${todayStamp()}.json`);
             toast(t("settings.stations_exported"));
         } catch (err) {
             console.error("Failed to export station pack:", err);
             toast(t("error.unknown"), true);
         }
     });
+    
     importBtn.addEventListener("click", () => importFileInput.click());
     importFileInput.addEventListener("change", async e => {
         const file = e.target.files[0];
@@ -464,11 +472,58 @@ async function boot() {
             const text = await file.text();
             const pack = JSON.parse(text);
             const freshCfg = await api.getConfig();
-            const { patch, added } = mergeStationPack(freshCfg, pack);
+            const { patch, added } = mergeStationPack(freshCfg, pack, "youtube_music");
             cfg = await api.putConfig(patch);
             youtubeMusic.invalidate();
             state = await api.getState().catch(() => state);
             render();
+            toast(t("settings.stations_imported", { count: String(added) }));
+        } catch (err) {
+            console.error("Failed to import station pack:", err);
+            toast(t("error.invalid_station_pack"), true);
+        } finally {
+            e.target.value = "";
+        }
+    });
+
+    soundcloud = createSoundcloud(mainEl, {
+        getState: () => state,
+        getConfig: () => cfg,
+        onSaved: async () => {
+            cfg = await api.getConfig().catch(() => cfg);
+            state = await api.getState().catch(() => state);
+            render();
+        },
+    });
+    
+    const scEls = soundcloud.els;
+    
+    scEls.exportBtn.addEventListener("click", async () => {
+        try {
+            const config = await api.getConfig();
+            downloadJson(buildStationPack(config, "soundcloud"), `fh6-radio-soundcloud-stations-${todayStamp()}.json`);
+            toast(t("settings.stations_exported"));
+        } catch (err) {
+            console.error("Failed to export station pack:", err);
+            toast(t("error.unknown"), true);
+        }
+    });
+
+    scEls.importBtn.addEventListener("click", () => scEls.importFileInput.click());
+    scEls.importFileInput.addEventListener("change", async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const pack = JSON.parse(text);
+            const freshCfg = await api.getConfig();
+            const { patch, added } = mergeStationPack(freshCfg, pack, "soundcloud");
+            cfg = await api.putConfig(patch);
+            
+            soundcloud.invalidate();
+            state = await api.getState().catch(() => state);
+            render();
+            
             toast(t("settings.stations_imported", { count: String(added) }));
         } catch (err) {
             console.error("Failed to import station pack:", err);

@@ -2,11 +2,13 @@
 // Music stations. Unlike the full settings backup, it carries no
 // machine-specific paths or credentials, so a pack exported by one player
 // can be imported by another to pick up their curated playlists in one shot.
-const PACK_SECTIONS = ["youtube_music"];
+const PACK_SECTIONS = ["youtube_music", "soundcloud"];
 
-export function buildStationPack(cfg) {
+export function buildStationPack(cfg, targetSection = null) {
     const pack = { _meta: { type: "fh6-radio-station-pack", version: 1 } };
-    for (const section of PACK_SECTIONS) {
+    const sections = targetSection ? [targetSection] : PACK_SECTIONS;
+    
+    for (const section of sections) {
         pack[section] = { stations: cfg?.[section]?.stations || [] };
     }
     return pack;
@@ -17,10 +19,12 @@ export function buildStationPack(cfg) {
  * `url` already exists so importing twice doesn't create duplicates.
  * @returns {{ patch: object, added: number }}
  */
-export function mergeStationPack(cfg, pack) {
+export function mergeStationPack(cfg, pack, targetSection = null) {
     const patch = {};
     let added = 0;
-    for (const section of PACK_SECTIONS) {
+    const sections = targetSection ? [targetSection] : PACK_SECTIONS;
+    
+    for (const section of sections) {
         const existing = cfg?.[section]?.stations || [];
         const incoming = Array.isArray(pack?.[section]?.stations) ? pack[section].stations : [];
         const existingUrls = new Set(existing.map(s => s.url));

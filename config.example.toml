@@ -11,6 +11,7 @@ ring_buffer_mb    = 4
 default_source    = "online_radio"    # local_files | online_radio | youtube_music | jellyfin | external_audio | spotify
 fallback_source   = "local_files"
 ffmpeg_path       = ''                # blank = auto-download to fh6-radio/bin (else `ffmpeg` on PATH); shared by all sources
+yt_dlp_path       = ''                # blank = auto-download to fh6-radio/bin (else `yt-dlp` on PATH)
 
 [local_files]
 enabled            = false
@@ -31,14 +32,25 @@ repeat    = "all"                      # "all" | "one" | "off"
 
 [youtube_music]
 enabled            = false
-cookies_path       = ''                # optional Netscape cookies.txt
-yt_dlp_path        = ''                # blank = auto-download to fh6-radio/bin (else `yt-dlp` on PATH)
+cookies_path       = ''     # optional Netscape cookies.txt
 active_station     = ""     # which station is currently active
 shuffle            = true
 
 # you can add as many stations as you want below. name + url are required; the
 # rest are filled in automatically when you save a station from the dashboard
 #[[youtube_music.stations]]
+#name = "My Playlist"
+#url = ""
+
+[soundcloud]
+enabled            = false
+cookies_path       = ''     # optional Netscape cookies.txt
+active_station     = ""     # which station is currently active
+shuffle            = true
+
+# you can add as many stations as you want below. name + url are required; the
+# rest are filled in automatically when you save a station from the dashboard
+#[[soundcloud.stations]]
 #name = "My Playlist"
 #url = ""
 

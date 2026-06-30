@@ -14,6 +14,7 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "fh6/sources/soundcloud_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
 #include "fh6/sources/spotify_source.hpp"
 #include "fh6/worker/worker_client.hpp"
@@ -65,12 +66,12 @@ SpotifyConfig anchor_spotify(SpotifyConfig sp, const std::filesystem::path& data
 // shows "auto".
 Config with_resolved_bins(Config c, const DependencyManager& deps) {
     c.general.ffmpeg_path       = deps.resolve(Tool::ffmpeg, c.general.ffmpeg_path);
-    c.youtube_music.yt_dlp_path = deps.resolve(Tool::yt_dlp, c.youtube_music.yt_dlp_path);
+    c.general.yt_dlp_path       = deps.resolve(Tool::yt_dlp, c.general.yt_dlp_path);
     c.spotify.librespot_path    = deps.resolve(Tool::librespot, c.spotify.librespot_path);
     std::string texconv_path    = deps.resolve(Tool::texconv, "").string();
 
     log::info("[bridge] Resolved ffmpeg path to: {}", c.general.ffmpeg_path.string());
-    log::info("[bridge] Resolved yt-dlp path to: {}", c.youtube_music.yt_dlp_path.string());
+    log::info("[bridge] Resolved yt-dlp path to: {}", c.general.yt_dlp_path.string());
     log::info("[bridge] Resolved librespot path to: {}", c.spotify.librespot_path.string());
     log::info("[bridge] Resolved texconv path to: {}", texconv_path);
     return c;
@@ -195,6 +196,14 @@ void run_bridge(HMODULE self) noexcept {
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
         }
+        if (c.soundcloud.enabled && !mgr.find("soundcloud")) {
+            auto src = std::make_unique<sources::SoundCloudSource>(c.soundcloud,
+                                                                     c.general.ffmpeg_path,
+                                                                     worker.get());
+            if (src->initialize()) mgr.register_source(std::move(src));
+        } else if (!c.soundcloud.enabled && mgr.find("soundcloud")) {
+            mgr.unregister_source("soundcloud");
+        }
         if (c.jellyfin.enabled && !mgr.find("jellyfin")) {
             auto src = std::make_unique<sources::JellyfinSource>(c.jellyfin, c.general.ffmpeg_path,
                                                                   worker.get());
@@ -277,6 +286,14 @@ void run_bridge(HMODULE self) noexcept {
                 c.youtube_music.active_station = c.youtube_music.stations[(idx + 1) % c.youtube_music.stations.size()].name;
                 changed = true;
             }
+            else if (name == "soundcloud" && c.soundcloud.stations.size() > 1) {
+                size_t idx = 0;
+                for (size_t i = 0; i < c.soundcloud.stations.size(); ++i) {
+                    if (c.soundcloud.stations[i].name == c.soundcloud.active_station) { idx = i; break; }
+                }
+                c.soundcloud.active_station = c.soundcloud.stations[(idx + 1) % c.soundcloud.stations.size()].name;
+                changed = true;
+            }
             else if (name == "jellyfin" && c.jellyfin.stations.size() > 1) {
                 size_t idx = 0;
                 for (size_t i = 0; i < c.jellyfin.stations.size(); ++i) {
@@ -334,10 +351,19 @@ void run_bridge(HMODULE self) noexcept {
         if (auto* yt = dynamic_cast<sources::YouTubeMusicSource*>(mgr.find("youtube_music"))) {
             yt->set_ffmpeg_path(c.general.ffmpeg_path);
             yt->set_config(c.youtube_music); 
-            yt->set_yt_dlp_path(c.youtube_music.yt_dlp_path);
+            yt->set_yt_dlp_path(c.general.yt_dlp_path);
             yt->set_shuffle(c.youtube_music.shuffle);
             if (mgr.active() == yt && yt->playback_state() != PlaybackState::playing) {
                 yt->play();
+            }
+        }
+        if (auto* sc = dynamic_cast<sources::SoundCloudSource*>(mgr.find("soundcloud"))) {
+            sc->set_ffmpeg_path(c.general.ffmpeg_path);
+            sc->set_config(c.soundcloud); 
+            sc->set_yt_dlp_path(c.general.yt_dlp_path);
+            sc->set_shuffle(c.soundcloud.shuffle);
+            if (mgr.active() == sc && sc->playback_state() != PlaybackState::playing) {
+                sc->play();
             }
         }
         if (auto* jf = dynamic_cast<sources::JellyfinSource*>(mgr.find("jellyfin"))) {

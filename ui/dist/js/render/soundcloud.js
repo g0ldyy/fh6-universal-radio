@@ -5,43 +5,22 @@ import { toast } from "../toast.js";
 import { t } from "../i18n.js";
 import { createStationManager } from "./stationManager.js";
 
-/**
- * Creates a default station object structure.
- *
- * @param {string} name - The name of the station
- * @returns {object} The new station instance { name, url }
- */
 function newStation(name) {
     return { name, url: "" };
 }
 
-/**
- * Renders and manages the YouTube Music station source UI component.
- * Integrates with the shared StationManager for CRUD operations and track queues.
- *
- * @param {HTMLElement} main - The main container element to inject the card into
- * @param {object} ctx - Application context containing state and lifecycle hooks
- * @param {() => object} ctx.getState - Returns the global application state
- * @param {() => Promise<void>} [ctx.onSaved] - Optional callback triggered after successful mutations
- */
-export function createYoutubeMusic(main, ctx) {
-    const urlInput = el("input", { type: "text", class: "path-input", placeholder: "https://music.youtube.com/playlist?list=...", autocomplete: "off" });
+export function createSoundcloud(main, ctx) {
+    const urlInput = el("input", { type: "text", class: "path-input", placeholder: t("soundcloud.url_placeholder"), autocomplete: "off" });
     const castBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "btn.cast" } }, t("btn.cast"));
     const saveBtn = el("button", { type: "button", class: "btn filled", dataset: { i18n: "btn.save" } }, t("btn.save"));
+    const exportBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "settings.export_stations" } }, t("settings.export_stations"));
+    const importBtn = el("button", { type: "button", class: "btn ghost", dataset: { i18n: "settings.import_stations" } }, t("settings.import_stations"));
+    const importFileInput = el("input", { type: "file", accept: ".json", hidden: true });
     const shuffleBtn = el("button", {
         type: "button", class: "icon-btn", "aria-label": "Toggle Shuffle",
-        dataset: { i18nAriaLabel: "youtube_music.shuffle" }, html: icons.shuffle,
+        dataset: { i18nAriaLabel: "soundcloud.shuffle" }, html: icons.shuffle,
     });
     const summaryEl = el("p", { class: "muted", hidden: true });
-    const exportBtn = el("button", {
-        type: "button", class: "btn ghost", title: t("settings.export_stations_title"),
-        dataset: { i18n: "settings.export_stations", i18nTitle: "settings.export_stations_title" },
-    }, t("settings.export_stations"));
-    const importBtn = el("button", {
-        type: "button", class: "btn ghost", title: t("settings.import_stations_title"),
-        dataset: { i18n: "settings.import_stations", i18nTitle: "settings.import_stations_title" },
-    }, t("settings.import_stations"));
-    const importFileInput = el("input", { type: "file", accept: ".json", hidden: true });
     let lastDetails = null;
 
     function renderSummary() {
@@ -61,20 +40,20 @@ export function createYoutubeMusic(main, ctx) {
     }
 
     const station = createStationManager({
-        api: api.youtubeMusic,
+        api: api.soundcloud,
         newStation,
-        defaultNameKey: "youtube_music.default_station_name",
+        defaultNameKey: "soundcloud.default_station_name",
         ctx,
         queue: {
-            getTitle: track => track.title || track.url?.split("v=")[1] || track.url,
-            getSubtitle: track => track.artist || track.url.split("v=")[1],
+            getTitle: track => track.title || track.url,
+            getSubtitle: track => track.artist || track.url,
             getCoverUrl: track => track.cover_url,
             getSearchFields: track => [track.title || "", track.url || ""],
         },
-        getSig: details => `${details?.queue_size ?? -1}|${details?.queue_cursor ?? -1}`,
+        getSig: details => `${details?.queue_size ?? -1}|${details?.queue_cursor ?? -1}|${details?.queue_version ?? -1}`,
         onAir: async () => {
-            await api.switchSource("youtube_music");
-            await api.transport("youtube_music", "play");
+            await api.switchSource("soundcloud");
+            await api.transport("soundcloud", "play");
         },
         onStationChange: s => {
             urlInput.value = s?.url || "";
@@ -91,15 +70,13 @@ export function createYoutubeMusic(main, ctx) {
 
     const { stationSelect, onAirBtn, newBtn, duplicateBtn, renameBtn, deleteBtn, queueCount, searchInput, trackList } = station.els;
 
-    const card = el("section", { class: "card", id: "youtube-music-card", hidden: true }, [
-        el("h2", { dataset: { i18n: "youtube_music.title" } }, t("youtube_music.title")),
+    const card = el("section", { class: "card", id: "soundcloud-card", hidden: true }, [
+        el("h2", { dataset: { i18n: "soundcloud.title" } }, t("soundcloud.title")),
         summaryEl,
         el("div", { class: "stationbar row" }, [stationSelect, onAirBtn]),
-        el("div", { class: "row stationtools" }, [newBtn, duplicateBtn, renameBtn, deleteBtn]),
-        el("div", { class: "row stationtools" }, [exportBtn, importBtn]),
-        importFileInput,
+        el("div", { class: "row stationtools" }, [newBtn, duplicateBtn, renameBtn, deleteBtn, exportBtn, importBtn, importFileInput]),
         el("div", { class: "editor" }, [
-            el("label", { class: "field-label", dataset: { i18n: "youtube_music.playlist_or_video_url" } }, t("youtube_music.playlist_or_video_url")),
+            el("label", { class: "field-label", dataset: { i18n: "soundcloud.playlist_or_track_url" } }, t("soundcloud.playlist_or_track_url")),
             urlInput,
             el("div", { class: "row editor-foot" }, [castBtn, saveBtn]),
         ]),
@@ -110,18 +87,16 @@ export function createYoutubeMusic(main, ctx) {
         ]),
     ]);
 
-    const sourcesCard = $("#sources", main)?.closest(".card");
-    if (sourcesCard) sourcesCard.insertAdjacentElement("afterend", card);
+    const extCard = document.getElementById("youtube-music-card");
+    if (extCard) extCard.insertAdjacentElement("afterend", card);
     else main.append(card);
 
     saveBtn.addEventListener("click", async () => {
         if (station.cur()) station.cur().url = urlInput.value.trim();
         try {
             await station.save();
-            toast(t("youtube_music.saved_stations"));
-        } catch {
-            // Error handling already deferred to the station manager
-        }
+            toast(t("soundcloud.saved_stations"));
+        } catch {}
     });
 
     castBtn.addEventListener("click", async () => {
@@ -130,8 +105,8 @@ export function createYoutubeMusic(main, ctx) {
         urlInput.disabled = true;
         castBtn.disabled = true;
         try {
-            await api.youtubeMusic.cast(url);
-            toast(t("toast.casting", { service: "YouTube Music" }));
+            await api.soundcloud.cast(url);
+            toast(t("toast.casting", { service: "SoundCloud" }));
             urlInput.value = "";
             await ctx.onSaved?.();
             station.loadQueue();
@@ -146,7 +121,7 @@ export function createYoutubeMusic(main, ctx) {
     shuffleBtn.addEventListener("click", async () => {
         const isShuffled = shuffleBtn.classList.contains("toggled");
         try {
-            await api.youtubeMusic.shuffle(!isShuffled);
+            await api.soundcloud.shuffle(!isShuffled);
             toast(!isShuffled ? t("toast.shuffle_on") : t("toast.shuffle_off"));
             await ctx.onSaved?.();
             station.loadQueue();
@@ -157,13 +132,13 @@ export function createYoutubeMusic(main, ctx) {
 
     function render() {
         const state = ctx.getState();
-        const isActive = state?.sources?.active === "youtube_music";
+        const isActive = state?.sources?.active === "soundcloud";
         card.hidden = !isActive;
         if (!isActive) return;
         station.load();
-        const details = state?.sources?.available?.find(s => s.name === "youtube_music")?.details;
+        const details = state?.sources?.available?.find(s => s.name === "soundcloud")?.details;
         station.sync(details);
     }
 
-    return { render, invalidate: station.invalidate, els: { exportBtn, importBtn, importFileInput } };
+    return { render, invalidate: station.invalidate, els: { stationSelect, onAirBtn, newBtn, duplicateBtn, renameBtn, deleteBtn, queueCount, searchInput, trackList, exportBtn, importBtn, importFileInput } };
 }
