@@ -237,6 +237,13 @@ SoundCloudSource::QueueSnapshot SoundCloudSource::queue_snapshot() const {
 bool SoundCloudSource::jump_to(std::size_t index) {
     std::scoped_lock lk{mu_};
     if (index >= queue_.size()) return false;
+
+    std::size_t start = index;
+    while (queue_[index].title == "Unavailable / DRM") {
+        index = (index + 1) % queue_.size();
+        if (index == start) return false;
+    }
+
     consecutive_failed_ = 0;
     queue_idx_ = index;
     if (!promote_prefetch_locked(queue_idx_)) start_pipe_locked();
@@ -541,6 +548,12 @@ void SoundCloudSource::start_pipe_locked() {
     if (queue_.empty()) return;
     if (queue_idx_ >= queue_.size()) queue_idx_ = 0;
 
+    std::size_t start = queue_idx_;
+    while (queue_[queue_idx_].title == "Unavailable / DRM") {
+        queue_idx_ = (queue_idx_ + 1) % queue_.size();
+        if (queue_idx_ == start) break;
+    }
+
     pipe_ = spawn_pipe_locked(queue_[queue_idx_].url, queue_idx_);
     if (!pipe_) return;
     position_ms_.store(0, std::memory_order_release);
@@ -549,7 +562,14 @@ void SoundCloudSource::start_pipe_locked() {
 
 std::size_t SoundCloudSource::next_queue_idx_locked() const noexcept {
     if (queue_.empty()) return 0;
-    return (queue_idx_ + 1) % queue_.size();
+    std::size_t next_idx = (queue_idx_ + 1) % queue_.size();
+
+    std::size_t start = next_idx;
+    while (queue_[next_idx].title == "Unavailable / DRM") {
+        next_idx = (next_idx + 1) % queue_.size();
+        if (next_idx == start) break;
+    }
+    return next_idx;
 }
 
 void SoundCloudSource::discard_prefetch_locked() noexcept {
@@ -644,7 +664,16 @@ void SoundCloudSource::previous() {
     consecutive_failed_ = 0;
     const auto n        = static_cast<std::ptrdiff_t>(queue_.size());
     auto i              = static_cast<std::ptrdiff_t>(queue_idx_) - 1;
-    queue_idx_          = static_cast<std::size_t>(((i % n) + n) % n);
+    std::size_t target  = static_cast<std::size_t>(((i % n) + n) % n);
+
+    std::size_t start = target;
+    while (queue_[target].title == "Unavailable / DRM") {
+        i--;
+        target = static_cast<std::size_t>(((i % n) + n) % n);
+        if (target == start) break;
+    }
+    queue_idx_ = target;
+
     // Prefetch targets idx+1; previous() rewinds, so it's stale.
     discard_prefetch_locked();
     start_pipe_locked();
@@ -969,6 +998,25 @@ void SoundCloudSource::hydrate_queue(uint64_t generation) {
         }
 
         if (updated_any) {
+            queue_version_.fetch_add(1, std::memory_order_release);
+        }
+    }
+    // rename queue entries that are missing metadata
+    {
+        std::scoped_lock lk{mu_};
+        // ensure a playlist swap hasn't occurred before updating
+        if (queue_generation_.load(std::memory_order_acquire) != generation) return;
+
+        bool cleaned_up = false;
+        for (auto& entry : queue_) {
+            if (entry.title == "(loading)" || entry.title == "SoundCloud Track" || entry.title.empty()) {
+                entry.title = "Unavailable / DRM";
+                entry.artist = "SoundCloud";
+                cleaned_up = true;
+            }
+        }
+
+        if (cleaned_up) {
             queue_version_.fetch_add(1, std::memory_order_release);
         }
     }
