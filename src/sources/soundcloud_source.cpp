@@ -883,33 +883,46 @@ void SoundCloudSource::hydrate_queue(uint64_t generation) {
         }
 
         std::string raw;
-        if (worker_ && worker_->alive()) {
-            raw = worker_->run_capture(cmd);
-        }
-        
-        if (raw.empty()) {
-            HANDLE job = create_kill_on_close_job();
-            if (!job) continue;
-            SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-            HANDLE rd = nullptr, wr = nullptr;
-            if (CreatePipe(&rd, &wr, &sa, 1 << 20)) {
-                SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-                HANDLE nul_in  = open_nul(GENERIC_READ);
-                HANDLE err_log = open_stderr_log();
-                HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
-                CloseHandle(wr);
-                
-                if (nul_in) CloseHandle(nul_in);
-                if (err_log) CloseHandle(err_log);
-                
-                if (proc) {
-                    raw = drain_to_eof(rd);
-                    CloseHandle(proc);
+        // bypass worker_->run_capture for hydration as it lacks cancellation
+        // direct spawn allows polling queue_generation_ to terminate promptly
+        HANDLE job = create_kill_on_close_job();
+        if (!job) continue;
+        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+        HANDLE rd = nullptr, wr = nullptr;
+        if (CreatePipe(&rd, &wr, &sa, 1 << 20)) {
+            SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
+            HANDLE nul_in  = open_nul(GENERIC_READ);
+            HANDLE err_log = open_stderr_log();
+            HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
+            CloseHandle(wr);
+            
+            if (nul_in) CloseHandle(nul_in);
+            if (err_log) CloseHandle(err_log);
+            
+            if (proc) {
+                char buf[4096];
+                while (queue_generation_.load(std::memory_order_acquire) == generation) {
+                    DWORD avail = 0;
+                    if (!PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr)) break;
+                    
+                    if (avail > 0) {
+                        DWORD got = 0;
+                        if (ReadFile(rd, buf, sizeof(buf), &got, nullptr) && got > 0) {
+                            raw.append(buf, got);
+                        } else break;
+                    } else if (WaitForSingleObject(proc, 50) == WAIT_OBJECT_0) {
+                        DWORD got = 0;
+                        while (ReadFile(rd, buf, sizeof(buf), &got, nullptr) && got > 0) {
+                            raw.append(buf, got);
+                        }
+                        break;
+                    }
                 }
-                CloseHandle(rd);
+                CloseHandle(proc);
             }
-            CloseHandle(job);
+            CloseHandle(rd);
         }
+        CloseHandle(job);
 
         if (queue_generation_.load(std::memory_order_acquire) != generation) return;
 
@@ -942,14 +955,13 @@ void SoundCloudSource::hydrate_queue(uint64_t generation) {
                     std::scoped_lock lk{mu_};
                     if (queue_generation_.load(std::memory_order_acquire) != generation) return;
                     
-                    for (std::size_t j = i; j < chunk_end; ++j) {
-                        std::size_t q_idx = pending[j].index;
-                        if (q_idx < queue_.size() && (queue_[q_idx].url == orig_url || queue_[q_idx].url.find(orig_url) != std::string::npos)) {
-                            queue_[q_idx].title = std::move(title);
-                            queue_[q_idx].artist = std::move(artist);
-                            updated_any = true;
-                            break;
-                        }
+                    auto it = std::find_if(queue_.begin(), queue_.end(), [&](const auto& entry) {
+                        return entry.url == orig_url || entry.url.find(orig_url) != std::string::npos;
+                    });
+                    if (it != queue_.end()) {
+                        it->title = std::move(title);
+                        it->artist = std::move(artist);
+                        updated_any = true;
                     }
                 }
             }
