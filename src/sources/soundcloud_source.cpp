@@ -89,7 +89,11 @@ SoundCloudSource::~SoundCloudSource() {
         if (t.joinable()) t.join();
     }
 
-    stop_pipe_locked(); 
+    {
+        std::scoped_lock lk{mu_};
+        discard_prefetch_locked();
+        stop_pipe_locked();
+    }
 }
 
 const SoundCloudStation* SoundCloudSource::active_station_locked() const noexcept {
@@ -266,7 +270,10 @@ void SoundCloudSource::resolve_queue_locked() {
         queue_version_.fetch_add(1, std::memory_order_release);
         queue_built_for_ = effective_url;
         const uint64_t gen = ++queue_generation_;
-        std::thread{[this, gen]() { hydrate_queue(gen); }}.detach();
+        if (hydrate_thread_.joinable()) {
+            old_hydrate_threads_.push_back(std::move(hydrate_thread_));
+        }
+        hydrate_thread_ = std::thread{[this, gen]() { hydrate_queue(gen); }};
         return;
     }
 
@@ -470,7 +477,7 @@ SoundCloudSource::spawn_pipe_locked(std::string_view url, std::size_t for_idx) {
     CloseHandle(yt_out_w); yt_out_w = nullptr;
     if (!pipe->proc_yt) {
         log::warn("[sc] failed to launch yt-dlp -- {}",
-                  describe_launch_failure(std::wstring{yt}, ec_yt, yt_dlp_path_.empty()));
+                  describe_launch_failure(std::wstring{yt}, ec_yt, !yt_dlp_path_.empty()));
         bail();
         if (nul_in) CloseHandle(nul_in);
         if (err_log) CloseHandle(err_log);
@@ -812,16 +819,16 @@ void SoundCloudSource::pump(RingBuffer& ring) {
 }
 
 void SoundCloudSource::hydrate_queue(uint64_t generation) {
-    const auto yt = yt_dlp_path_.empty() ? L"yt-dlp" : yt_dlp_path_.wstring();
-
     struct Unresolved { std::size_t index; std::string url; };
     std::vector<Unresolved> pending;
-    
+
+    std::wstring yt;
     std::wstring cookies;
     {
         std::scoped_lock lk{mu_};
         if (queue_generation_.load(std::memory_order_acquire) != generation) return;
         
+        yt = yt_dlp_path_.empty() ? L"yt-dlp" : yt_dlp_path_.wstring();
         cookies = cfg_.cookies_path.wstring();
         for (std::size_t i = 0; i < queue_.size(); ++i) {
             if (queue_[i].title == "(loading)" || queue_[i].title == "NA" || queue_[i].title.empty()) {
@@ -850,7 +857,7 @@ void SoundCloudSource::hydrate_queue(uint64_t generation) {
 
                 std::size_t chunk_end = std::min(i + batch_size, pending.size());
                 
-                std::wstring cmd = quote(yt) + L" -s --ignore-config --no-warnings "
+                std::wstring cmd = quote(yt) + L" -s --ignore-errors --ignore-config --no-warnings "
                                                L"--sleep-requests 1 --sleep-interval 1 "
                                                L"--encoding UTF-8 "
                                                L"--print \"%(original_url)s\t%(title)s\t%(uploader)s\" ";

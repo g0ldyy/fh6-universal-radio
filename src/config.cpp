@@ -428,14 +428,21 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("enabled", cfg.youtube_music.enabled);
     e.kv_path("cookies_path", cfg.youtube_music.cookies_path);
 
-    e.header("soundcloud");
-    e.kv("enabled", cfg.soundcloud.enabled);
-    e.kv_path("cookies_path", cfg.soundcloud.cookies_path);
-    
     e.kv("active_station", cfg.youtube_music.active_station);
     e.kv("shuffle", cfg.youtube_music.shuffle);
     for (const auto& st : cfg.youtube_music.stations) {
         e.array_header("youtube_music.stations");
+        e.kv("name", st.name);
+        e.kv("url", st.url);
+    }
+
+    e.header("soundcloud");
+    e.kv("enabled", cfg.soundcloud.enabled);
+    e.kv_path("cookies_path", cfg.soundcloud.cookies_path);
+    e.kv("active_station", cfg.soundcloud.active_station);
+    e.kv("shuffle", cfg.soundcloud.shuffle);
+    for (const auto& st : cfg.soundcloud.stations) {
+        e.array_header("soundcloud.stations");
         e.kv("name", st.name);
         e.kv("url", st.url);
     }

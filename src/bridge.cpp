@@ -192,6 +192,7 @@ void run_bridge(HMODULE self) noexcept {
             auto src = std::make_unique<sources::YouTubeMusicSource>(c.youtube_music,
                                                                      c.general.ffmpeg_path,
                                                                      worker.get());
+            src->set_yt_dlp_path(c.general.yt_dlp_path);
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
@@ -200,6 +201,7 @@ void run_bridge(HMODULE self) noexcept {
             auto src = std::make_unique<sources::SoundCloudSource>(c.soundcloud,
                                                                      c.general.ffmpeg_path,
                                                                      worker.get());
+            src->set_yt_dlp_path(c.general.yt_dlp_path);
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.soundcloud.enabled && mgr.find("soundcloud")) {
             mgr.unregister_source("soundcloud");
