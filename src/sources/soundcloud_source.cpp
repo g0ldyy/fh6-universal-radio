@@ -1,6 +1,7 @@
 #include "fh6/sources/soundcloud_source.hpp"
 #include "fh6/log.hpp"
 #include "fh6/subprocess.hpp"
+#include "fh6/net/http_get.hpp"
 
 #include <windows.h>
 #include <algorithm>
@@ -11,6 +12,10 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <regex>
+#include <optional>
+#include <fstream>
+#include <filesystem>
 
 namespace fh6::sources {
 
@@ -33,6 +38,71 @@ bool is_playlist_url(std::string_view url) {
     // SoundCloud playlists typically contain /sets/ or /likes
     return url.find("/sets/") != std::string_view::npos ||
            url.find("/likes") != std::string_view::npos;
+}
+
+std::optional<std::string> worker_http_get(worker::WorkerClient* worker, const std::string& url) {
+    if (!worker || !worker->alive()) {
+        return fh6::net::http_get(url); // fallback to direct fetch
+    }
+
+    static std::atomic<uint64_t> fetch_id{0};
+    std::filesystem::path temp_dir = std::filesystem::temp_directory_path();
+    std::string temp_path = (temp_dir / ("fh6_sc_tmp_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(++fetch_id))).string();
+
+    // ensure the file is deleted upon exit
+    struct FileCleanupGuard {
+        std::string p;
+        ~FileCleanupGuard() {
+            std::error_code ec;
+            if (!p.empty()) std::filesystem::remove(p, ec);
+        }
+    } guard{temp_path};
+
+    if (worker->download_file(url, temp_path)) {
+        std::ifstream ifs(temp_path, std::ios::binary);
+        if (ifs) {
+            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            return content;
+        }
+    }
+    
+    return std::nullopt;
+}
+
+std::string get_sc_client_id(worker::WorkerClient* worker) {
+    static std::string cached_id;
+    static std::mutex cache_mu;
+    std::scoped_lock lk{cache_mu};
+    if (!cached_id.empty()) return cached_id;
+
+    // use the worker helper
+    auto html_opt = worker_http_get(worker, "https://soundcloud.com/discover");
+    if (!html_opt) return "";
+    std::string html = *html_opt;
+
+    std::regex script_regex("src=\"(https://a-v2\\.sndcdn\\.com/assets/[^\"]+\\.js)\"");
+    std::sregex_iterator words_begin(html.begin(), html.end(), script_regex);
+    std::sregex_iterator words_end;
+    std::string js_url;
+
+    for (auto i = words_begin; i != words_end; ++i) {
+        js_url = (*i)[1].str();
+    }
+
+    if (js_url.empty()) return "";
+
+    // use the worker helper
+    auto js_opt = worker_http_get(worker, js_url);
+    if (!js_opt) return "";
+    std::string js_content = *js_opt;
+    
+    std::regex client_id_regex("client_id\\s*:\\s*\"([a-zA-Z0-9]{32})\"");
+    std::smatch match;
+
+    if (std::regex_search(js_content, match, client_id_regex)) {
+        cached_id = match[1].str();
+    }
+    return cached_id;
 }
 
 } // namespace
@@ -807,6 +877,14 @@ void SoundCloudSource::pump(RingBuffer& ring) {
 
     auto on_eof = [&] {
         if (p->bytes_written == 0) {
+            // a closed pipe with 0 bytes usually indicates a DRM block or region block
+            // mark the entry as unavailable to skip it on all future passes
+            if (p->for_queue_idx < queue_.size()) {
+                queue_[p->for_queue_idx].title = "Unavailable / DRM";
+                queue_[p->for_queue_idx].artist = "SoundCloud";
+                queue_version_.fetch_add(1, std::memory_order_release);
+            }
+
             if (++consecutive_failed_ >= 3) {
                 log::warn("[sc] giving up after {} consecutive empty tracks", consecutive_failed_);
                 stop_pipe_locked();
@@ -864,145 +942,130 @@ void SoundCloudSource::pump(RingBuffer& ring) {
 }
 
 void SoundCloudSource::hydrate_queue(uint64_t generation) {
-    struct Unresolved { std::size_t index; std::string url; };
+    struct Unresolved {
+        std::string original_url;
+        std::string numeric_id;
+    };
     std::vector<Unresolved> pending;
 
-    std::wstring yt;
-    std::wstring cookies;
     {
         std::scoped_lock lk{mu_};
         if (queue_generation_.load(std::memory_order_acquire) != generation) return;
         
-        yt = yt_dlp_path_.empty() ? L"yt-dlp" : yt_dlp_path_.wstring();
-        cookies = cfg_.cookies_path.wstring();
         for (std::size_t i = 0; i < queue_.size(); ++i) {
             if (queue_[i].title == "SoundCloud Track" || queue_[i].title == "(loading)" || queue_[i].title.empty()) {
-                pending.push_back({i, queue_[i].url});
+                std::string num_id = queue_[i].url;
+                auto tracks_pos = num_id.find("/tracks/");
+                if (tracks_pos != std::string::npos) {
+                    num_id = num_id.substr(tracks_pos + 8);
+                    auto qm = num_id.find('?');
+                    if (qm != std::string::npos) num_id = num_id.substr(0, qm);
+                }
+                pending.push_back({queue_[i].url, num_id});
             }
         }
     }
 
     if (pending.empty()) return;
 
-    // batches of 12 to reduce yt-dlp spawn frequency overhead
-    const std::size_t batch_size = 12;
+    // ensure there's a valid client_id for the api
+    std::string client_id = get_sc_client_id(worker_);
+    if (client_id.empty()) {
+        log::warn("[sc] failed to extract client_id for native hydration");
+        return;
+    }
+
+    // unescape helper for json strings
+    auto unescape = [](std::string s) {
+        std::string r;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '\\' && i + 1 < s.size() && (s[i+1] == '"' || s[i+1] == '\\')) {
+                r += s[++i];
+            } else r += s[i];
+        }
+        return r;
+    };
+
+    const std::size_t batch_size = 50;
+    bool updated_any = false;
 
     for (std::size_t i = 0; i < pending.size(); i += batch_size) {
         if (queue_generation_.load(std::memory_order_acquire) != generation) return;
 
-        // rest the thread for 1.5 seconds between batches
-        if (i > 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
-        }
-        
-        if (queue_generation_.load(std::memory_order_acquire) != generation) return;
-
+        std::string ids_csv;
         std::size_t chunk_end = std::min(i + batch_size, pending.size());
         
-        std::wstring cmd = quote(yt) + L" -s --ignore-errors --ignore-config --no-warnings "
-                                       L"--encoding UTF-8 "
-                                       L"--print \"%(original_url)s\t%(title)s\t%(uploader)s\" ";
-        
-        if (!cookies.empty()) {
-            cmd += L"--cookies " + quote(cookies) + L" ";
-        }
-
         for (std::size_t j = i; j < chunk_end; ++j) {
-            cmd += L" " + quote(widen(pending[j].url));
+            ids_csv += pending[j].numeric_id;
+            if (j < chunk_end - 1) ids_csv += "%2C"; // url encoded comma
         }
 
-        std::string raw;
-        // bypass worker_->run_capture for hydration as it lacks cancellation
-        // direct spawn allows polling queue_generation_ to terminate promptly
-        HANDLE job = create_kill_on_close_job();
-        if (!job) continue;
-        SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
-        HANDLE rd = nullptr, wr = nullptr;
-        if (CreatePipe(&rd, &wr, &sa, 1 << 20)) {
-            SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-            HANDLE nul_in  = open_nul(GENERIC_READ);
-            HANDLE err_log = open_stderr_log();
-            HANDLE proc = spawn_in_job(job, cmd, nul_in, wr, err_log);
-            CloseHandle(wr);
-            
-            if (nul_in) CloseHandle(nul_in);
-            if (err_log) CloseHandle(err_log);
-            
-            if (proc) {
-                char buf[4096];
-                while (queue_generation_.load(std::memory_order_acquire) == generation) {
-                    DWORD avail = 0;
-                    if (!PeekNamedPipe(rd, nullptr, 0, nullptr, &avail, nullptr)) break;
-                    
-                    if (avail > 0) {
-                        DWORD got = 0;
-                        if (ReadFile(rd, buf, sizeof(buf), &got, nullptr) && got > 0) {
-                            raw.append(buf, got);
-                        } else break;
-                    } else if (WaitForSingleObject(proc, 50) == WAIT_OBJECT_0) {
-                        DWORD got = 0;
-                        while (ReadFile(rd, buf, sizeof(buf), &got, nullptr) && got > 0) {
-                            raw.append(buf, got);
-                        }
-                        break;
-                    }
-                }
-                CloseHandle(proc);
-            }
-            CloseHandle(rd);
-        }
-        CloseHandle(job);
+        std::string api_url = "https://api-v2.soundcloud.com/tracks?ids=" + ids_csv + "&client_id=" + client_id;
 
+        // handle optional return from http_get
+        auto raw_opt = worker_http_get(worker_, api_url);
+        if (!raw_opt) continue;
+        std::string raw = *raw_opt;
+
+        std::scoped_lock lk{mu_};
         if (queue_generation_.load(std::memory_order_acquire) != generation) return;
 
-        // parse the batch results
-        bool updated_any = false;
-        for (std::size_t pos = 0; pos < raw.size();) {
-            auto nl   = raw.find('\n', pos);
-            auto end  = (nl == std::string::npos) ? raw.size() : nl;
-            auto line = raw.substr(pos, end - pos);
+        for (std::size_t j = i; j < chunk_end; ++j) {
+            const auto& track = pending[j];
             
-            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+            // locate the track in the response array using the numeric ID
+            std::string id_marker = "\"id\":" + track.numeric_id;
+            auto pos = raw.find(id_marker);
+            if (pos == std::string::npos) continue;
 
-            if (!line.empty() && line != "NA") {
-                auto tab1 = line.find('\t');
-                std::string orig_url = tab1 == std::string::npos ? line : line.substr(0, tab1);
+            // grab title
+            std::string title = "(Unavailable)";
+            auto title_pos = raw.find("\"title\":\"", pos);
+            if (title_pos != std::string::npos) {
+                title_pos += 9;
+                auto title_end = raw.find("\"", title_pos);
+                if (title_end != std::string::npos) {
+                    title = unescape(raw.substr(title_pos, title_end - title_pos));
+                }
+            }
 
-                if (!orig_url.empty() && orig_url != "NA") {
-                    std::string title;
-                    std::string artist;
-                    
-                    if (tab1 != std::string::npos) {
-                        auto tab2 = line.find('\t', tab1 + 1);
-                        title = line.substr(tab1 + 1, tab2 == std::string::npos ? std::string::npos : tab2 - (tab1 + 1));
-                        if (tab2 != std::string::npos) artist = line.substr(tab2 + 1);
-                    }
-
-                    if (title.empty() || title == "NA") title = "(Unavailable)";
-                    if (artist == "NA") artist = "";
-
-                    std::scoped_lock lk{mu_};
-                    if (queue_generation_.load(std::memory_order_acquire) != generation) return;
-                    
-                    auto it = std::find_if(queue_.begin(), queue_.end(), [&](const auto& entry) {
-                        return entry.url == orig_url || entry.url.find(orig_url) != std::string::npos;
-                    });
-                    if (it != queue_.end()) {
-                        it->title = std::move(title);
-                        it->artist = std::move(artist);
-                        updated_any = true;
+            // grab artist (username)
+            std::string artist = "";
+            auto user_pos = raw.find("\"user\":{", pos);
+            if (user_pos != std::string::npos) {
+                auto username_pos = raw.find("\"username\":\"", user_pos);
+                if (username_pos != std::string::npos && username_pos < raw.find("}", user_pos)) {
+                    username_pos += 12;
+                    auto username_end = raw.find("\"", username_pos);
+                    if (username_end != std::string::npos) {
+                        artist = unescape(raw.substr(username_pos, username_end - username_pos));
                     }
                 }
             }
-            pos = (nl == std::string::npos) ? raw.size() : nl + 1;
+
+            // apply parsed metadata directly to the queue entry
+            auto it = std::find_if(queue_.begin(), queue_.end(), [&](const auto& entry) {
+                return entry.url == track.original_url || entry.url.find(track.original_url) != std::string::npos;
+            });
+            
+            if (it != queue_.end()) {
+                it->title = std::move(title);
+                it->artist = std::move(artist);
+                updated_any = true;
+            }
+        }
+        
+        if (updated_any) {
+            // tell the UI that items have been updated
+            queue_version_.fetch_add(1, std::memory_order_release);
+            updated_any = false;
         }
 
-        if (updated_any) {
-            queue_version_.fetch_add(1, std::memory_order_release);
-        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
+
     // rename queue entries that are missing metadata
-    {
+    if (queue_generation_.load(std::memory_order_acquire) == generation) {
         std::scoped_lock lk{mu_};
         // ensure a playlist swap hasn't occurred before updating
         if (queue_generation_.load(std::memory_order_acquire) != generation) return;
