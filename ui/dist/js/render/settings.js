@@ -88,14 +88,14 @@ function buildKeybindField({ id, label, type, cur, dataset, args: [optionsArg] }
         type: "hidden",
         id,
         dataset: { ...dataset, ...customDataset },
-        value: isCustom ? initialCustomStr : curNum
+        value: curNum
     });
 
     select.addEventListener("change", () => {
         if (select.value === "custom") {
             customInput.style.display = "block";
             customInput.focus();
-            hiddenInput.value = customInput.value || 0;
+            hiddenInput.value = 0
         } else {
             customInput.style.display = "none";
             hiddenInput.value = select.value;
@@ -141,7 +141,7 @@ function buildKeybindField({ id, label, type, cur, dataset, args: [optionsArg] }
                     if (currentMask > 0) {
                         const str = formatPad(currentMask);
                         customInput.value = str;
-                        if (select.value === "custom") hiddenInput.value = str;
+                        if (select.value === "custom") hiddenInput.value = currentMask;
                     }
                 }
             }, 50);
