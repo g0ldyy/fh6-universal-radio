@@ -165,7 +165,7 @@ void TextureInjector::update_artwork_url(const std::string& url) {
             int square_size = (target_w == 392) ? 208 : 104;
             
             // border settings
-            int border_thickness = is_default_artwork ? 0 : 4; 
+            int border_thickness = is_default_artwork ? 0 : (square_size / 26);
             
             // calculate scale to fill the 104x104 square
             float scale = std::max((float)square_size / width, (float)square_size / height);
