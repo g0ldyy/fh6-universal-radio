@@ -23,8 +23,10 @@
 
 void InitDX12HookThread();
 
-uint64_t EXPECTED_STREAMER_HASH = 0x22BC7164008461C9ULL; // hash for streamer mode logo (196x104)
-uint64_t EXPECTED_ALT_HASH      = 0xF5223D52CFA65930ULL; // hash for modified icon (196x196)
+uint64_t EXPECTED_STREAMER_LOW_HASH  = 0x22BC7164008461C9ULL; // hash for streamer mode logo (196x104)
+uint64_t EXPECTED_ALT_LOW_HASH       = 0xF5223D52CFA65930ULL; // hash for modified icon (196x196)
+uint64_t EXPECTED_STREAMER_HIGH_HASH = 0xBDA325E7EF18F3AAULL; // hash for streamer mode logo (392x108)
+uint64_t EXPECTED_ALT_HIGH_HASH      = 0x20906BF5A8058195ULL; // hash for modified icon (392x392)
 
 struct TrackedTexture {
     Microsoft::WRL::ComPtr<ID3D12Resource> ptr;
@@ -59,8 +61,11 @@ bool IsTargetTexture(ID3D12Resource* pResource) {
     if (!pResource) return false;
     __try {
         D3D12_RESOURCE_DESC desc = pResource->GetDesc();
+        bool is196 = (desc.Width == 196 && (desc.Height == 104 || desc.Height == 196));
+        bool is392 = (desc.Width == 392 && (desc.Height == 208 || desc.Height == 392));
+
         return (desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && 
-                desc.Width == 196 && (desc.Height == 104 || desc.Height == 196) &&
+                (is196 || is392) &&
                 (desc.Format == DXGI_FORMAT_BC7_UNORM || desc.Format == DXGI_FORMAT_BC7_UNORM_SRGB));
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false; 
@@ -70,7 +75,7 @@ bool IsTargetTexture(ID3D12Resource* pResource) {
 void ProcessFingerprintResult(uint64_t hash, ID3D12Resource* pRes) {
     fh6::log::info("[dx12] fingerprint checksum: 0x{:X}", hash);
     
-    if (EXPECTED_STREAMER_HASH == 0 || hash == EXPECTED_STREAMER_HASH || hash == EXPECTED_ALT_HASH) {
+    if (EXPECTED_STREAMER_LOW_HASH == 0 || hash == EXPECTED_STREAMER_LOW_HASH || hash == EXPECTED_ALT_LOW_HASH || hash == EXPECTED_STREAMER_HIGH_HASH || hash == EXPECTED_ALT_HIGH_HASH) {
         std::lock_guard<std::mutex> lock(g_TextureMutex);
         g_StreamerModeResources.emplace_back(pRes);
         
@@ -338,9 +343,9 @@ void __stdcall HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCom
         if (!ready_to_fingerprint.empty()) {
             fh6::log::info("[dx12] fingerprinting {} textures...", ready_to_fingerprint.size());
             
-            // accommodate max possible height (196) for discovery mapping
-            UINT maxBlocksX = (196 + 3) / 4;  
-            UINT maxBlocksY = (196 + 3) / 4;  
+            // accommodate max possible height (392) for discovery mapping
+            UINT maxBlocksX = (392 + 3) / 4;  
+            UINT maxBlocksY = (392 + 3) / 4;
             UINT alignedRowPitch = ((maxBlocksX * 16) + 255) & ~255; 
             UINT64 maxReadbackSize = alignedRowPitch * maxBlocksY;
 
@@ -398,7 +403,10 @@ void __stdcall HookedExecuteCommandLists(ID3D12CommandQueue* pQueue, UINT NumCom
 
                 // allow both sizes dynamically
                 const size_t requiredPayloadSize = static_cast<size_t>(tightRowPitch) * blocksY;
-                if (w != 196 || (h != 104 && h != 196) || new_pixels.size() < requiredPayloadSize) {
+                bool valid196 = (w == 196 && (h == 104 || h == 196));
+                bool valid392 = (w == 392 && (h == 208 || h == 392));
+
+                if (!(valid196 || valid392) || new_pixels.size() < requiredPayloadSize) {
                     fh6::log::warn("[dx12] invalid BC7 payload: {}x{}, {} bytes", w, h, new_pixels.size());
                     pDevice->Release();
                     OriginalExecuteCommandLists(pQueue, NumCommandLists, ppCommandLists);

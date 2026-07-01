@@ -155,13 +155,14 @@ void TextureInjector::update_artwork_url(const std::string& url) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
 
-            if (target_h != 104 && target_h != 196) {
+            if (target_h != 104 && target_h != 196 && target_h != 208 && target_h != 392) {
                 log::warn("[dx12] job {}: unsupported target texture height {}", my_job_id, target_h);
                 return;
             }
-
-            int square_size = 104;
-            int target_w = 196;
+            
+            // dynamically scale based on what height was discovered
+            int target_w = (target_h == 208 || target_h == 392) ? 392 : 196;
+            int square_size = (target_w == 392) ? 208 : 104;
             
             // border settings
             int border_thickness = is_default_artwork ? 0 : 4; 
@@ -236,7 +237,7 @@ void TextureInjector::update_artwork_url(const std::string& url) {
             log::info("[dx12] job {}: compressing to BC7 with texconv...", my_job_id);
 
             // export to the dynamic size requested
-            std::string texconv_cmd = "\"" + texconv_path + "\" -f BC7_UNORM -w 196 -h " + std::to_string(target_h) + " -m 1 -pmalpha -gpu 0 -y -o \"" + temp_dir_str + "\" \"" + png_path + "\"";
+            std::string texconv_cmd = "\"" + texconv_path + "\" -f BC7_UNORM -w " + std::to_string(target_w) + " -h " + std::to_string(target_h) + " -m 1 -pmalpha -gpu 0 -y -o \"" + temp_dir_str + "\" \"" + png_path + "\"";
             std::vector<char> cmd_buf(texconv_cmd.begin(), texconv_cmd.end());
             cmd_buf.push_back('\0');
             
@@ -286,7 +287,7 @@ void TextureInjector::update_artwork_url(const std::string& url) {
                             std::memcpy(bc7_payload.data(), dds_data.data() + header_size, payload_size);
 
                             std::lock_guard<std::mutex> lock(mtx_);
-                            width_ = 196; 
+                            width_ = target_w; 
                             height_ = target_h;
                             pending_pixels_ = std::move(bc7_payload); 
                             has_new_image_ = true;
