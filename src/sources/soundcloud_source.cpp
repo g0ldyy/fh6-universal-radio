@@ -66,7 +66,7 @@ std::optional<std::string> worker_http_get(worker::WorkerClient* worker, const s
         }
     }
     
-    return std::nullopt;
+    return fh6::net::http_get(url);
 }
 
 std::string get_sc_client_id(worker::WorkerClient* worker) {
@@ -238,10 +238,12 @@ void SoundCloudSource::set_target(std::string url) {
     std::scoped_lock lk{mu_};
     target_url_ = std::move(url);
     // Invalidate queue so the next play() re-resolves against the new URL.
+    stop_pipe_locked();
     queue_.clear();
     queue_idx_ = 0;
     queue_built_for_.clear();
     discard_prefetch_locked();
+    queue_version_.fetch_add(1, std::memory_order_release);
 }
 
 void SoundCloudSource::set_ffmpeg_path(std::filesystem::path p) {
@@ -288,6 +290,7 @@ void SoundCloudSource::set_shuffle(bool shuffle) {
                 }
             }
         }
+        if (pipe_) pipe_->for_queue_idx = queue_idx_;
         // tell the UI that the queue has changed
         queue_version_.fetch_add(1, std::memory_order_release);
     }
@@ -621,7 +624,7 @@ void SoundCloudSource::start_pipe_locked() {
     std::size_t start = queue_idx_;
     while (queue_[queue_idx_].title == "Unavailable / DRM") {
         queue_idx_ = (queue_idx_ + 1) % queue_.size();
-        if (queue_idx_ == start) break;
+        if (queue_idx_ == start) return;
     }
 
     pipe_ = spawn_pipe_locked(queue_[queue_idx_].url, queue_idx_);
@@ -671,6 +674,7 @@ void SoundCloudSource::maybe_spawn_prefetch_locked() {
     if (pipe_->bytes_written < kViableBytes) return;
 
     const std::size_t idx = next_queue_idx_locked();
+    if (queue_[idx].title == "Unavailable / DRM") return;
     prefetch_             = spawn_pipe_locked(queue_[idx].url, idx);
 }
 
@@ -740,7 +744,11 @@ void SoundCloudSource::previous() {
     while (queue_[target].title == "Unavailable / DRM") {
         i--;
         target = static_cast<std::size_t>(((i % n) + n) % n);
-        if (target == start) break;
+        if (target == start) {
+            discard_prefetch_locked();
+            stop_pipe_locked();
+            return;
+        }
     }
     queue_idx_ = target;
 
@@ -960,8 +968,9 @@ void SoundCloudSource::hydrate_queue(uint64_t generation) {
                     num_id = num_id.substr(tracks_pos + 8);
                     auto qm = num_id.find('?');
                     if (qm != std::string::npos) num_id = num_id.substr(0, qm);
+
+                    pending.push_back({queue_[i].url, num_id});
                 }
-                pending.push_back({queue_[i].url, num_id});
             }
         }
     }
@@ -1073,9 +1082,11 @@ void SoundCloudSource::hydrate_queue(uint64_t generation) {
         bool cleaned_up = false;
         for (auto& entry : queue_) {
             if (entry.title == "(loading)" || entry.title == "SoundCloud Track" || entry.title.empty()) {
-                entry.title = "Unavailable / DRM";
-                entry.artist = "SoundCloud";
-                cleaned_up = true;
+                if (entry.url.find("/tracks/") != std::string::npos) {
+                    entry.title = "Unavailable / DRM";
+                    entry.artist = "SoundCloud";
+                    cleaned_up = true;
+                }
             }
         }
 
