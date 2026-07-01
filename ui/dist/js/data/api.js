@@ -55,6 +55,13 @@ export const api = {
 		shuffle: shuffle => request("/api/source/youtube_music/shuffle", { method: "POST", body: { shuffle } }),
 	},
 
+	// SoundCloud
+	soundcloud: {
+		...sourceApi("soundcloud"),
+		cast: url => request("/api/source/soundcloud/cast", { method: "POST", body: { url } }),
+		shuffle: shuffle => request("/api/source/soundcloud/shuffle", { method: "POST", body: { shuffle } }),
+	},
+
 	// Jellyfin
 	jellyfin: {
 		...sourceApi("jellyfin"),

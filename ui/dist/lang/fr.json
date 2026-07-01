@@ -210,6 +210,14 @@
   "youtube_music.saved_stations": "Stations YouTube Music enregistrées",
   "youtube_music.shuffle": "Aléatoire",
 
+  "soundcloud.title": "SoundCloud",
+  "soundcloud.description": "Collez l'URL de n'importe quelle piste ou playlist SoundCloud.",
+  "soundcloud.playlist_or_track_url": "URL de la playlist ou de la piste",
+  "soundcloud.url_placeholder": "Collez une URL SoundCloud…",
+  "soundcloud.default_station_name": "Ma playlist",
+  "soundcloud.saved_stations": "Stations SoundCloud enregistrées",
+  "soundcloud.shuffle": "Lecture aléatoire",
+
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Entrez un ID de playlist Jellyfin. La radio change de source et commence à diffuser immédiatement.",
   "jellyfin.playlist_id": "ID de playlist",
@@ -254,10 +262,13 @@
   "schema.general.default_source": "Source par défaut",
   "schema.general.fallback_source": "Source de secours",
   "schema.general.ffmpeg_path": "Chemin ffmpeg (optionnel)",
+  "schema.general.yt_dlp_path": "Chemin yt_dlp (optionnel)",
 
   "schema.youtube_music.cookies_path": "cookies.txt (optionnel)",
-  "schema.youtube_music.yt_dlp_path": "Chemin yt-dlp (optionnel)",
   "schema.youtube_music.shuffle": "Aléatoire",
+
+  "schema.soundcloud.cookies_path": "cookies.txt (optionnel)",
+  "schema.soundcloud.shuffle": "Aléatoire",
 
   "schema.jellyfin.server_url": "URL du serveur",
   "schema.jellyfin.user_id": "ID utilisateur",

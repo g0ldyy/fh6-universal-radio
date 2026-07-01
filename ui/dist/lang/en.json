@@ -234,6 +234,15 @@
   "youtube_music.saved_stations": "Saved YouTube Music stations",
   "youtube_music.shuffle": "Shuffle",
 
+  // ─── SoundCloud card ─────────────────────────────────────────────────
+  "soundcloud.title": "SoundCloud",
+  "soundcloud.description": "Paste any SoundCloud track or playlist URL.",
+  "soundcloud.playlist_or_track_url": "Playlist or Track URL",
+  "soundcloud.url_placeholder": "Paste a SoundCloud URL…",
+  "soundcloud.default_station_name": "My Playlist",
+  "soundcloud.saved_stations": "Saved SoundCloud stations",
+  "soundcloud.shuffle": "Shuffle",
+
   // ─── Jellyfin card ──────────────────────────────────────────────────────
   "jellyfin.title": "Jellyfin",
   "jellyfin.description": "Enter a Jellyfin Playlist ID. The radio switches source and starts streaming immediately.",
@@ -282,10 +291,14 @@
   "schema.general.default_source": "Default source",
   "schema.general.fallback_source": "Fallback source",
   "schema.general.ffmpeg_path": "ffmpeg path (optional)",
+  "schema.general.yt_dlp_path": "yt_dlp path (optional)",
 
   "schema.youtube_music.cookies_path": "cookies.txt (optional)",
-  "schema.youtube_music.yt_dlp_path": "yt-dlp path (optional)",
   "schema.youtube_music.shuffle": "Shuffle",
+
+  "schema.soundcloud.cookies_path": "cookies.txt (optional)",
+  "schema.soundcloud.shuffle": "Shuffle",
+
 
   "schema.jellyfin.server_url": "Server URL",
   "schema.jellyfin.user_id": "User ID",

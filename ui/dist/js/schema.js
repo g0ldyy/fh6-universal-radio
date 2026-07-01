@@ -5,6 +5,7 @@ export const EQ_BAND_LABELS = ["60 Hz", "250 Hz", "1 kHz", "4 kHz", "12 kHz"];
 export const SOURCE_SECTIONS = () => [
     ["local_files", t("source.local_files")],
     ["youtube_music", "YouTube Music"],
+    ["soundcloud", "SoundCloud"],
     ["jellyfin", "Jellyfin"],
     ["external_audio", t("source.external_audio")],
     ["spotify", "Spotify Connect"],
@@ -59,6 +60,7 @@ export const SCHEMA = () => [
             ["default_source", t("schema.general.default_source"), "source-select"],
             ["fallback_source", t("schema.general.fallback_source"), "source-select"],
             ["ffmpeg_path", t("schema.general.ffmpeg_path"), "text"],
+            ["yt_dlp_path", t("schema.general.yt_dlp_path"), "text"],
         ],
     ],
     [
@@ -74,7 +76,14 @@ export const SCHEMA = () => [
         [
             ["enabled", t("schema.enabled"), "checkbox"],
             ["cookies_path", t("schema.youtube_music.cookies_path"), "text"],
-            ["yt_dlp_path", t("schema.youtube_music.yt_dlp_path"), "text"],
+        ],
+    ],
+    [
+        "soundcloud",
+        "SoundCloud",
+        [
+            ["enabled", t("schema.enabled"), "checkbox"],
+            ["cookies_path", t("schema.soundcloud.cookies_path"), "text"],
         ],
     ],
     [

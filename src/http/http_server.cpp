@@ -6,6 +6,7 @@
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "fh6/sources/soundcloud_source.hpp"
 #include "fh6/sources/jellyfin_source.hpp"
 #include "fh6/sources/external_audio_source.hpp"
 #include "fh6/sources/external_media_session.hpp"
@@ -115,6 +116,15 @@ json source_to_json(IAudioSource* s) {
         j["details"]["queue_size"] = snap.entries.size();
         j["details"]["queue_cursor"] = snap.cursor;
     }
+    if (auto* sc = dynamic_cast<sources::SoundCloudSource*>(s)) {
+        j["details"]["shuffle"] = sc->shuffle();
+        j["details"]["station_count"] = sc->station_count();
+        j["details"]["active_station"] = sc->active_station_name();
+        auto snap = sc->queue_snapshot();
+        j["details"]["queue_size"] = snap.entries.size();
+        j["details"]["queue_cursor"] = snap.cursor;
+        j["details"]["queue_version"] = sc->queue_version(); 
+    }
     if (auto* jf = dynamic_cast<sources::JellyfinSource*>(s)) {
         j["details"]["shuffle"] = jf->shuffle();
         j["details"]["station_count"] = jf->station_count();
@@ -170,6 +180,18 @@ YouTubeStation yt_station_from_json(const json& j) {
     };
 }
 
+json sc_station_to_json(const SoundCloudStation& s) {
+    return json{{"name", s.name}, {"url", s.url}};
+}
+json sc_stations_to_json(const std::vector<SoundCloudStation>& v) {
+    json a = json::array();
+    for (const auto& s : v) a.push_back(sc_station_to_json(s));
+    return a;
+}
+SoundCloudStation sc_station_from_json(const json& j) {
+    return SoundCloudStation{j.value("name", ""), j.value("url", "")};
+}
+
 json jf_station_to_json(const JellyfinStation& s) {
     return json{
         {"name", s.name},
@@ -201,6 +223,7 @@ json config_to_json(const Config& c) {
              {"default_source", c.general.default_source},
              {"fallback_source", c.general.fallback_source},
              {"ffmpeg_path", path_s(c.general.ffmpeg_path)},
+             {"yt_dlp_path", path_s(c.general.yt_dlp_path)},
          }},
         {"local_files",
          json{
@@ -213,10 +236,17 @@ json config_to_json(const Config& c) {
          json{
              {"enabled", c.youtube_music.enabled},
              {"cookies_path", path_s(c.youtube_music.cookies_path)},
-             {"yt_dlp_path", path_s(c.youtube_music.yt_dlp_path)},
              {"active_station", c.youtube_music.active_station},
              {"stations", yt_stations_to_json(c.youtube_music.stations)},
              {"shuffle", c.youtube_music.shuffle},
+         }},
+        {"soundcloud",
+         json{
+             {"enabled", c.soundcloud.enabled},
+             {"cookies_path", path_s(c.soundcloud.cookies_path)},
+             {"active_station", c.soundcloud.active_station},
+             {"stations", sc_stations_to_json(c.soundcloud.stations)},
+             {"shuffle", c.soundcloud.shuffle},
          }},
         {"jellyfin",
          json{
@@ -340,6 +370,7 @@ void apply_patch(Config& c, const json& j) {
         c.general.default_source  = pull(*it, "default_source", c.general.default_source);
         c.general.fallback_source = pull(*it, "fallback_source", c.general.fallback_source);
         c.general.ffmpeg_path     = pull_path(*it, "ffmpeg_path", c.general.ffmpeg_path);
+        c.general.yt_dlp_path     = pull_path(*it, "yt_dlp_path", c.general.yt_dlp_path);
     }
     if (auto it = j.find("local_files"); it != j.end()) {
         c.local_files.enabled        = pull(*it, "enabled", c.local_files.enabled);
@@ -355,7 +386,6 @@ void apply_patch(Config& c, const json& j) {
     if (auto it = j.find("youtube_music"); it != j.end()) {
         c.youtube_music.enabled      = pull(*it, "enabled", c.youtube_music.enabled);
         c.youtube_music.cookies_path = pull_path(*it, "cookies_path", c.youtube_music.cookies_path);
-        c.youtube_music.yt_dlp_path  = pull_path(*it, "yt_dlp_path", c.youtube_music.yt_dlp_path);
         c.youtube_music.active_station = pull(*it, "active_station", c.youtube_music.active_station);
         if (auto sts = it->find("stations"); sts != it->end() && sts->is_array()) {
             std::vector<YouTubeStation> parsed;
@@ -363,6 +393,17 @@ void apply_patch(Config& c, const json& j) {
             c.youtube_music.stations = std::move(parsed);
         }
         c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
+    }
+    if (auto it = j.find("soundcloud"); it != j.end()) {
+        c.soundcloud.enabled      = pull(*it, "enabled", c.soundcloud.enabled);
+        c.soundcloud.cookies_path = pull_path(*it, "cookies_path", c.soundcloud.cookies_path);
+        c.soundcloud.active_station = pull(*it, "active_station", c.soundcloud.active_station);
+        if (auto sts = it->find("stations"); sts != it->end() && sts->is_array()) {
+            std::vector<SoundCloudStation> parsed;
+            for (const auto& st : *sts) parsed.push_back(sc_station_from_json(st));
+            c.soundcloud.stations = std::move(parsed);
+        }
+        c.soundcloud.shuffle = pull(*it, "shuffle", c.soundcloud.shuffle);
     }
     if (auto it = j.find("jellyfin"); it != j.end()) {
         c.jellyfin.enabled          = pull(*it, "enabled", c.jellyfin.enabled);
@@ -965,7 +1006,6 @@ struct HttpServer::Impl {
             }
             return ok(json{{"cursor", snap.cursor}, {"tracks", tracks}});
         }
-
         if (m == "POST" && p == "/api/source/youtube_music/play" && !req.body.empty()) {
             auto* yt = find_typed<sources::YouTubeMusicSource>("youtube_music");
             if (!yt) return fail(404, "youtube_music not registered");
@@ -974,6 +1014,82 @@ struct HttpServer::Impl {
             if (!yt->jump_to(idx)) return fail(400, "index out of range");
             if (was_active) mgr.ring().drain();
             mgr.switch_to("youtube_music");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/soundcloud/cast") {
+            auto* sc = find_typed<sources::SoundCloudSource>("soundcloud");
+            if (!sc) return fail(404, "soundcloud not registered");
+            auto url              = json::parse(req.body).at("url").get<std::string>();
+            if (url.empty()) return fail(400, "url required");
+            const bool was_active = (mgr.active() == sc);
+            sc->stop();
+            sc->set_target(std::move(url));
+            if (was_active) mgr.ring().drain();
+            sc->play();
+            mgr.switch_to("soundcloud");
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/soundcloud/shuffle") {
+            auto* sc = find_typed<sources::SoundCloudSource>("soundcloud");
+            if (!sc) return fail(404, "soundcloud not registered");
+            auto shuffle = json::parse(req.body).at("shuffle").get<bool>();
+            sc->set_shuffle(shuffle);
+            store.patch([shuffle](Config& c) { c.soundcloud.shuffle = shuffle; });
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/soundcloud/stations") {
+            auto snap = store.snapshot();
+            return ok(json{
+                {"stations", sc_stations_to_json(snap.soundcloud.stations)},
+                {"active_station", snap.soundcloud.active_station}
+            });
+        }
+        if (m == "PUT" && p == "/api/source/soundcloud/stations") {
+            auto j = json::parse(req.body);
+            store.patch([&](Config& c) {
+                if (auto sts = j.find("stations"); sts != j.end() && sts->is_array()) {
+                    std::vector<SoundCloudStation> parsed;
+                    for (const auto& st : *sts) parsed.push_back(sc_station_from_json(st));
+                    c.soundcloud.stations = std::move(parsed);
+                }
+                if (auto a = j.find("active_station"); a != j.end() && a->is_string())
+                    c.soundcloud.active_station = a->get<std::string>();
+            });
+            auto* sc = find_typed<sources::SoundCloudSource>("soundcloud");
+            if (sc) sc->set_config(store.snapshot().soundcloud);
+            return ok();
+        }
+        if (m == "POST" && p == "/api/source/soundcloud/activate") {
+            auto* sc = find_typed<sources::SoundCloudSource>("soundcloud");
+            if (!sc) return fail(404, "soundcloud not registered");
+            auto name             = json::parse(req.body).value("name", std::string{});
+            const bool was_active = (mgr.active() == sc);
+            store.patch([&](Config& c) { c.soundcloud.active_station = name; });
+            sc->set_active_station(name);
+            if (was_active) mgr.ring().drain();
+            sc->play();
+            mgr.switch_to("soundcloud");
+            return ok();
+        }
+        if (m == "GET" && p == "/api/source/soundcloud/queue") {
+            auto* sc = find_typed<sources::SoundCloudSource>("soundcloud");
+            if (!sc) return fail(404, "soundcloud not registered");
+            auto snap   = sc->queue_snapshot();
+            json tracks = json::array();
+            for (const auto& e : snap.entries) {
+                tracks.push_back(
+                    json{{"index", e.index}, {"title", e.title}, {"artist", e.artist}, {"url", e.url}});
+            }
+            return ok(json{{"cursor", snap.cursor}, {"tracks", tracks}});
+        }
+        if (m == "POST" && p == "/api/source/soundcloud/play" && !req.body.empty()) {
+            auto* sc = find_typed<sources::SoundCloudSource>("soundcloud");
+            if (!sc) return fail(404, "soundcloud not registered");
+            auto idx              = json::parse(req.body).at("index").get<std::size_t>();
+            const bool was_active = (mgr.active() == sc);
+            if (!sc->jump_to(idx)) return fail(400, "index out of range");
+            if (was_active) mgr.ring().drain();
+            mgr.switch_to("soundcloud");
             return ok();
         }
         if (m == "POST" && p == "/api/source/jellyfin/cast") {

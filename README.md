@@ -6,7 +6,7 @@
 
 <p align="center"><img src="assets/banner.png" alt="FH6 Universal Radio" /></p>
 
-An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music**, **online radio** stations, **Spotify**, **YouTube Music**, **Jellyfin** server, or **any Windows app** (Deezer, a browser tab...), controlled from a browser dashboard.
+An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music**, **online radio** stations, **Spotify**, **YouTube Music**, **SoundCloud**, **Jellyfin** server, or **any Windows app** (Deezer, a browser tab...), controlled from a browser dashboard.
 
 <p align="center">
   <img src="assets/ingame.png" alt="In-game radio station" width="49%" />
@@ -18,6 +18,7 @@ An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio stati
 - **Local files**: build named **stations** from one or more folders, exclude subfolders you don't want, and pick a play order (shuffle / albums / name / folder) with repeat modes and a searchable queue. MP3 / FLAC / WAV / OGG / M4A / AAC / OPUS / WMA / M3U / M3U8 etc.
 - **Online radio**: search a directory of thousands of internet stations by name, genre, or country (via [radio-browser.info](https://www.radio-browser.info)) or paste any stream URL; save favourites with logos and genre/bitrate badges, with live track info.
 - **YouTube Music**: paste any video, playlist, or YT Music URL from the dashboard. Tracks are added to a searchable queue, with support for saving playlists as reusable stations.
+- **SoundCloud**: paste any playlist, or track URL from the dashboard. Tracks are added to a searchable queue, with support for saving playlists as reusable stations.
 - **Spotify Connect**: cast from the Spotify app to an "FH6 Universal Radio" device (requires Spotify Premium).
 - **Jellyfin**: stream playlists from your own Jellyfin server, view queued tracks, and save playlists as stations for quick access later.
 - **External audio**: capture any Windows app (Deezer, a browser tab...) and pipe it into the radio through a virtual audio cable.
@@ -45,11 +46,15 @@ An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio stati
 
 ### Dependencies
 
-Online radio, YouTube Music, Spotify, Jellyfin, and non-native local formats rely on external binaries: `yt-dlp`, `ffmpeg`, and `librespot`. The mod **downloads them automatically** on first launch into `fh6-radio\bin`, so there's nothing to install by hand.
+Online radio, YouTube Music, SoundCloud, Spotify, Jellyfin, and non-native local formats rely on external binaries: `yt-dlp`, `ffmpeg`, and `librespot`. The mod **downloads them automatically** on first launch into `fh6-radio\bin`, so there's nothing to install by hand.
 
-To manage them yourself instead, set the paths in the dashboard (**Settings > YouTube Music** for yt-dlp, **Settings > General > ffmpeg path**, **Settings > Spotify Connect** for librespot).
+To manage them yourself instead, set the paths in the dashboard (**Settings > General > yt_dlp path** for yt-dlp, **Settings > General > ffmpeg path** for ffmpeg, **Settings > Spotify Connect** for librespot).
 
 ### YouTube Music
+
+Private/age-restricted content needs a Netscape `cookies.txt` exported from your browser. Use an extension like **Get cookies.txt LOCALLY** to export it.
+
+### SoundCloud
 
 Private/age-restricted content needs a Netscape `cookies.txt` exported from your browser. Use an extension like **Get cookies.txt LOCALLY** to export it.
 
@@ -112,7 +117,8 @@ Requires **CMake** and **llvm-mingw**. On Arch: `sudo pacman -S llvm-mingw cmake
 |---|---|
 | New radio station doesn't show in-game | **Audio > Streamer Mode** is off. Turn it on, restart the game. |
 | Local files don't play | The active station has no folders, or its folders only hold unsupported formats. Add a folder in the dashboard's Local Files card. |
-| YouTube Music produces no audio | Check `%TEMP%\fh6-stderr.log` (helper-process stderr lands there). Usually expired cookies, or geo/format restrictions. |
+| YouTube Music / SoundCloud produces no audio | Check `%TEMP%\fh6-stderr.log` (helper-process stderr lands there). Usually expired cookies, or geo/format restrictions. |
+| SoundCloud tracks are unavailable | Confirm that the account has SoundCloud GO+ and that cookies have been provided. |
 | Spotify device doesn't appear or won't play | Wait for `librespot` to finish downloading, confirm your phone/PC is on the same network, and that the account is Spotify Premium. |
 | External Audio plays in the background, not through the radio | You're capturing the same device the app plays on. Route the app's output to a **virtual audio cable** and select that cable as the **Capture device** (see [External audio](#external-audio)). |
 | External Audio has clicks / artifacts | Set the virtual cable to **48000 Hz** (2 ch). Other sample rates caused artifacts in testing. |
@@ -137,4 +143,4 @@ Released under the [GNU General Public License v3.0](LICENSE). You're free to us
 
 ## Disclaimer
 
-Unofficial fan-made mod. Not affiliated with, endorsed by, or connected to Turn 10 Studios, Playground Games, Xbox Game Studios, Microsoft, Google, YouTube, Jellyfin (Jellyfin LLC), or Spotify (Spotify AB). All trademarks belong to their respective owners. Use at your own risk.
+Unofficial fan-made mod. Not affiliated with, endorsed by, or connected to Turn 10 Studios, Playground Games, Xbox Game Studios, Microsoft, Google, YouTube, SoundCloud (SoundCloud Global Limited & Co. KG), Jellyfin (Jellyfin LLC), or Spotify (Spotify AB). All trademarks belong to their respective owners. Use at your own risk.

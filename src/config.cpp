@@ -58,6 +58,7 @@ Config load_config(const std::filesystem::path& path) {
     cfg.general.fallback_source =
         pick<std::string>(g, "fallback_source", cfg.general.fallback_source);
     cfg.general.ffmpeg_path = pick_path(g, "ffmpeg_path");
+    cfg.general.yt_dlp_path = pick_path(g, "yt_dlp_path");
 
     const auto& lf                 = section(root, "local_files");
     cfg.local_files.enabled        = pick<bool>(lf, "enabled", cfg.local_files.enabled);
@@ -114,7 +115,6 @@ Config load_config(const std::filesystem::path& path) {
     const auto& ym                     = section(root, "youtube_music");
     cfg.youtube_music.enabled          = pick<bool>(ym, "enabled", cfg.youtube_music.enabled);
     cfg.youtube_music.cookies_path     = pick_path(ym, "cookies_path");
-    cfg.youtube_music.yt_dlp_path      = pick_path(ym, "yt_dlp_path");
     cfg.youtube_music.active_station   = pick<std::string>(ym, "active_station", "");
     cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
 
@@ -138,6 +138,33 @@ Config load_config(const std::filesystem::path& path) {
     }
     if (cfg.youtube_music.active_station.empty() && !cfg.youtube_music.stations.empty()) {
         cfg.youtube_music.active_station = cfg.youtube_music.stations.front().name;
+    }
+    if (cfg.general.yt_dlp_path.empty()) {
+        auto old_ym_path = pick_path(ym, "yt_dlp_path");
+        if (!old_ym_path.empty()) {
+            cfg.general.yt_dlp_path = old_ym_path;
+        }
+    }
+
+    const auto& sc = section(root, "soundcloud");
+    cfg.soundcloud.enabled = pick<bool>(sc, "enabled", cfg.soundcloud.enabled);
+    cfg.soundcloud.cookies_path = pick_path(sc, "cookies_path");
+    cfg.soundcloud.active_station = pick<std::string>(sc, "active_station", "");
+    cfg.soundcloud.shuffle = pick<bool>(sc, "shuffle", cfg.soundcloud.shuffle);
+
+    try {
+        if (sc.contains("stations")) {
+            for (const auto& st : toml::find<std::vector<toml::value>>(sc, "stations")) {
+                SoundCloudStation s;
+                s.name = pick<std::string>(st, "name", "");
+                s.url  = pick<std::string>(st, "url", "");
+                cfg.soundcloud.stations.push_back(std::move(s));
+            }
+        }
+    } catch (...) {}
+
+    if (cfg.soundcloud.active_station.empty() && !cfg.soundcloud.stations.empty()) {
+        cfg.soundcloud.active_station = cfg.soundcloud.stations.front().name;
     }
 
     const auto& sp             = section(root, "spotify");
@@ -380,6 +407,7 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("default_source", cfg.general.default_source);
     e.kv("fallback_source", cfg.general.fallback_source);
     e.kv_path("ffmpeg_path", cfg.general.ffmpeg_path);
+    e.kv_path("yt_dlp_path", cfg.general.yt_dlp_path);
 
     e.header("local_files");
     e.kv("enabled", cfg.local_files.enabled);
@@ -399,11 +427,22 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.header("youtube_music");
     e.kv("enabled", cfg.youtube_music.enabled);
     e.kv_path("cookies_path", cfg.youtube_music.cookies_path);
-    e.kv_path("yt_dlp_path", cfg.youtube_music.yt_dlp_path);
+
     e.kv("active_station", cfg.youtube_music.active_station);
     e.kv("shuffle", cfg.youtube_music.shuffle);
     for (const auto& st : cfg.youtube_music.stations) {
         e.array_header("youtube_music.stations");
+        e.kv("name", st.name);
+        e.kv("url", st.url);
+    }
+
+    e.header("soundcloud");
+    e.kv("enabled", cfg.soundcloud.enabled);
+    e.kv_path("cookies_path", cfg.soundcloud.cookies_path);
+    e.kv("active_station", cfg.soundcloud.active_station);
+    e.kv("shuffle", cfg.soundcloud.shuffle);
+    for (const auto& st : cfg.soundcloud.stations) {
+        e.array_header("soundcloud.stations");
         e.kv("name", st.name);
         e.kv("url", st.url);
     }
